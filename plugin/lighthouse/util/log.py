@@ -28,6 +28,12 @@ def get_log_dir():
     """
     return os.path.join(idaapi.get_user_idadir(), "lighthouse_logs")
 
+def logging_started():
+    """
+    Check if logging has been started.
+    """
+    return 'logger' in globals()
+
 #------------------------------------------------------------------------------
 # Logger Proxy
 #------------------------------------------------------------------------------
