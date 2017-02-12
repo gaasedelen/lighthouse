@@ -1,95 +1,8 @@
+#!/usr/bin/python
+
 import os
 import sys
 import struct
-
-#------------------------------------------------------------------------------
-# drcov module parser
-#------------------------------------------------------------------------------
-
-class DrcovModule(object):
-    """
-    Wrapper for drcov module details.
-    """
-    def __init__(self, module_data, version):
-        self.id    = 0
-        self.base  = 0
-        self.end   = 0
-        self.entry = 0
-        self.checksum  = 0
-        self.timestamp = 0
-        self.path      = ""
-        self.filename  = ""
-
-        # parse the module
-        self._parse_module(module_data, version)
-
-    def _parse_module(self, module_line, version):
-        """
-        Parse a Module Table v2 line.
-        """
-
-        if version == 2:
-            data = module_line.split(", ")
-
-            # parse the individual fields from the module specification line
-            self.id        = int(data[0])
-            self.base      = int(data[1], 16)
-            self.end       = int(data[2], 16)
-            self.entry     = int(data[3], 16)
-            self.checksum  = int(data[4], 16)
-            self.timestamp = int(data[5], 16)
-            self.path      = str(data[6])
-            self.filename  = os.path.basename(self.path)
-
-        # unknown format
-        else:
-            raise ValueError("Unknown module format (v%u)" % version)
-
-#------------------------------------------------------------------------------
-# drcov basic block parser
-#------------------------------------------------------------------------------
-
-class DrcovBasicBlock(object):
-    """
-    Wrapper for bb_entry_t (basic block) details.
-
-    /* Data structure for the coverage info itself */
-    typedef struct _bb_entry_t {
-        uint   start;      /* offset of bb start from the image base */
-        ushort size;
-        ushort mod_id;
-    } bb_entry_t;
-
-    """
-    BYTESIZE = 4 + 2 + 2 # uint + short + short
-
-    def __init__(self, bb_data, binary=True):
-
-        # basic block fields
-        self.start  = 0
-        self.size   = 0
-        self.mod_id = 0
-
-        # parse the basic block data
-        if binary:
-            self._parse_bb_binary(bb_data)
-        else:
-            self._parse_bb_ascii(bb_data)
-
-    def _parse_bb_binary(self, bb_data):
-        """
-        Parse a binary basic block entry.
-        """
-        assert len(bb_data) == self.BYTESIZE
-        self.start,  = struct.unpack('<I', bb_data[0:4])
-        self.size,   = struct.unpack('<H', bb_data[4:6])
-        self.mod_id, = struct.unpack('<H', bb_data[6:8])
-
-    def _parse_bb_ascii(self, bb_line):
-        """
-        Parse an ascii basic block entry.
-        """
-        raise ValueError("TODO: implement ascii/text bb_entry_t parsing")
 
 #------------------------------------------------------------------------------
 # drcov log parser
@@ -97,7 +10,7 @@ class DrcovBasicBlock(object):
 
 class DrcovData(object):
     """
-    Coverage
+    DrcovData
     """
     def __init__(self, filepath=None):
 
@@ -119,12 +32,39 @@ class DrcovData(object):
         self._parse_drcov_file(filepath)
 
     #--------------------------------------------------------------------------
+    # Public
+    #--------------------------------------------------------------------------
+
+    def filter_by_module(self, module_name):
+        """
+        Extract coverage blocks pertaining to the named module.
+        """
+
+        # locate the coverage that matches the given module_name
+        for module in self.modules:
+            if module.filename == module_name:
+                mod_id = module.id
+                break
+
+        # failed to find a module that matches the given name, bail
+        else:
+            raise ValueError("Failed to find matching module in coverage")
+
+        # loop through the coverage data and filter out data for only this module
+        coverage_blocks = []
+        for bb in self.basic_blocks:
+            if bb.mod_id == mod_id:
+                coverage_blocks.append((bb.start, bb.size))
+
+        return coverage_blocks
+
+    #--------------------------------------------------------------------------
     # Parsing Routines - Top Level
     #--------------------------------------------------------------------------
 
     def _parse_drcov_file(self, filepath):
         """
-        Parse drcov coverage from the given file.
+        Parse drcov coverage from the given log file.
         """
         with open(filepath, "rb") as f:
             self._parse_drcov_header(f)
@@ -135,7 +75,7 @@ class DrcovData(object):
         """
         Parse drcov coverage from the given data blob.
         """
-        pass
+        pass # TODO
 
     #--------------------------------------------------------------------------
     # Parsing Routines - Internals
@@ -271,6 +211,101 @@ class DrcovData(object):
 
             # save the parsed block
             self.basic_blocks.append(basic_block)
+
+#------------------------------------------------------------------------------
+# drcov module parser
+#------------------------------------------------------------------------------
+
+class DrcovModule(object):
+    """
+    Parser & wrapper for module details as found in a drcov coverage log.
+
+    A 'module' in this context is a .EXE, .DLL, ELF, MachO, etc.
+    """
+    def __init__(self, module_data, version):
+        self.id    = 0
+        self.base  = 0
+        self.end   = 0
+        self.entry = 0
+        self.checksum  = 0
+        self.timestamp = 0
+        self.path      = ""
+        self.filename  = ""
+
+        # parse the module
+        self._parse_module(module_data, version)
+
+    def _parse_module(self, module_line, version):
+        """
+        Parse a Module Table v2 line.
+        """
+
+        if version == 2:
+            data = module_line.split(", ")
+
+            # parse the individual fields from the module specification line
+            self.id        = int(data[0])
+            self.base      = int(data[1], 16)
+            self.end       = int(data[2], 16)
+            self.entry     = int(data[3], 16)
+            self.checksum  = int(data[4], 16)
+            self.timestamp = int(data[5], 16)
+            self.path      = str(data[6])
+            self.filename  = os.path.basename(self.path)
+
+        # unknown format
+        else:
+            raise ValueError("Unknown module format (v%u)" % version)
+
+#------------------------------------------------------------------------------
+# drcov basic block parser
+#------------------------------------------------------------------------------
+
+class DrcovBasicBlock(object):
+    """
+    Parser & wrapper for basic block details as found in a drcov coverage log.
+
+    NOTE:
+
+      Based off the C structure as used by drcov -
+
+        /* Data structure for the coverage info itself */
+        typedef struct _bb_entry_t {
+            uint   start;      /* offset of bb start from the image base */
+            ushort size;
+            ushort mod_id;
+        } bb_entry_t;
+
+    """
+    BYTESIZE = 4 + 2 + 2 # uint + short + short
+
+    def __init__(self, bb_data, binary=True):
+
+        # basic block fields
+        self.start  = 0
+        self.size   = 0
+        self.mod_id = 0
+
+        # parse the basic block data
+        if binary:
+            self._parse_bb_binary(bb_data)
+        else:
+            self._parse_bb_ascii(bb_data)
+
+    def _parse_bb_binary(self, bb_data):
+        """
+        Parse a binary basic block entry.
+        """
+        assert len(bb_data) == self.BYTESIZE
+        self.start,  = struct.unpack('<I', bb_data[0:4])
+        self.size,   = struct.unpack('<H', bb_data[4:6])
+        self.mod_id, = struct.unpack('<H', bb_data[6:8])
+
+    def _parse_bb_ascii(self, bb_line):
+        """
+        Parse an ascii basic block entry.
+        """
+        raise ValueError("TODO: implement ascii/text bb_entry_t parsing")
 
 #------------------------------------------------------------------------------
 # Command Line Testing

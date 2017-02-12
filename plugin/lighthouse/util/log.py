@@ -4,6 +4,10 @@ import logging
 
 import idaapi
 
+#
+# shamelessly ripped from Solidarity
+#
+
 #------------------------------------------------------------------------------
 # Log / Print helpers
 #------------------------------------------------------------------------------
@@ -62,7 +66,7 @@ class LoggerProxy(object):
 # Initialize Logging
 #------------------------------------------------------------------------------
 
-MAX_LOGS = 15
+MAX_LOGS = 5
 def cleanup_log_directory(log_directory):
     """
     Retain only the last 15 logs.

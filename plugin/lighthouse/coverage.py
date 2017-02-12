@@ -1,64 +1,155 @@
+import idaapi
+import logging
 import collections
 
-import idaapi
+logger = logging.getLogger("Lighthouse.Coverage")
 
-class IDACoverage(object):
-    def __init__(self, base, coverage_data):
+#------------------------------------------------------------------------------
+# Database Level Coverage
+#------------------------------------------------------------------------------
+
+class DatabaseCoverage(object):
+    """
+    Manages coverage data and metrics for the whole database.
+
+    TODO/NOTE:
+
+      In the long run, I imagine this class will grow to become
+      the hub for all coverage data. By the time the coverage reaches
+      this hub, it should be in a generic (offset, size) block format.
+
+      This hub will be the data source should a user wish to flip
+      between any loaded coverage, or even view metrics on a union of
+      the loaded overages.
+
+      As the class sits now, it is minimal and caters to only a single
+      source of coverage data.
+
+    """
+
+    def __init__(self):
+        self.coverage_data = None
         self.functions = {}
-        self.base = base
-        self._coverage_data = normalize_coverage(coverage_data)
-        self.node_map, self.orphans = map_coverage_to_nodes(base, self._coverage_data)
+        self.orphans = []
 
-    def _filter_coverage(self):
-        pass
+    def add_coverage(self, base, coverage_data):
+        """
+        Enlighten the database to new coverage data.
+        """
+        self.coverage_data = bake_coverage_addresses(base, coverage_data)
 
-    def _dedup_coverage(self):
-        pass
+        # collect function level coverage
+        self.functions, self.orphans = \
+            build_function_coverage(self.coverage_data)
 
-    def _coalesce_coverage(self):
-        pass
+#------------------------------------------------------------------------------
+# Function Level Coverage
+#------------------------------------------------------------------------------
 
-def normalize_coverage(coverage_data):
+class FunctionCoverage(object):
     """
-    Extract the coverage blocks specific to the current database.
+    Manages coverage data at the function level.
+
+    This wraps basic function metadata (address, name, # of nodes, etc)
+    and provides access/metrics to coverage data at a function level.
     """
-    root_filename = idaapi.get_root_filename()
 
-    # locate the coverage that matches the loaded executable
-    mod_id = idaapi.BADADDR
-    for module in coverage_data.modules:
+    def __init__(self, address, name=None, nodes_total=0, nodes_tainted=set()):
+        self.name          = name
+        self.address       = address
+        self.nodes_total   = nodes_total
+        self.nodes_tainted = nodes_tainted # TODO: create basicblock coverage item
 
-        # found a module name in the coverage matching this database
-        if module.filename == root_filename:
-            mod_id = module.id
-            break
+        # automatically fill the fields we were not passed
+        self._self_populate()
 
-    # failed to find module matching IDB root filename, bail
-    else:
-        raise ValueError("Failed to find matching module for this database")
+    @property
+    def percent_node(self):
+        """
+        Return the coverage percent by basic block (node) percentage.
+        """
+        try:
+            return (float(len(self.nodes_tainted)) / self.nodes_total)
+        except ZeroDivisionError:
+            return 0
 
-    # loop through the coverage data and filter out data for only this module
-    coverage_blocks = []
-    for bb in coverage_data.basic_blocks:
-        if bb.mod_id == mod_id:
-            coverage_blocks.append((bb.start, bb.size))
+    def _self_populate(self):
+        """
+        Populate the function fields against the open IDB.
 
+        TODO/NOTE:
+
+          The purpose of this function is to self populate the fields that
+          were not given to us upon initialization. The concern is that these
+          actions (eg, querying the database) are considered expensive and
+          may add up when dealing with larger data sets.
+
+          Ideally, most of this will have been passed in when constructed,
+          re-using the existing knowledge rather than reading from the IDB.
+
+          Right now, the gains are probably negligible.
+
+        """
+        function, flowchart = None, None
+
+        # get the function name from the database
+        if not self.name:
+            self.name = idaapi.get_func_name2(self.address)
+
+        # get the function name from the database
+        if not self.nodes_total:
+            function  = idaapi.get_func(self.address)
+            flowchart = idaapi.FlowChart(function)
+            self.nodes_total = flowchart.size
+
+    #----------------------------------------------------------------------
+    # Controls
+    #----------------------------------------------------------------------
+
+    def taint_node(self, node_id):
+        """
+        Add the given node ID to the set of tainted nodes.
+        """
+        self.nodes_tainted.add(node_id)
+
+#------------------------------------------------------------------------------
+# Coverage Helpers
+#------------------------------------------------------------------------------
+
+def bake_coverage_addresses(base, coverage_blocks):
+    """
+    Bake relative coverage offsets into absolute addresses, in-place.
+    """
+    for i in xrange(len(coverage_blocks)):
+        offset, size = coverage_blocks[i]
+        coverage_blocks[i] = (base + offset, size)
     return coverage_blocks
 
-def map_coverage_to_nodes(base, coverage_blocks):
+def build_function_coverage(coverage_blocks):
     """
     Map block based coverage data to database defined basic blocks (nodes).
 
-    Input:
-     - base:
-         the imagebase to rebase coverage_blocks to
-     - coverage_blocks:
-         a list of tuples in (offset, size) format that define coverage
+    -----------------------------------------------------------------------
+
+    NOTE:
+
+      I don't like writing overly large / complex functions. But this
+      will be an important high compute + IDB access point for larger
+      data sets,
+
+      I put some effort into reducing database access, excessive searches,
+      iterations, etc. I am concerned about performance overhead that may
+      come with trying to break this out into multiple functions, but I
+      welcome to try :-)
 
     -----------------------------------------------------------------------
 
+    Input:
+     - coverage_blocks:
+         a list of tuples in (offset, size) format that define coverage
+
     Output:
-     - a tuple of (node_map, orphans)
+     - a tuple of (function_map, orphans)
          read comments below for more details
 
     """
@@ -71,8 +162,8 @@ def map_coverage_to_nodes(base, coverage_blocks):
     # This loop will produce two outputs:
     #
 
-    # node_map is keyed with a function address, and lists tainted nodes.
-    node_map = {} # functionEA -> set(tainted node ids)
+    # function_map is keyed with a function address and holds function coverage
+    function_map = {} # functionEA -> FunctionCoverage()
 
     # orphans is a list of tuples (offset, size) of coverage that could
     # not be mapped into any defined basic blocks.
@@ -83,8 +174,7 @@ def map_coverage_to_nodes(base, coverage_blocks):
     while blocks:
 
         # pop off the next coverage block, and compute its rebased address
-        offset, size = blocks.popleft()
-        address = base + offset
+        address, size = blocks.popleft()
 
         # TODO/NOTE/PERF: consider caching these lookups below
         # find the function & graph the coverage block *should* fall in
@@ -102,13 +192,23 @@ def map_coverage_to_nodes(base, coverage_blocks):
                 # definitely is hit by some part of our coverage block
                 #
 
-                # add the bb (node) id to an existing function mapping
+                # add the bb (node) id to an existing function coverage object
                 try:
-                    node_map[function.startEA].add(bb.id)
+                    function_map[function.startEA].taint_node(bb.id)
 
-                # function -> set mapping doesn't exist yet, create it now
-                except KeyError as e:
-                    node_map[function.startEA] = set([bb.id])
+                # a function level coverage object does not yet exist for this
+                # function, create one now
+                except KeyError:
+
+                    # create the missing function level coverage object
+                    function_coverage = FunctionCoverage(
+                        function.startEA,
+                        nodes_total=flowchart.size,
+                        nodes_tainted=set([bb.id])
+                    )
+
+                    # save the new coverage object to the function coverage map
+                    function_map[function.startEA] = function_coverage
 
                 #
                 # depending on coverage & bb quality, we also check for
@@ -122,9 +222,9 @@ def map_coverage_to_nodes(base, coverage_blocks):
 
                     # yes, compute the fragment size and prepend the work
                     # to be consumed later (next iteration, technically)
-                    fragment_offset = bb.endEA - base
+                    fragment_address = bb.endEA
                     fragment_size   = end_address - bb.endEA
-                    blocks.appendleft((fragment_offset, fragment_size))
+                    blocks.appendleft((fragment_address, fragment_size))
 
                 # all done, break from the bb for loop
                 break
@@ -141,9 +241,9 @@ def map_coverage_to_nodes(base, coverage_blocks):
         #
 
         else:
-            orphans.append((offset, size))
+            orphans.append((address, size))
 
     # end of while loop
 
     # return the resulting goods
-    return (node_map, orphans)
+    return (function_map, orphans)
