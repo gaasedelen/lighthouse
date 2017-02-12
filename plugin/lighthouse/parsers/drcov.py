@@ -148,12 +148,12 @@ class DrcovData(object):
 
         # parse drcov version from log
         #   eg: DRCOV VERSION: 2
-        version_line = f.readline()
+        version_line = f.readline().strip()
         self.version = int(version_line.split(":")[1])
 
         # parse drcov flavor from log
         #   eg: DRCOV FLAVOR: drcov
-        flavor_line = f.readline()
+        flavor_line = f.readline().strip()
         self.flavor = flavor_line.split(":")[1]
 
         assert self.version == 2, "Only drcov version 2 log files supported"
@@ -173,7 +173,7 @@ class DrcovData(object):
 
         # parse module table 'header'
         #   eg: Module Table: version 2, count 11
-        header_line = f.readline()
+        header_line = f.readline().strip()
         field_name, field_data = header_line.split(": ")
         #assert field_name == "Module Table"
 
@@ -197,7 +197,7 @@ class DrcovData(object):
 
         # parse module table 'columns'
         #   eg: Columns: id, base, end, entry, checksum, timestamp, path
-        column_line = f.readline()
+        column_line = f.readline().strip()
         field_name, field_data = column_line.split(": ")
         #assert field_name == "Columns"
 
@@ -214,7 +214,7 @@ class DrcovData(object):
 
         # loop through each *expected* line in the module table and parse it
         for i in xrange(self.module_table_count):
-            module = DrcovModule(f.readline(), self.module_table_version)
+            module = DrcovModule(f.readline().strip(), self.module_table_version)
             self.modules.append(module)
 
     def _parse_bb_table(self, f):
@@ -231,7 +231,7 @@ class DrcovData(object):
 
         # parse basic block table 'header'
         #   eg: BB Table: 2792 bbs
-        header_line = f.readline()
+        header_line = f.readline().strip()
         field_name, field_data = header_line.split(": ")
         #assert field_name == "BB Table"
 
@@ -267,7 +267,7 @@ class DrcovData(object):
             if self.bb_table_is_binary:
                 basic_block = DrcovBasicBlock(f.read(DrcovBasicBlock.BYTESIZE))
             else:
-                basic_block = DrcovBasicBlock(f.readline(), binary=False)
+                basic_block = DrcovBasicBlock(f.readline().strip(), binary=False)
 
             # save the parsed block
             self.basic_blocks.append(basic_block)
