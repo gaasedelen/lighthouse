@@ -1,15 +1,23 @@
 from idaapi import plugin_t
-from PySide import QtCore, QtGui
 
 from lighthouse.ui import *
+from lighthouse.util import *
 from lighthouse.parsers import *
 from lighthouse.coverage import *
 from lighthouse.painting import *
-from lighthouse.util.log import start_logging, logging_started, lmsg
 
 # start the global logger *once*
 if not logging_started():
     logger = start_logging()
+
+#--------------------------------------------------------------------------
+# PySide --> PyQt5 - COMPAT
+#--------------------------------------------------------------------------
+
+if using_pyqt5():
+    QFileDialog = QtWidgets.QFileDialog
+else:
+    QFileDialog = QtGui.QFileDialog
 
 #------------------------------------------------------------------------------
 # IDA Plugin
@@ -284,8 +292,8 @@ class Lighthouse(plugin_t):
         """
 
         # create & configure a Qt File Dialog for immediate use
-        file_dialog = QtGui.QFileDialog(None, 'Open Code Coverage File(s)')
-        file_dialog.setFileMode(QtGui.QFileDialog.ExistingFiles)
+        file_dialog = QFileDialog(None, 'Open Code Coverage File(s)')
+        file_dialog.setFileMode(QFileDialog.ExistingFiles)
 
         # prompt the user with the file dialog, and await filename(s)
         filenames, _ = file_dialog.getOpenFileNames()

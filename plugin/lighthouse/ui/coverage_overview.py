@@ -1,8 +1,21 @@
 import idaapi
 import logging
-from PySide import QtGui, QtCore
+from lighthouse.util import *
 
 logger = logging.getLogger("Lighthouse.UI.List")
+
+#--------------------------------------------------------------------------
+# PySide --> PyQt5 - COMPAT
+#--------------------------------------------------------------------------
+
+if using_pyqt5():
+    QTreeView = QtWidgets.QTreeView
+    QGridLayout = QtWidgets.QGridLayout
+    QStyledItemDelegate = QtWidgets.QStyledItemDelegate
+else:
+    QTreeView = QtGui.QTreeView
+    QGridLayout = QtGui.QGridLayout
+    QStyledItemDelegate = QtGui.QStyledItemDelegate
 
 #--------------------------------------------------------------------------
 # Coverage Data Proxy Model
@@ -222,13 +235,18 @@ class CoverageOverview(idaapi.PluginForm):
         """
         Called when the view is created.
         """
-        self.parent = self.FormToPySideWidget(form)
+
+        # NOTE/COMPAT
+        if using_pyqt5():
+            self.parent = self.FormToPyQtWidget(form)
+        else:
+            self.parent = self.FormToPySideWidget(form)
 
         #
         # create & configure the list (technically tree)
         #
 
-        self.coverage_list = QtGui.QTreeView()
+        self.coverage_list = QTreeView()
         self.coverage_list.setExpandsOnDoubleClick(False)
         self.coverage_list.setRootIsDecorated(False)
 
@@ -251,7 +269,7 @@ class CoverageOverview(idaapi.PluginForm):
         #
 
         # build layout
-        layout = QtGui.QGridLayout()
+        layout = QGridLayout()
         layout.addWidget(self.coverage_list)
 
         # install layout
@@ -273,7 +291,7 @@ class CoverageOverview(idaapi.PluginForm):
 # Painting
 #--------------------------------------------------------------------------
 
-class GridDelegate(QtGui.QStyledItemDelegate):
+class GridDelegate(QStyledItemDelegate):
     """
     Used solely to draw a grid in the CoverageOverview.
     """
