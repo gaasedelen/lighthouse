@@ -50,8 +50,13 @@ class Lighthouse(plugin_t):
 
     def __init__(self):
 
-        # coverage color, a dark blue-ish
-        self.color = 0x00AA0000               # NOTE: IDA uses BBGGRR
+        # coverage color - this gets decided just before painting
+        self.color = 0
+
+        # depending on if IDA is using a dark or light theme, we paint
+        # coverage with a varying color
+        self._dark_color  = 0x00990000         # NOTE: IDA uses BBGGRR
+        self._light_color = 0x00C8E696
 
         #----------------------------------------------------------------------
 
@@ -278,6 +283,13 @@ class Lighthouse(plugin_t):
         # load the selected code coverage files into the plugin core
         for filename in coverage_files:
             self.load_code_coverage_file(filename)
+
+        # determine whether to use a 'dark' or 'light' color based on the theme
+        bg_color = get_disas_bg_color()
+        if bg_color.lightness() > 255.0/2:
+            self.color = self._light_color
+        else:
+            self.color = self._dark_color
 
         # color the database based on coverage
         paint_coverage(self.db_coverage, self.color)
