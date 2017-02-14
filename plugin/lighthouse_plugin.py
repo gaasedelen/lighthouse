@@ -235,7 +235,7 @@ class Lighthouse(plugin_t):
             "~C~overage Overview...",                 # The action text.
             IDACtxEntry(self.open_coverage_overview), # The action handler.
             None,                                     # Optional: action shortcut
-            "Open database coverage overview",        # Optional: tooltip
+            "Open database code coverage overview",   # Optional: tooltip
             self._icon_id_overview                    # Optional: the action icon
         )
 
@@ -300,14 +300,14 @@ class Lighthouse(plugin_t):
 
         logger.info("Uninstalled the 'Load Code Coverage' menu entry")
 
-    def _uninstall_load_file_dialog(self):
+    def _uninstall_open_coverage_overview(self):
         """
-        Remove the 'File->Load file->Code Coverage File(s)...' menu entry.
+        Remove the 'View->Open subviews->Coverage Overview' menu entry.
         """
 
-        # remove the entry from the File-> menu
+        # remove the entry from the View-> menu
         result = idaapi.detach_action_from_menu(
-            "Views/Open subviews/Hex dump",    # Relative path of where we put the action
+            "View/Open subviews/Hex dump",    # Relative path of where we put the action
             self._action_name_overview)
         if not result:
             return False
@@ -321,7 +321,7 @@ class Lighthouse(plugin_t):
         idaapi.free_custom_icon(self._icon_id_overview)
         self._icon_id_overview = idaapi.BADADDR
 
-        logger.info("Uninstalled the 'Coverage Overview' file dialog")
+        logger.info("Uninstalled the 'Coverage Overview' menu entry")
 
     #--------------------------------------------------------------------------
     # UI - Actions
