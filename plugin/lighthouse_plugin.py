@@ -33,10 +33,6 @@ def PLUGIN_ENTRY():
     """
     return Lighthouse()
 
-#------------------------------------------------------------------------------
-# IDA Plugin
-#------------------------------------------------------------------------------
-
 class Lighthouse(plugin_t):
     """
     The Lighthouse IDA Plugin.
@@ -60,18 +56,22 @@ class Lighthouse(plugin_t):
 
         #----------------------------------------------------------------------
 
-        # the database coverage
+        # the database coverage data conglomerate
         self.db_coverage = DatabaseCoverage()
-
-        # members for the 'Load Code Coverage' file dialog / menu / action
-        self._icon_id_load     = idaapi.BADADDR
-        self._action_name_load = "lighthouse:load_coverage"
 
         # hexrays hooks
         self._hxe_events = None
 
-        # UI Elements
+        # plugin qt elements
         self._ui_coverage_list = CoverageOverview(self.db_coverage)
+
+        # members for the 'Load Code Coverage' menu entry
+        self._icon_id_load     = idaapi.BADADDR
+        self._action_name_load = "lighthouse:load_coverage"
+
+        # members for the 'Coverage Overview' menu entry
+        self._icon_id_overview     = idaapi.BADADDR
+        self._action_name_overview = "lighthouse:coverage_overview"
 
     #--------------------------------------------------------------------------
     # IDA Plugin Overloads
@@ -82,7 +82,7 @@ class Lighthouse(plugin_t):
         This is called by IDA when it is loading the plugin.
         """
 
-        # perform plugin initialization & integration
+        # attempt plugin initialization
         try:
             self._install_plugin()
 
@@ -91,11 +91,11 @@ class Lighthouse(plugin_t):
             logger.exception("Failed to initialize")
             return idaapi.PLUGIN_SKIP
 
-        # print the Lighthouse banner and log success
+        # loaded successfully, print the Lighthouse banner
         self.print_banner()
         logger.info("Successfully initialized")
 
-        # keep the plugin loaded
+        # tell IDA to keep the plugin loaded (everything is okay)
         return idaapi.PLUGIN_KEEP
 
     def run(self, arg):
@@ -154,21 +154,19 @@ class Lighthouse(plugin_t):
 
         # event hooks already installed for hexrays
         if self._hxe_events:
-            return 0
+            return
 
-        # ensure hexrays is available
+        # ensure hexrays is loaded & ready for use
         if not idaapi.init_hexrays_plugin():
             raise RuntimeError("HexRays is not available yet")
-            return 0
 
-        # map the function to an actual member since we can't properly remove
-        # bindings from callback registrations. also makes installation
-        # tracking/status easier.
+        # map our callback function to an actual member since we can't properly
+        # remove bindings from IDA callback registrations otherwise. it also
+        # makes installation tracking/status easier.
         self._hxe_events = self._hexrays_callback
 
         # install the callback handler
         idaapi.install_hexrays_callback(self._hxe_events)
-        return 0
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -181,10 +179,11 @@ class Lighthouse(plugin_t):
 
         # install the 'Load Coverage' file dialog
         self._install_load_file_dialog()
+        self._install_open_coverage_overview()
 
     def _install_load_file_dialog(self):
         """
-        Install the 'File->Load->Code Coverage File(s)...' UI entry.
+        Install the 'File->Load->Code Coverage File(s)...' menu entry.
         """
 
         # TODO: icon
@@ -212,15 +211,49 @@ class Lighthouse(plugin_t):
         result = idaapi.attach_action_to_menu(
             "File/Load file/",       # Relative path of where to add the action
             self._action_name_load,  # The action ID (see above)
-            idaapi.SETMENU_APP       # What we want to append the action after
+            idaapi.SETMENU_APP       # We want to append the action after ^
         )
         if not result:
             RuntimeError("Failed to attach load action to 'File/Load file/' dropdown")
 
-        # disable both menu items by default
-        #self._enable_menu_items(False, False)
+        logger.info("Installed the 'Load Code Coverage' menu entry")
 
-        logger.info("Installed the 'Load Code Coverage' file dialog")
+    def _install_open_coverage_overview(self):
+        """
+        Install the 'View->Open subviews->Coverage Overview' menu entry.
+        """
+
+        # TODO: icon
+        self._icon_id_overview = idaapi.load_custom_icon(
+            data=str(QtCore.QResource(":/icons/overview.png").data())
+        )
+
+        # describe the action
+        # add an menu entry to the options dropdown on the IDA toolbar
+        action_desc = idaapi.action_desc_t(
+            self._action_name_overview,               # The action name.
+            "~C~overage Overview...",                 # The action text.
+            IDACtxEntry(self.open_coverage_overview), # The action handler.
+            None,                                     # Optional: action shortcut
+            "Open database coverage overview",        # Optional: tooltip
+            self._icon_id_overview                    # Optional: the action icon
+        )
+
+        # register the action with IDA
+        result = idaapi.register_action(action_desc)
+        if not result:
+            RuntimeError("Failed to register open coverage overview action with IDA")
+
+        # attach the action to the File-> dropdown menu
+        result = idaapi.attach_action_to_menu(
+            "View/Open subviews/Hex dump", # Relative path of where to add the action
+            self._action_name_overview,    # The action ID (see above)
+            idaapi.SETMENU_INS             # We want to append the action after ^
+        )
+        if not result:
+            RuntimeError("Failed to attach open action to 'subviews' dropdown")
+
+        logger.info("Installed the 'Coverage Overview' menu entry")
 
     #--------------------------------------------------------------------------
     # Termination
@@ -241,16 +274,17 @@ class Lighthouse(plugin_t):
         """
         Cleanup & uninstall the plugin UI from IDA.
         """
+        self._uninstall_open_coverage_overview()
         self._uninstall_load_file_dialog()
 
     def _uninstall_load_file_dialog(self):
         """
-        Remove the 'File->Load file->Code Coverage File(s)...' UI entry.
+        Remove the 'File->Load file->Code Coverage File(s)...' menu entry.
         """
 
         # remove the entry from the File-> menu
         result = idaapi.detach_action_from_menu(
-            "File/Load file/",       # Relative path of where to add the action
+            "File/Load file/",                 # Relative path of where we put the action
             self._action_name_load)
         if not result:
             return False
@@ -264,7 +298,30 @@ class Lighthouse(plugin_t):
         idaapi.free_custom_icon(self._icon_id_load)
         self._icon_id_load = idaapi.BADADDR
 
-        logger.info("Uninstalled the 'Load Code Coverage' file dialog")
+        logger.info("Uninstalled the 'Load Code Coverage' menu entry")
+
+    def _uninstall_load_file_dialog(self):
+        """
+        Remove the 'File->Load file->Code Coverage File(s)...' menu entry.
+        """
+
+        # remove the entry from the File-> menu
+        result = idaapi.detach_action_from_menu(
+            "Views/Open subviews/Hex dump",    # Relative path of where we put the action
+            self._action_name_overview)
+        if not result:
+            return False
+
+        # unregister the action
+        result = idaapi.unregister_action(self._action_name_overview)
+        if not result:
+            return False
+
+        # delete the entry's icon
+        idaapi.free_custom_icon(self._icon_id_overview)
+        self._icon_id_overview = idaapi.BADADDR
+
+        logger.info("Uninstalled the 'Coverage Overview' file dialog")
 
     #--------------------------------------------------------------------------
     # UI - Actions
@@ -272,7 +329,7 @@ class Lighthouse(plugin_t):
 
     def load_code_coverage(self):
         """
-        Interactive (file dialog) based loading of Code Coverage.
+        Interactive file dialog based loading of Code Coverage.
         """
 
         # prompt the user with a QtFileDialog to select coverage files.
@@ -294,8 +351,18 @@ class Lighthouse(plugin_t):
         # color the database based on coverage
         paint_coverage(self.db_coverage, self.color)
 
-        # update list view
+        # show the coverage overview
+        self.open_coverage_overview()
+
+    def open_coverage_overview(self):
+        """
+        Open the Coverage Overview dialog.
+        """
+
+        # refresh the coverage overview model before making it visible
         self._ui_coverage_list.update_model(self.db_coverage)
+
+        # make the dialog visible
         self._ui_coverage_list.Show()
 
     def _select_code_coverage_files(self):
@@ -327,9 +394,6 @@ class Lighthouse(plugin_t):
 
         # load coverage data from file
         coverage_data = DrcovData(filename)
-
-        # normalize coverage to the database
-        self.db_coverage = DatabaseCoverage()
 
         # extract the coverage relevant to this IDB (well, the root binary)
         root_filename = idaapi.get_root_filename()
