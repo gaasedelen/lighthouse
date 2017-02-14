@@ -11,15 +11,6 @@ if not logging_started():
     logger = start_logging()
 
 #------------------------------------------------------------------------------
-# PySide --> PyQt5 - COMPAT
-#------------------------------------------------------------------------------
-
-if using_pyqt5():
-    QFileDialog = QtWidgets.QFileDialog
-else:
-    QFileDialog = QtGui.QFileDialog
-
-#------------------------------------------------------------------------------
 # IDA Plugin
 #------------------------------------------------------------------------------
 
@@ -371,8 +362,8 @@ class Lighthouse(plugin_t):
         """
 
         # create & configure a Qt File Dialog for immediate use
-        file_dialog = QFileDialog(None, 'Open Code Coverage File(s)')
-        file_dialog.setFileMode(QFileDialog.ExistingFiles)
+        file_dialog = QtWidgets.QFileDialog(None, 'Open Code Coverage File(s)')
+        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
 
         # prompt the user with the file dialog, and await filename(s)
         filenames, _ = file_dialog.getOpenFileNames()
@@ -399,7 +390,7 @@ class Lighthouse(plugin_t):
         root_filename = idaapi.get_root_filename()
         coverage_blocks = coverage_data.filter_by_module(root_filename)
 
-        # enlight the databases' coverage hub to this new data
+        # enlighten the databases' coverage hub to this new data
         base = idaapi.get_imagebase()
         self.db_coverage.add_coverage(base, coverage_blocks)
 

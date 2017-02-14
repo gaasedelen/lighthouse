@@ -22,4 +22,4 @@ if using_pyqt5():
 else:
     import PySide.QtGui as QtGui
     import PySide.QtCore as QtCore
-    QtWidgets = None
+    QtWidgets = QtGui

@@ -2,20 +2,7 @@ import idaapi
 import logging
 from lighthouse.util import *
 
-logger = logging.getLogger("Lighthouse.UI.List")
-
-#------------------------------------------------------------------------------
-# PySide --> PyQt5 - COMPAT
-#------------------------------------------------------------------------------
-
-if using_pyqt5():
-    QTreeView = QtWidgets.QTreeView
-    QGridLayout = QtWidgets.QGridLayout
-    QStyledItemDelegate = QtWidgets.QStyledItemDelegate
-else:
-    QTreeView = QtGui.QTreeView
-    QGridLayout = QtGui.QGridLayout
-    QStyledItemDelegate = QtGui.QStyledItemDelegate
+logger = logging.getLogger("Lighthouse.UI.Overview")
 
 #------------------------------------------------------------------------------
 # Coverage Data Proxy Model
@@ -29,6 +16,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
     def __init__(self, db_coverage, parent=None):
         super(CoverageModel, self).__init__(parent)
         self._db_coverage = None
+        self._hide_zero = False
         self.row2func = {}
 
         # green to red - 'light' theme
@@ -74,7 +62,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         Return the number of rows in the model. (The number of projects)
         """
-        return len(self._db_coverage.functions)
+        return len(self.row2func)
 
     def columnCount(self, index=QtCore.QModelIndex()):
         """
@@ -182,11 +170,24 @@ class CoverageModel(QtCore.QAbstractItemModel):
     # Model Controls
     #--------------------------------------------------------------------------
 
+    def hide_zero_coverage(self, hide=True):
+        """
+        Toggle zero coverage entries as visible.
+        """
+        if self._hide_zero == hide:
+            return
+
+        self._hide_zero = hide
+        self._rebuild_row2func_map()
+        self.layoutChanged.emit()
+
     def update_model(self, db_coverage):
         """
         Replace the underlying data source and re-generate model mappings.
         """
         self._db_coverage = db_coverage
+
+        # rebuild the row2func map
         self._rebuild_row2func_map()
 
         # let consumers know that we have updated the model
@@ -196,17 +197,27 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         Rebuild the mapping to go from displayed row to function.
         """
+        row = 0
         self.row2func = {}
 
         # no coverage, nothing else to do
         if not self._db_coverage:
             return
 
-        # build new mapping of row to function
-        row = 0
-        for func_coverage in self._db_coverage.functions.itervalues():
-            self.row2func[row] = func_coverage
-            row += 1
+        # only map items with a non-zero coverage as visible
+        if self._hide_zero:
+            for func_coverage in self._db_coverage.functions.itervalues():
+                if func_coverage.percent_node:
+                    self.row2func[row] = func_coverage
+                    row += 1
+
+        # map all items as visible. faster to have this loop seperate from
+        # the above so that we don't have to check a conditional every
+        # iteration when not in use
+        else:
+            for func_coverage in self._db_coverage.functions.itervalues():
+                self.row2func[row] = func_coverage
+                row += 1
 
 #------------------------------------------------------------------------------
 # Coverage Overview
@@ -243,34 +254,51 @@ class CoverageOverview(idaapi.PluginForm):
             self.parent = self.FormToPySideWidget(form)
 
         #
-        # create & configure the list (technically tree)
+        # coverage list table
         #
 
-        self.coverage_list = QTreeView()
-        self.coverage_list.setExpandsOnDoubleClick(False)
-        self.coverage_list.setRootIsDecorated(False)
+        self.table = QtWidgets.QTreeView()
+        self.table.setExpandsOnDoubleClick(False)
+        self.table.setRootIsDecorated(False)
 
-        # install a delegate to draw the grid on the list view
-        delegate = GridDelegate(self.coverage_list)
-        self.coverage_list.setItemDelegate(delegate)
+        # install a drawing delegate to draw the grid lines on the list view
+        delegate = GridDelegate(self.table)
+        self.table.setItemDelegate(delegate)
 
-        # install the data source for the view
-        self.coverage_list.setModel(self._model)
+        # install the data source for the list view
+        self.table.setModel(self._model)
 
         #
-        # signals
+        # coverage list toolbar (& members)
+        #
+
+        self.toolbar = QtWidgets.QToolBar()
+
+        # checkbox to hide 0% coverage entries
+        self.hide_zero_label    = QtWidgets.QLabel(" Hide 0% Coverage: ")
+        self.hide_zero_checkbox = QtWidgets.QCheckBox()
+
+        # populate the toolbar
+        self.toolbar.addWidget(self.hide_zero_label)
+        self.toolbar.addWidget(self.hide_zero_checkbox)
+
+        #
+        # ui signals
         #
 
         # connect a signal to jump to the function disas described by a row
-        self.coverage_list.doubleClicked.connect(self._ui_double_click)
+        self.table.doubleClicked.connect(self._ui_double_click)
+        self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
+        #self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
+        #self.treeView.customContextMenuRequested.connect(self.openMenu)
 
         #
-        # layout
+        # ui layout
         #
 
-        # build layout
-        layout = QGridLayout()
-        layout.addWidget(self.coverage_list)
+        layout = QtWidgets.QGridLayout()
+        layout.addWidget(self.table)
+        layout.addWidget(self.toolbar)
 
         # install layout
         self.parent.setLayout(layout)
@@ -281,20 +309,33 @@ class CoverageOverview(idaapi.PluginForm):
         """
         self._model.update_model(db_coverage)
 
+    #--------------------------------------------------------------------------
+    # Signal Handlers
+    #--------------------------------------------------------------------------
+
     def _ui_double_click(self, index):
         """
-        TODO
+        Handle double click event on the coverage table view.
         """
+
+        # a double click on the table view will jump the user to the
+        # clicked function in the disassembly view
         try:
             idaapi.jumpto(self._model.row2func[index.row()].address)
         except KeyError as e:
             pass
 
+    def _ui_hide_zero_toggle(self, checked):
+        """
+        Handle state change of 'Hide 0% Coverage' checkbox.
+        """
+        self._model.hide_zero_coverage(checked)
+
 #------------------------------------------------------------------------------
 # Painting
 #------------------------------------------------------------------------------
 
-class GridDelegate(QStyledItemDelegate):
+class GridDelegate(QtWidgets.QStyledItemDelegate):
     """
     Used solely to draw a grid in the CoverageOverview.
     """
