@@ -262,7 +262,7 @@ class CoverageOverview(idaapi.PluginForm):
         #
 
         # connect a signal to jump to the function disas described by a row
-        #self.coverage_list.doubleClicked.connect(self._ui_double_click)
+        self.coverage_list.doubleClicked.connect(self._ui_double_click)
 
         #
         # layout
@@ -285,7 +285,10 @@ class CoverageOverview(idaapi.PluginForm):
         """
         TODO
         """
-        pass
+        try:
+            idaapi.jumpto(self._model.row2func[index.row()].address)
+        except KeyError as e:
+            pass
 
 #--------------------------------------------------------------------------
 # Painting
