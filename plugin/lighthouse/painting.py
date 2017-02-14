@@ -149,8 +149,11 @@ def paint_hexrays(vdui, coverage, color):
 
     # now color any decompiled line that holds a tainted node
     for line_number, node_indexes in line2node.iteritems():
-        if node_indexes.intersection(coverage.functions[vdui.cfunc.entry_ea].nodes_tainted):
-            decompilation_text[line_number].bgcolor = color
+        try:
+            if node_indexes.intersection(coverage.functions[vdui.cfunc.entry_ea].nodes_tainted):
+                decompilation_text[line_number].bgcolor = color
+        except KeyError as e:
+            pass
 
     # refresh the view
     idaapi.refresh_idaview_anyway()

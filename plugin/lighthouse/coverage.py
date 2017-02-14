@@ -1,6 +1,8 @@
-import idaapi
 import logging
 import collections
+
+import idaapi
+import idautils
 
 logger = logging.getLogger("Lighthouse.Coverage")
 
@@ -38,9 +40,9 @@ class DatabaseCoverage(object):
         """
         self.coverage_data = bake_coverage_addresses(base, coverage_data)
 
-        # collect function level coverage
-        self.functions, self.orphans = \
-            build_function_coverage(self.coverage_data)
+        # build function level coverage
+        self.functions = init_function_converage()
+        self.orphans = build_function_coverage(self.functions, self.coverage_data)
 
 #------------------------------------------------------------------------------
 # Function Level Coverage
@@ -54,11 +56,11 @@ class FunctionCoverage(object):
     and provides access/metrics to coverage data at a function level.
     """
 
-    def __init__(self, address, name=None, nodes_total=0, nodes_tainted=set()):
+    def __init__(self, address, name=None, nodes_total=0):
         self.name          = name
         self.address       = address
         self.nodes_total   = nodes_total
-        self.nodes_tainted = nodes_tainted # TODO: create basicblock coverage item
+        self.nodes_tainted = set()       # TODO: create a basic block coverage item
 
         # automatically fill the fields we were not passed
         self._self_populate()
@@ -125,7 +127,16 @@ def bake_coverage_addresses(base, coverage_blocks):
         coverage_blocks[i] = (base + offset, size)
     return coverage_blocks
 
-def build_function_coverage(coverage_blocks):
+def init_function_converage():
+    """
+    Build a clean function map ready to populate with future coverage.
+    """
+    functions = {}
+    for function_address in idautils.Functions():
+       functions[function_address] = FunctionCoverage(function_address)
+    return functions
+
+def build_function_coverage(function_map, coverage_blocks):
     """
     Map block based coverage data to database defined basic blocks (nodes).
 
@@ -140,17 +151,21 @@ def build_function_coverage(coverage_blocks):
       I put some effort into reducing database access, excessive searches,
       iterations, etc. I am concerned about performance overhead that may
       come with trying to break this out into multiple functions, but I
-      welcome to try :-)
+      encourage you to try :-)
 
     -----------------------------------------------------------------------
 
     Input:
+     - function_map:
+         a clean map of functionEA --> FunctionCoverage()
      - coverage_blocks:
          a list of tuples in (offset, size) format that define coverage
 
     Output:
-     - a tuple of (function_map, orphans)
-         read comments below for more details
+     - function_map:
+         udpated as a parameter
+     - orphans:
+         returned, read comments below for more details
 
     """
 
@@ -163,7 +178,7 @@ def build_function_coverage(coverage_blocks):
     #
 
     # function_map is keyed with a function address and holds function coverage
-    function_map = {} # functionEA -> FunctionCoverage()
+    #function_map = {} # functionEA -> FunctionCoverage()
 
     # orphans is a list of tuples (offset, size) of coverage that could
     # not be mapped into any defined basic blocks.
@@ -193,22 +208,7 @@ def build_function_coverage(coverage_blocks):
                 #
 
                 # add the bb (node) id to an existing function coverage object
-                try:
-                    function_map[function.startEA].taint_node(bb.id)
-
-                # a function level coverage object does not yet exist for this
-                # function, create one now
-                except KeyError:
-
-                    # create the missing function level coverage object
-                    function_coverage = FunctionCoverage(
-                        function.startEA,
-                        nodes_total=flowchart.size,
-                        nodes_tainted=set([bb.id])
-                    )
-
-                    # save the new coverage object to the function coverage map
-                    function_map[function.startEA] = function_coverage
+                function_map[function.startEA].taint_node(bb.id)
 
                 #
                 # depending on coverage & bb quality, we also check for
@@ -245,5 +245,5 @@ def build_function_coverage(coverage_blocks):
 
     # end of while loop
 
-    # return the resulting goods
-    return (function_map, orphans)
+    # return only the orphans, as the function_map was updated in place
+    return orphans
