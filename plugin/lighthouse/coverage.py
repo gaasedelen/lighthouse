@@ -56,11 +56,11 @@ class FunctionCoverage(object):
     and provides access/metrics to coverage data at a function level.
     """
 
-    def __init__(self, address, name=None, nodes_total=0):
+    def __init__(self, address, name=None, num_nodes=0):
         self.name          = name
         self.address       = address
-        self.nodes_total   = nodes_total
-        self.nodes_tainted = set()       # TODO: create a basic block coverage item
+        self.num_nodes     = num_nodes
+        self.tainted_nodes = set()       # TODO: create a basic block coverage item
 
         # automatically fill the fields we were not passed
         self._self_populate()
@@ -71,7 +71,7 @@ class FunctionCoverage(object):
         Return the coverage percent by basic block (node) percentage.
         """
         try:
-            return (float(len(self.nodes_tainted)) / self.nodes_total)
+            return (float(len(self.tainted_nodes)) / self.num_nodes)
         except ZeroDivisionError:
             return 0
 
@@ -99,10 +99,10 @@ class FunctionCoverage(object):
             self.name = idaapi.get_func_name2(self.address)
 
         # get the function name from the database
-        if not self.nodes_total:
+        if not self.num_nodes:
             function  = idaapi.get_func(self.address)
             flowchart = idaapi.FlowChart(function)
-            self.nodes_total = flowchart.size
+            self.num_nodes = flowchart.size
 
     #----------------------------------------------------------------------
     # Controls
@@ -112,7 +112,7 @@ class FunctionCoverage(object):
         """
         Add the given node ID to the set of tainted nodes.
         """
-        self.nodes_tainted.add(node_id)
+        self.tainted_nodes.add(node_id)
 
 #------------------------------------------------------------------------------
 # Coverage Helpers
@@ -193,8 +193,13 @@ def build_function_coverage(function_map, coverage_blocks):
 
         # TODO/NOTE/PERF: consider caching these lookups below
         # find the function & graph the coverage block *should* fall in
-        function  = idaapi.get_func(address)
-        flowchart = idaapi.FlowChart(function)
+        try:
+            function  = idaapi.get_func(address)
+            flowchart = idaapi.FlowChart(function)
+
+        # coverage is not in a mapped function
+        except Exception as e:
+            flowchart = []
 
         # find the basic block (node) that our coverage block must start in
         for bb in flowchart:

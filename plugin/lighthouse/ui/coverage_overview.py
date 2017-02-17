@@ -1,6 +1,10 @@
+import cProfile
+
 import idaapi
 import logging
 from lighthouse.util import *
+
+from operator import itemgetter, attrgetter
 
 logger = logging.getLogger("Lighthouse.UI.Overview")
 
@@ -8,15 +12,34 @@ logger = logging.getLogger("Lighthouse.UI.Overview")
 # Coverage Data Proxy Model
 #------------------------------------------------------------------------------
 
+# declare named constants for coverage table column indexes
+COV_PERCENT  = 0
+FUNC_NAME    = 1
+FUNC_ADDR    = 2
+BASIC_BLOCKS = 3
+BRANCHES     = 4
+LINES        = 5
+FINAL_COLUMN = 7
+
+# column -> field name mapping
+COLUMN_TO_FIELD = \
+{
+    COV_PERCENT:  "percent_node",
+    FUNC_NAME:    "name",
+    FUNC_ADDR:    "address",
+    BASIC_BLOCKS: "num_nodes",
+}
+
 class CoverageModel(QtCore.QAbstractItemModel):
     """
-    TODO
+    A Qt model interface to format coverage data for Qt views.
     """
 
     def __init__(self, db_coverage, parent=None):
         super(CoverageModel, self).__init__(parent)
         self._db_coverage = None
-        self._hide_zero = False
+
+        # a map to correlate a given row in the table to the function coverage
         self.row2func = {}
 
         # green to red - 'light' theme
@@ -29,15 +52,22 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
         # headers of the table
         self._column_headers = \
-        [
-            "Coverage %",
-            "Function Name",
-            "Address",
-            "Basic Blocks",
-            "Branches",
-            "Lines",
-            ""                 # NOTE: stretch section, left blank for now
-        ]
+        {
+            COV_PERCENT:  "Coverage %",
+            FUNC_NAME:    "Function Name",
+            FUNC_ADDR:    "Address",
+            BASIC_BLOCKS: "Basic Blocks",
+            BRANCHES:     "Branches",
+            LINES:        "Lines",
+            FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
+        }
+
+        # used to make the model aware of its last sort state
+        self._last_sort = FUNC_ADDR
+        self._last_sort_order = QtCore.Qt.AscendingOrder
+
+        # used by the model to determine whether it should display 0% coverage entries
+        self._hide_zero = False
 
         # update the model with the given coverage data
         self.update_model(db_coverage)
@@ -122,28 +152,28 @@ class CoverageModel(QtCore.QAbstractItemModel):
             func_coverage = self.row2func[index.row()]
 
             # Coverage % - (by block taint)
-            if index.column() == 0:
+            if index.column() == COV_PERCENT:
                 return "%.2f%%" % (func_coverage.percent_node*100)
 
             # Function Name
-            elif index.column() == 1:
+            elif index.column() == FUNC_NAME:
                 return func_coverage.name
 
             # Function Address
-            elif index.column() == 2:
+            elif index.column() == FUNC_ADDR:
                 return "0x%08X" % func_coverage.address
 
             # Basic Blocks
-            elif index.column() == 3:
-                return "%u / %u" % (len(func_coverage.nodes_tainted),
-                                        func_coverage.nodes_total)
+            elif index.column() == BASIC_BLOCKS:
+                return "%u / %u" % (len(func_coverage.tainted_nodes),
+                                        func_coverage.num_nodes)
 
             # Branches
-            elif index.column() == 4:
+            elif index.column() == BRANCHES:
                 return "TODO"
 
             # Lines
-            elif index.column() == 5:
+            elif index.column() == LINES:
                 return "TODO"
 
         # cell background color request
@@ -166,6 +196,44 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
         return None
 
+    def sort(self, column, sort_order):
+        """
+        Sort coverage data model by column.
+        """
+
+        #
+        # look up the name of field in the FunctionCoverage class object
+        # that we would like to sort by based on the selected column
+        #
+
+        try:
+            sort_field = COLUMN_TO_FIELD[column]
+        except KeyError as e:
+            logger.error("TODO: implement column %u sorting" % column)
+            return
+
+        #
+        # sort the existing entries in the table by the selected field name
+        #
+        # NOTE:
+        #   using attrgetter appears to profile ~8-12% faster than lambdas
+        #   accessing the member on the member, hence the strange paradigm
+        #
+
+        sorted_functions = sorted(
+            self.row2func.itervalues(), # row2func has the 'existing' entries
+            key=attrgetter(sort_field),
+            reverse=sort_order
+        )
+
+        # finally, rebuild the row2func mapping
+        self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_functions))
+        self.layoutChanged.emit()
+
+        # save this as the most recent sort type
+        self._last_sort = column
+        self._last_sort_order = sort_order
+
     #--------------------------------------------------------------------------
     # Model Controls
     #--------------------------------------------------------------------------
@@ -178,7 +246,8 @@ class CoverageModel(QtCore.QAbstractItemModel):
             return
 
         self._hide_zero = hide
-        self._rebuild_row2func_map()
+        self._init_row2func_map()
+        self.sort(self._last_sort, self._last_sort_order)
         self.layoutChanged.emit()
 
     def update_model(self, db_coverage):
@@ -187,15 +256,15 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         self._db_coverage = db_coverage
 
-        # rebuild the row2func map
-        self._rebuild_row2func_map()
+        # initialize a new row2func map as the coverage data has changed
+        self._init_row2func_map()
 
         # let consumers know that we have updated the model
         self.layoutChanged.emit()
 
-    def _rebuild_row2func_map(self):
+    def _init_row2func_map(self):
         """
-        Rebuild the mapping to go from displayed row to function.
+        Initialize the mapping to go from displayed row to function.
         """
         row = 0
         self.row2func = {}
@@ -204,9 +273,11 @@ class CoverageModel(QtCore.QAbstractItemModel):
         if not self._db_coverage:
             return
 
+        functions = self._db_coverage.functions.itervalues()
+
         # only map items with a non-zero coverage as visible
         if self._hide_zero:
-            for func_coverage in self._db_coverage.functions.itervalues():
+            for func_coverage in functions:
                 if func_coverage.percent_node:
                     self.row2func[row] = func_coverage
                     row += 1
@@ -258,8 +329,12 @@ class CoverageOverview(idaapi.PluginForm):
         #
 
         self.table = QtWidgets.QTreeView()
-        self.table.setExpandsOnDoubleClick(False)
         self.table.setRootIsDecorated(False)
+        self.table.setExpandsOnDoubleClick(False)
+
+        # enable sorting on the table, default to sort by func address
+        self.table.setSortingEnabled(True)
+        self.table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
         # install a drawing delegate to draw the grid lines on the list view
         delegate = GridDelegate(self.table)
@@ -287,7 +362,7 @@ class CoverageOverview(idaapi.PluginForm):
         #
 
         # connect a signal to jump to the function disas described by a row
-        self.table.doubleClicked.connect(self._ui_double_click)
+        self.table.doubleClicked.connect(self._ui_entry_double_click)
         self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
         #self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
         #self.treeView.customContextMenuRequested.connect(self.openMenu)
@@ -313,7 +388,7 @@ class CoverageOverview(idaapi.PluginForm):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    def _ui_double_click(self, index):
+    def _ui_entry_double_click(self, index):
         """
         Handle double click event on the coverage table view.
         """
