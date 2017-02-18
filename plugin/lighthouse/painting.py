@@ -108,7 +108,7 @@ def paint_hexrays(vdui, coverage, color):
     decompilation_text = vdui.cfunc.get_pseudocode()
 
     # skip the parsing of variable declarations (hdrlines)
-    line_start = vdui.cfunc.hdrlines + 1
+    line_start = 0 #vdui.cfunc.hdrlines
     line_end   = decompilation_text.size()
 
     # build a mapping of line_number -> [citem indexes]
@@ -126,10 +126,14 @@ def paint_hexrays(vdui, coverage, color):
     for line_number, citem_indexes in line_map.iteritems():
 
         nodes = set()
-        for index in citem_indexes:
+        for item in vdui.cfunc.treeitems:
+
+            # we don't care about this tree index
+            if item.index not in citem_indexes:
+                continue
 
             # get the code address of the current citem
-            address = vdui.cfunc.treeitems[index].ea
+            address = item.ea
 
             # walk the flowchart and find the basic block associated with this node
             found_block = None
@@ -148,12 +152,24 @@ def paint_hexrays(vdui, coverage, color):
         line2node[line_number] = nodes
 
     # now color any decompiled line that holds a tainted node
+    lines_painted = 0
     for line_number, node_indexes in line2node.iteritems():
         try:
             if node_indexes & coverage.functions[vdui.cfunc.entry_ea].tainted_nodes:
                 decompilation_text[line_number].bgcolor = color
+                lines_painted += 1
         except KeyError as e:
             pass
+
+    # there was nothing painted yet, there's no point in continuing
+    if not lines_painted:
+        return
+
+    # paint the function decleration, and header (variable decleration) lines
+    # as their execution is implied at this point
+    for line_number in xrange(0, vdui.cfunc.hdrlines):
+        decompilation_text[line_number].bgcolor = color
+        lines_painted += 1
 
     # refresh the view
     idaapi.refresh_idaview_anyway()
