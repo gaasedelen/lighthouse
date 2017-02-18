@@ -24,10 +24,10 @@ FINAL_COLUMN = 7
 # column -> field name mapping
 COLUMN_TO_FIELD = \
 {
-    COV_PERCENT:  "percent_node",
+    COV_PERCENT:  "percent_instruction",
     FUNC_NAME:    "name",
     FUNC_ADDR:    "address",
-    BASIC_BLOCKS: "num_nodes",
+    BASIC_BLOCKS: "node_count",
 }
 
 class CoverageModel(QtCore.QAbstractItemModel):
@@ -151,9 +151,9 @@ class CoverageModel(QtCore.QAbstractItemModel):
             # lookup the func coverage object for this row
             func_coverage = self.row2func[index.row()]
 
-            # Coverage % - (by block taint)
+            # Coverage % - (by instruction execution)
             if index.column() == COV_PERCENT:
-                return "%.2f%%" % (func_coverage.percent_node*100)
+                return "%.2f%%" % (func_coverage.percent_instruction*100)
 
             # Function Name
             elif index.column() == FUNC_NAME:
@@ -165,8 +165,8 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
             # Basic Blocks
             elif index.column() == BASIC_BLOCKS:
-                return "%u / %u" % (len(func_coverage.tainted_nodes),
-                                        func_coverage.num_nodes)
+                return "%u / %u" % (len(func_coverage.executed_nodes),
+                                        func_coverage.node_count)
 
             # Branches
             elif index.column() == BRANCHES:
@@ -183,7 +183,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             # TODO/PERF: can we just bake this in the func coverage?
             # compute cell/row color
             row_color = compute_color_on_gradiant(
-                func_coverage.percent_node,
+                func_coverage.percent_instruction,
                 self._color_coverage_bad,
                 self._color_coverage_good
             )
@@ -278,7 +278,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         # only map items with a non-zero coverage as visible
         if self._hide_zero:
             for func_coverage in functions:
-                if func_coverage.percent_node:
+                if func_coverage.percent_instruction:
                     self.row2func[row] = func_coverage
                     row += 1
 

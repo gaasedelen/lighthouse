@@ -58,7 +58,7 @@ def paint_nodes(functions, color):
     Paint function graph nodes based on the given coverage data.
     """
     for func_coverage in functions.itervalues():
-        color_nodes(func_coverage.address, func_coverage.tainted_nodes, color)
+        color_nodes(func_coverage.address, func_coverage.executed_nodes, color)
 
 def color_node(address, color):
     """
@@ -89,10 +89,10 @@ def color_nodes(function_address, nodes, color):
     node_info.bg_color = color
 
     # paint the specified nodes
-    for node_id in nodes:
+    for node in nodes:
         idaapi.set_node_info2(
             function_address,
-            node_id,
+            node.id,
             node_info,
             idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
         )
@@ -151,11 +151,14 @@ def paint_hexrays(vdui, coverage, color):
         # save the list of node ids identified for this decompiled line
         line2node[line_number] = nodes
 
+    # extract the tainted coverage node ids from our coverage data
+    coverage_indexes = set(node.id for node in coverage.functions[vdui.cfunc.entry_ea].executed_nodes)
+
     # now color any decompiled line that holds a tainted node
     lines_painted = 0
     for line_number, node_indexes in line2node.iteritems():
         try:
-            if node_indexes & coverage.functions[vdui.cfunc.entry_ea].tainted_nodes:
+            if node_indexes & coverage_indexes:
                 decompilation_text[line_number].bgcolor = color
                 lines_painted += 1
         except KeyError as e:
