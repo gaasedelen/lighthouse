@@ -177,9 +177,10 @@ class Lighthouse(plugin_t):
         Install the 'File->Load->Code Coverage File(s)...' menu entry.
         """
 
-        # TODO: icon
+        # createa a custom IDA icon
         self._icon_id_load = idaapi.load_custom_icon(
-            data=str(QtCore.QResource(":/icons/load.png").data())
+            #data=str(QtCore.QResource(":/icons/overview.png").data())
+            data=str(open(resource_file("icons/load.png"), "rb").read())
         )
 
         # describe the action
@@ -214,9 +215,10 @@ class Lighthouse(plugin_t):
         Install the 'View->Open subviews->Coverage Overview' menu entry.
         """
 
-        # TODO: icon
+        # createa a custom IDA icon
         self._icon_id_overview = idaapi.load_custom_icon(
-            data=str(QtCore.QResource(":/icons/overview.png").data())
+            #data=str(QtCore.QResource(":/icons/overview.png").data())
+            data=str(open(resource_file("icons/overview.png"), "rb").read())
         )
 
         # describe the action

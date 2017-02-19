@@ -1,3 +1,4 @@
+import os
 import idaapi
 from log import lmsg, logging_started, start_logging
 from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
@@ -29,3 +30,6 @@ def get_disas_bg_color():
     img    = QtGui.QImage(pixmap.toImage())
     color  = QtGui.QColor(img.pixel(img.width()/2,1))
     return color
+
+def resource_file(filename):
+    return os.path.join(idaapi.idadir("plugins"), "lighthouse", "ui", "resources", filename)

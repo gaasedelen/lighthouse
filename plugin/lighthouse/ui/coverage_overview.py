@@ -324,6 +324,9 @@ class CoverageOverview(idaapi.PluginForm):
         else:
             self.parent = self.FormToPySideWidget(form)
 
+        # set window icon to the coverage overview icon
+        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
+
         #
         # coverage list table
         #
