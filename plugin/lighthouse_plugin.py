@@ -30,20 +30,16 @@ class Lighthouse(plugin_t):
     """
 
     flags = idaapi.PLUGIN_PROC | idaapi.PLUGIN_MOD
-    comment = "Code Coverage Visualization"
+    comment = "Code Coverage Explorer"
     help = ""
     wanted_name = "Lighthouse"
     wanted_hotkey = ""
 
     def __init__(self):
 
-        # coverage color - this gets decided just before painting
+        # plugin color palette
+        self.palette = LighthousePalette()
         self.color = 0
-
-        # depending on if IDA is using a dark or light theme, we paint
-        # coverage with a varying color
-        self._dark_color  = 0x00990000         # NOTE: IDA uses BBGGRR
-        self._light_color = 0x00C8E696
 
         #----------------------------------------------------------------------
 
@@ -115,22 +111,6 @@ class Lighthouse(plugin_t):
     # Initialization
     #--------------------------------------------------------------------------
 
-    def print_banner(self):
-        """
-        Print the Lighthouse plugin banner.
-        """
-
-        # build the main banner title
-        banner_params = (PLUGIN_VERSION, AUTHORS, DATE)
-        banner_title  = "Lighthouse v%s - (c) %s - %s" % banner_params
-
-        # print plugin banner
-        lmsg("")
-        lmsg("-"*75)
-        lmsg("---[ %s" % banner_title)
-        lmsg("-"*75)
-        lmsg("")
-
     def _install_plugin(self):
         """
         Initialize & integrate the plugin into IDA.
@@ -158,6 +138,22 @@ class Lighthouse(plugin_t):
 
         # install the callback handler
         idaapi.install_hexrays_callback(self._hxe_events)
+
+    def print_banner(self):
+        """
+        Print the Lighthouse plugin banner.
+        """
+
+        # build the main banner title
+        banner_params = (PLUGIN_VERSION, AUTHORS, DATE)
+        banner_title  = "Lighthouse v%s - (c) %s - %s" % banner_params
+
+        # print plugin banner
+        lmsg("")
+        lmsg("-"*75)
+        lmsg("---[ %s" % banner_title)
+        lmsg("-"*75)
+        lmsg("")
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -225,7 +221,7 @@ class Lighthouse(plugin_t):
         # add an menu entry to the options dropdown on the IDA toolbar
         action_desc = idaapi.action_desc_t(
             self._action_name_overview,               # The action name.
-            "~C~overage Overview...",                 # The action text.
+            "~C~overage Overview",                    # The action text.
             IDACtxEntry(self.open_coverage_overview), # The action handler.
             None,                                     # Optional: action shortcut
             "Open database code coverage overview",   # Optional: tooltip
@@ -334,12 +330,20 @@ class Lighthouse(plugin_t):
         for filename in coverage_files:
             self.load_code_coverage_file(filename)
 
-        # determine whether to use a 'dark' or 'light' color based on the theme
+        # done loading coverage files, bake metrics
+        self.db_coverage.finalize(self.palette)
+
+        #
+        # depending on if IDA is using a dark or light theme, we paint
+        # coverage with a color that will hopefully keep things readable.
+        # determine whether to use a 'dark' or 'light' paint
+        #
+
         bg_color = get_disas_bg_color()
         if bg_color.lightness() > 255.0/2:
-            self.color = self._light_color
+            self.color = self.palette.paint_light
         else:
-            self.color = self._dark_color
+            self.color = self.palette.paint_dark
 
         # color the database based on coverage
         paint_coverage(self.db_coverage, self.color)
@@ -407,3 +411,35 @@ class Lighthouse(plugin_t):
             paint_hexrays(args[0], self.db_coverage, self.color)
 
         return 0
+
+#------------------------------------------------------------------------------
+# IDA Plugin Palette
+#------------------------------------------------------------------------------
+
+class LighthousePalette(object):
+    """
+    Color Palette for the Lighthouse plugin.
+
+    TODO: external customization
+    """
+
+    def __init__(self):
+        """
+        Initialize default palette colors for Lighthouse.
+        """
+
+        # blue to red - 'dark' theme
+        self.coverage_bad  = QtGui.QColor(221, 0, 0)
+        self.coverage_good = QtGui.QColor(51, 153, 255)
+
+        # green to red - 'light' theme
+        #self.coverage_bad  = QtGui.QColor(207, 31, 0)
+        #self.coverage_good = QtGui.QColor(75, 209, 42)
+
+        # TODO: unused for now
+        self.profiling_cold = QtGui.QColor(0,0,0)
+        self.profiling_hot  = QtGui.QColor(0,0,0)
+
+        # color used for painting disassembly/graph/hexrays
+        self.paint_dark  = 0x00990000    # NOTE: IDA uses BBGGRR
+        self.paint_light = 0x00C8E696

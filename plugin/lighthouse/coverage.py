@@ -4,6 +4,8 @@ import collections
 import idaapi
 import idautils
 
+from lighthouse.util import compute_color_on_gradiant
+
 logger = logging.getLogger("Lighthouse.Coverage")
 
 class FlowChartCache(object):
@@ -95,6 +97,13 @@ class DatabaseCoverage(object):
         self.coverage_data = bake_coverage_addresses(base, coverage_data)
         self.functions, self.orphans = build_function_coverage(self.coverage_data)
 
+    def finalize(self, palette):
+        """
+        Finalize coverage data.
+        """
+        for function in self.functions.itervalues():
+            function.finalize(palette)
+
 #------------------------------------------------------------------------------
 # Function Level Coverage
 #------------------------------------------------------------------------------
@@ -115,12 +124,18 @@ class FunctionCoverage(object):
         self.size          = 0
 
         # node metadata
-        self.nodes         = {}
-        self.executed_nodes = set()
+        self.nodes      = {}
+        self.exec_nodes = set()
 
-        # counters
-        self.node_count = 0
+        # baked metrics
         self.insn_count = 0
+        self.node_count = 0
+        self.exec_insn_count = 0
+        self.exec_node_count = 0
+
+        # baked colors
+        self.coverage_color  = 0
+        self.profiling_color = 0
 
         # automatically fill the fields we were not passed
         self._self_populate(flowchart)
@@ -137,7 +152,7 @@ class FunctionCoverage(object):
         """
         The number of executed instructions in this function.
         """
-        return sum(node.instructions for node in self.executed_nodes)
+        return sum(node.instructions for node in self.exec_nodes)
 
     @property
     def percent_instruction(self):
@@ -155,7 +170,7 @@ class FunctionCoverage(object):
         The function coverage percentage by node (basic block) execution.
         """
         try:
-            return (float(len(self.executed_nodes)) / self.node_count)
+            return (float(len(self.exec_nodes)) / self.node_count)
         except ZeroDivisionError:
             return 0
 
@@ -209,7 +224,30 @@ class FunctionCoverage(object):
         """
         Add the given node ID to the set of tainted nodes.
         """
-        self.executed_nodes.add(self.nodes[start_address])
+        self.exec_nodes.add(self.nodes[start_address])
+
+    def finalize(self, palette):
+        """
+        Finalize the coverage metrics for faster access.
+        """
+
+        # bake metrics
+        self.insn_count = self.instructions
+        self.node_count = len(self.nodes)
+        self.exec_insn_count = self.executed_instructions
+        self.exec_node_count = len(self.exec_nodes)
+        self.insn_percent = self.percent_instruction
+        self.node_percent = self.percent_node
+
+        # bake colors
+        self.coverage_color = compute_color_on_gradiant(
+            self.insn_percent,
+            palette.coverage_bad,
+            palette.coverage_good
+        )
+
+        # TODO
+        #self.profiling_color = None
 
 #------------------------------------------------------------------------------
 # Node Level Coverage

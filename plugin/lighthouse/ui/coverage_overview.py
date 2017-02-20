@@ -1,5 +1,3 @@
-import cProfile
-
 import idaapi
 import logging
 from lighthouse.util import *
@@ -41,14 +39,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
         # a map to correlate a given row in the table to the function coverage
         self.row2func = {}
-
-        # green to red - 'light' theme
-        #self._color_coverage_bad  = QtGui.QColor(207, 31, 0)
-        #self._color_coverage_good = QtGui.QColor(75, 209, 42)
-
-        # blue to red - 'dark' theme
-        self._color_coverage_bad  = QtGui.QColor(221, 0, 0)
-        self._color_coverage_good = QtGui.QColor(51, 153, 255)
+        self._rows = 0
 
         # headers of the table
         self._column_headers = \
@@ -88,15 +79,18 @@ class CoverageModel(QtCore.QAbstractItemModel):
         except KeyError as e:
             return QtCore.QModelIndex()
 
+    def canFetchMore(self, index):
+        return True
+
     def rowCount(self, index=QtCore.QModelIndex()):
         """
-        Return the number of rows in the model. (The number of projects)
+        Return the number of rows in the model.
         """
-        return len(self.row2func)
+        return self._rows
 
     def columnCount(self, index=QtCore.QModelIndex()):
         """
-        Return the number of columns in the model. (The number of IDB fields)
+        Return the number of columns in the model.
         """
         return len(self._column_headers)
 
@@ -132,7 +126,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             return None
 
         # ensure the row requested exists
-        if not (0 <= index.row() < len(self.row2func)):
+        if not (0 <= index.row() < self._rows):
             return None
 
         # text alignment request
@@ -153,7 +147,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
             # Coverage % - (by instruction execution)
             if index.column() == COV_PERCENT:
-                return "%.2f%%" % (func_coverage.percent_instruction*100)
+                return "%.2f%%" % (func_coverage.insn_percent*100)
 
             # Function Name
             elif index.column() == FUNC_NAME:
@@ -165,30 +159,21 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
             # Basic Blocks
             elif index.column() == BASIC_BLOCKS:
-                return "%u / %u" % (len(func_coverage.executed_nodes),
-                                        func_coverage.node_count)
+                return "%u / %u" % (func_coverage.exec_node_count,
+                                    func_coverage.node_count)
 
             # Branches
             elif index.column() == BRANCHES:
                 return "TODO"
 
-            # Lines
+            # Source Lines
             elif index.column() == LINES:
                 return "TODO"
 
         # cell background color request
         elif role == QtCore.Qt.BackgroundRole:
             func_coverage = self.row2func[index.row()]
-
-            # TODO/PERF: can we just bake this in the func coverage?
-            # compute cell/row color
-            row_color = compute_color_on_gradiant(
-                func_coverage.percent_instruction,
-                self._color_coverage_bad,
-                self._color_coverage_good
-            )
-
-            return row_color
+            return func_coverage.coverage_color
 
         # font color request
         elif role == QtCore.Qt.ForegroundRole:
@@ -210,7 +195,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             sort_field = COLUMN_TO_FIELD[column]
         except KeyError as e:
             logger.error("TODO: implement column %u sorting" % column)
-            return
+            return False
 
         #
         # sort the existing entries in the table by the selected field name
@@ -228,11 +213,15 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
         # finally, rebuild the row2func mapping
         self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_functions))
-        self.layoutChanged.emit()
+        self.emitDataChanged()
 
         # save this as the most recent sort type
         self._last_sort = column
         self._last_sort_order = sort_order
+        return True
+
+    def emitDataChanged(self):
+        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
 
     #--------------------------------------------------------------------------
     # Model Controls
@@ -242,13 +231,18 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         Toggle zero coverage entries as visible.
         """
+
+        # state change matches current state, nothing to do
         if self._hide_zero == hide:
             return
 
+        # rebuild the row map, using the new state (hide/unhide 0% items)
         self._hide_zero = hide
         self._init_row2func_map()
-        self.sort(self._last_sort, self._last_sort_order)
-        self.layoutChanged.emit()
+
+        # emit a data changed signal if the sort attempt did not
+        if not self.sort(self._last_sort, self._last_sort_order):
+            self.emitDataChanged()
 
     def update_model(self, db_coverage):
         """
@@ -260,7 +254,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         self._init_row2func_map()
 
         # let consumers know that we have updated the model
-        self.layoutChanged.emit()
+        self.emitDataChanged()
 
     def _init_row2func_map(self):
         """
@@ -289,6 +283,8 @@ class CoverageModel(QtCore.QAbstractItemModel):
             for func_coverage in self._db_coverage.functions.itervalues():
                 self.row2func[row] = func_coverage
                 row += 1
+
+        self._rows = len(self.row2func)
 
 #------------------------------------------------------------------------------
 # Coverage Overview
@@ -333,6 +329,7 @@ class CoverageOverview(idaapi.PluginForm):
 
         self.table = QtWidgets.QTreeView()
         self.table.setRootIsDecorated(False)
+        self.table.setUniformRowHeights(True)
         self.table.setExpandsOnDoubleClick(False)
 
         # enable sorting on the table, default to sort by func address
@@ -420,27 +417,12 @@ class GridDelegate(QtWidgets.QStyledItemDelegate):
 
     def __init__(self, parent=None):
         super(GridDelegate, self).__init__(parent)
+        self.grid_color = QtGui.QColor(QtCore.Qt.black)
 
     def paint(self, painter, option, index):
         super(GridDelegate, self).paint(painter, option, index)
         painter.save()
-        painter.setPen(QtGui.QColor(QtCore.Qt.black))
+        painter.setPen(self.grid_color)
         painter.drawRect(option.rect)
         painter.restore()
 
-def compute_color_on_gradiant(percent, color1, color2):
-    """
-    Compute the color specified by a percent between two colors.
-    """
-
-    # dump the rgb values from QColor objects
-    r1, g1, b1, _ = color1.getRgb()
-    r2, g2, b2, _ = color2.getRgb()
-
-    # compute the new color across the gradiant of color1 -> color 2
-    r = r1 + percent * (r2 - r1)
-    g = g1 + percent * (g2 - g1)
-    b = b1 + percent * (b2 - b1)
-
-    # return the new color
-    return QtGui.QColor(r,g,b)
