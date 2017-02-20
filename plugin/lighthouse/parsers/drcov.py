@@ -2,6 +2,7 @@
 
 import os
 import sys
+import mmap
 import struct
 
 #------------------------------------------------------------------------------
@@ -66,7 +67,8 @@ class DrcovData(object):
         """
         Parse drcov coverage from the given log file.
         """
-        with open(filepath, "rb") as f:
+        with open(filepath, "rb") as infile:
+            f = mmap.mmap(infile.fileno(), 0, access=mmap.ACCESS_READ)
             self._parse_drcov_header(f)
             self._parse_module_table(f)
             self._parse_bb_table(f)
