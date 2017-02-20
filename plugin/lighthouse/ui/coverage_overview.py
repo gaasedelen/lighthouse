@@ -212,16 +212,14 @@ class CoverageModel(QtCore.QAbstractItemModel):
         )
 
         # finally, rebuild the row2func mapping
+        self.layoutAboutToBeChanged.emit()
         self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_functions))
-        self.emitDataChanged()
+        self.layoutChanged.emit()
 
         # save this as the most recent sort type
         self._last_sort = column
         self._last_sort_order = sort_order
         return True
-
-    def emitDataChanged(self):
-        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
 
     #--------------------------------------------------------------------------
     # Model Controls
@@ -240,9 +238,9 @@ class CoverageModel(QtCore.QAbstractItemModel):
         self._hide_zero = hide
         self._init_row2func_map()
 
-        # emit a data changed signal if the sort attempt did not
+        # emit a layout changed signal if the sort attempt did not
         if not self.sort(self._last_sort, self._last_sort_order):
-            self.emitDataChanged()
+            self.layoutChanged()
 
     def update_model(self, db_coverage):
         """
@@ -254,7 +252,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         self._init_row2func_map()
 
         # let consumers know that we have updated the model
-        self.emitDataChanged()
+        self.layoutChanged.emit()
 
     def _init_row2func_map(self):
         """
