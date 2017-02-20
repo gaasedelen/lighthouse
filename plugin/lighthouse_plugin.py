@@ -405,10 +405,23 @@ class Lighthouse(plugin_t):
         HexRays callback event handler.
         """
 
-        # args[0] == vdui
         if event == idaapi.hxe_text_ready:
-            logger.debug("Caught HexRays hxe_text_ready event")
-            paint_hexrays(args[0], self.db_coverage, self.color)
+            vdui = args[0]
+
+            # grab the coverage data for the function of this decompilation
+            try:
+                function_coverage = self.db_coverage.functions[vdui.cfunc.entry_ea]
+
+            # presumably, function does not exist for this function
+            except KeyError:
+                return 0
+
+            # if coverage is zero, nothing to paint
+            if not function_coverage.percent_instruction:
+                return 0
+
+            # paint the decompilation for this function
+            paint_hexrays(vdui, function_coverage, self.color)
 
         return 0
 

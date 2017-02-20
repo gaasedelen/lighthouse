@@ -101,7 +101,7 @@ def color_nodes(function_address, nodes, color):
 # Painting - HexRays (Decompilation / Source)
 #------------------------------------------------------------------------------
 
-def paint_hexrays(vdui, coverage, color):
+def paint_hexrays(vdui, function_coverage, color):
     """
     Paint decompilation output in a HexRays window.
     """
@@ -119,40 +119,46 @@ def paint_hexrays(vdui, coverage, color):
         #print "[%u] -" % line_number, indexes
 
     # retrieve the flowchart for this function
-    flowchart = idaapi.FlowChart(idaapi.get_func(vdui.cfunc.entry_ea))
+    function  = idaapi.get_func(vdui.cfunc.entry_ea)
+    flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
+    flowchart_size  = flowchart.size()
+    flowchart_nodes = {}
+
+    # cache bounds for all flowchart nodes
+    for i in xrange(flowchart_size):
+        node = flowchart[i]
+        flowchart_nodes[i] = (node.startEA, node.endEA)
 
     # build a mapping of line_number -> nodes
+    cached_base = 0
     line2node = {}
     for line_number, citem_indexes in line_map.iteritems():
 
         nodes = set()
-        for item in vdui.cfunc.treeitems:
-
-            # we don't care about this tree index
-            if item.index not in citem_indexes:
-                continue
+        for index in citem_indexes:
+            item = vdui.cfunc.treeitems[index]
 
             # get the code address of the current citem
             address = item.ea
 
             # walk the flowchart and find the basic block associated with this node
-            found_block = None
-            for bb in flowchart:
-                if bb.startEA <= address < bb.endEA:
-                    found_block = bb
+            for index in xrange(flowchart_size):
+                node_id = (cached_base + index) % flowchart_size
+                if flowchart_nodes[node_id][0] <= address < flowchart_nodes[node_id][1]:
                     break
             else:
-                logger.warning("Failed to map node to basic block")
+                #logger.warning("Failed to map node to basic block")
                 continue
 
             # add the found basic block id
-            nodes.add(bb.id)
+            nodes.add(node_id)
+            cached_base = node_id
 
         # save the list of node ids identified for this decompiled line
         line2node[line_number] = nodes
 
     # extract the tainted coverage node ids from our coverage data
-    coverage_indexes = set(node.id for node in coverage.functions[vdui.cfunc.entry_ea].exec_nodes)
+    coverage_indexes = set(node.id for node in function_coverage.exec_nodes)
 
     # now color any decompiled line that holds a tainted node
     lines_painted = 0
