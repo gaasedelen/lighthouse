@@ -1,5 +1,7 @@
-import idaapi
 import logging
+import idaapi
+
+from lighthouse.util.ida import *
 
 logger = logging.getLogger("Lighthouse.Paint")
 
@@ -9,7 +11,7 @@ logger = logging.getLogger("Lighthouse.Paint")
 
 def paint_coverage(coverage, color):
     """
-    Paint coverage visualizations to the database.
+    Paint the database using the given coverage.
     """
 
     # paint individual instructions
@@ -26,7 +28,7 @@ def paint_coverage(coverage, color):
 
 def paint_instructions(coverage_blocks, color):
     """
-    Paint instructions based on the given coverage data.
+    Paint instructions using the given coverage blocks.
     """
     for address, size in coverage_blocks:
         color_items(address, size, color)
@@ -50,38 +52,19 @@ def color_items(address, size, color):
     # done
 
 #------------------------------------------------------------------------------
-# Painting - Basic Blocks (Nodes)
+# Painting - Nodes (Basic Blocks)
 #------------------------------------------------------------------------------
 
 def paint_nodes(functions, color):
     """
-    Paint function graph nodes based on the given coverage data.
+    Paint function graph nodes using the given function coverages.
     """
-    for func_coverage in functions.itervalues():
-        color_nodes(func_coverage.address, func_coverage.exec_nodes, color)
-
-def color_node(address, color):
-    """
-    Color a basic block (node) by address.
-    """
-    function  = idaapi.get_func(address)
-    flowchart = idaapi.FlowChart(function)
-
-    # walk the flowchart and find the associated basic block
-    found_block = None
-    for bb in flowchart:
-        if bb.startEA <= address < bb.endEA:
-            found_block = bb
-            break
-    else:
-        raise ValueError("Cannot find node at 0x%08x" % address)
-
-    # color the found node
-    color_nodes(funcion.startEA, [found_block.id], color)
+    for function_coverage in functions.itervalues():
+        color_nodes(function_coverage.address, function_coverage.exec_nodes, color)
 
 def color_nodes(function_address, nodes, color):
     """
-    Color a list of basic blocks (nodes) within function at function_address.
+    Color a list of nodes within the function graph at function_address.
     """
 
     # create node info object with specified color
@@ -103,125 +86,80 @@ def color_nodes(function_address, nodes, color):
 
 def paint_hexrays(vdui, function_coverage, color):
     """
-    Paint decompilation output in a HexRays window.
+    Paint decompilation text for the given HexRays Window.
     """
     decompilation_text = vdui.cfunc.get_pseudocode()
 
-    # skip the parsing of variable declarations (hdrlines)
-    line_start = 0 #vdui.cfunc.hdrlines
-    line_end   = decompilation_text.size()
+    #
+    # the objective here is to paint hexrays lines that are associated with
+    # our coverage data. unfortunately, there are very few API resources that
+    # link decompilation line numbers to anything (eg, citems, nodes, ea, etc)
+    #
+    # this means that we must build our own data relationships to draw from
+    #
 
-    # build a mapping of line_number -> [citem indexes]
-    line_map = {}
-    for line_number in xrange(line_start, line_end):
-        line = decompilation_text[line_number].line
-        line_map[line_number] = extract_citem_indexes(line)
-        #print "[%u] -" % line_number, indexes
+    #
+    # first, let's build a relationship between a given line of text, and the
+    # citems that contribute to it. the only way to do that (as I see it) is
+    # to lex citem ID's out of the decompiled output string
+    #
 
-    # retrieve the flowchart for this function
-    function  = idaapi.get_func(vdui.cfunc.entry_ea)
-    flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-    flowchart_size  = flowchart.size()
-    flowchart_nodes = {}
+    line2citem = map_line2citem(decompilation_text)
 
-    # cache bounds for all flowchart nodes
-    for i in xrange(flowchart_size):
-        node = flowchart[i]
-        flowchart_nodes[i] = (node.startEA, node.endEA)
+    #
+    # now that we have some understanding of how citems contribute to each
+    # line of decompiled text, we can use this information to build a
+    # relationship that ties graph nodes (basic blocks) to individual lines.
+    #
 
-    # build a mapping of line_number -> nodes
-    cached_base = 0
-    line2node = {}
-    for line_number, citem_indexes in line_map.iteritems():
+    line2node = map_line2node(vdui.cfunc, line2citem)
 
-        nodes = set()
-        for index in citem_indexes:
-            item = vdui.cfunc.treeitems[index]
+    # great, now we have all the information we need to paint
 
-            # get the code address of the current citem
-            address = item.ea
+    #
+    # paint hexrays output
+    #
 
-            # walk the flowchart and find the basic block associated with this node
-            for index in xrange(flowchart_size):
-                node_id = (cached_base + index) % flowchart_size
-                if flowchart_nodes[node_id][0] <= address < flowchart_nodes[node_id][1]:
-                    break
-            else:
-                #logger.warning("Failed to map node to basic block")
-                continue
+    lines_painted = 0
 
-            # add the found basic block id
-            nodes.add(node_id)
-            cached_base = node_id
-
-        # save the list of node ids identified for this decompiled line
-        line2node[line_number] = nodes
-
-    # extract the tainted coverage node ids from our coverage data
+    # extract the node ids that have been hit by our function's coverage data
     coverage_indexes = set(node.id for node in function_coverage.exec_nodes)
 
-    # now color any decompiled line that holds a tainted node
-    lines_painted = 0
-    for line_number, node_indexes in line2node.iteritems():
-        try:
-            if node_indexes & coverage_indexes:
-                decompilation_text[line_number].bgcolor = color
-                lines_painted += 1
-        except KeyError as e:
-            pass
+    #
+    # now we loop through every line_number of the decompiled text that claims
+    # to have a relationship with a graph node (basic block) and check to see
+    # if it contains a node our coverage has marked as executed
+    #
 
-    # there was nothing painted yet, there's no point in continuing
+    for line_number, node_indexes in line2node.iteritems():
+
+        #
+        # if there is any intersection of nodes on this line and the coverage
+        # data's set of executed nodes, color it
+        #
+
+        if node_indexes & coverage_indexes:
+            decompilation_text[line_number].bgcolor = color
+            lines_painted += 1
+
+    #
+    # done painting from our coverage data
+    #
+
+    # if there was nothing painted yet, there's no point in continuing...
     if not lines_painted:
         return
 
-    # paint the function decleration, and header (variable decleration) lines
-    # as their execution is implied at this point
+    #
+    # if we made it this far, we must have painted *some* lines inside the
+    # function. that means we should paint the function decleration, and
+    # header (variable decleration) lines as their execution will be implied
+    #
+
     for line_number in xrange(0, vdui.cfunc.hdrlines):
         decompilation_text[line_number].bgcolor = color
         lines_painted += 1
 
-    # refresh the view
+    # finally, refresh the view
     idaapi.refresh_idaview_anyway()
 
-def extract_citem_indexes(line):
-    """
-    Lex all ctree item indexes from a given line of text.
-    """
-    indexes = []
-
-    # lex COLOR_ADDR tokens from the line
-    i = 0
-    while i < len(line):
-
-        # does this character mark the start of a new COLOR_* token?
-        if line[i] == idaapi.COLOR_ON:
-
-            # move past the COLOR_ON byte
-            i += 1
-
-            # is this sequence a COLOR_ADDR token?
-            if ord(line[i]) == idaapi.COLOR_ADDR:
-
-                # move past the COLOR_ADDR byte
-                i += 1
-
-                #
-                # A COLOR_ADDR token is followed by either 8, or 16 characters
-                # (a hex encoded number) that in this context will be the index
-                # number of a citem
-                #
-
-                citem_index = int(line[i:i+idaapi.COLOR_ADDR_SIZE], 16)
-                i += idaapi.COLOR_ADDR_SIZE
-
-                # save the extracted index
-                indexes.append(citem_index)
-
-                # skip to the next iteration as i has moved
-                continue
-
-        # nothing we care about happened, keep lexing forward
-        i += 1
-
-    # return all the citem indexes extracted from this line of text
-    return indexes

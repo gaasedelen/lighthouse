@@ -73,12 +73,12 @@ class Lighthouse(plugin_t):
         try:
             self._install_plugin()
 
-        # failed to integrate plugin, log and skip loading
+        # failed to initialize or integrate the plugin, log and skip loading
         except Exception as e:
             logger.exception("Failed to initialize")
             return idaapi.PLUGIN_SKIP
 
-        # loaded successfully, print the Lighthouse banner
+        # plugin loaded successfully, print the Lighthouse banner
         self.print_banner()
         logger.info("Successfully initialized")
 
@@ -96,7 +96,7 @@ class Lighthouse(plugin_t):
         This is called by IDA when it is unloading the plugin.
         """
 
-        # attempt to cleanup after ourselves
+        # attempt to cleanup and uninstall our plugin instance
         try:
             self._uninstall_plugin()
 
@@ -116,14 +116,16 @@ class Lighthouse(plugin_t):
         Initialize & integrate the plugin into IDA.
         """
         self._install_ui()
-        self._install_hexrays_hooks()
+
+        # TODO/NOTE: let's delay these till coverage load instead
+        #self._install_hexrays_hooks()
 
     def _install_hexrays_hooks(self, _=None):
         """
         Install Hexrays hook listeners.
         """
 
-        # event hooks already installed for hexrays
+        # event hooks appear to already be installed for hexrays
         if self._hxe_events:
             return
 
@@ -131,9 +133,12 @@ class Lighthouse(plugin_t):
         if not idaapi.init_hexrays_plugin():
             raise RuntimeError("HexRays is not available yet")
 
+        #
         # map our callback function to an actual member since we can't properly
         # remove bindings from IDA callback registrations otherwise. it also
         # makes installation tracking/status easier.
+        #
+
         self._hxe_events = self._hexrays_callback
 
         # install the callback handler
@@ -321,7 +326,7 @@ class Lighthouse(plugin_t):
         Interactive file dialog based loading of Code Coverage.
         """
 
-        # prompt the user with a QtFileDialog to select coverage files.
+        # prompt the user with a QtFileDialog to select coverage files
         coverage_files = self._select_code_coverage_files()
         if not coverage_files:
             return
@@ -332,6 +337,12 @@ class Lighthouse(plugin_t):
 
         # done loading coverage files, bake metrics
         self.db_coverage.finalize(self.palette)
+
+        # install hexrays hooks if available for this arch/install
+        try:
+            self._install_hexrays_hooks()
+        except RuntimeError:
+            pass
 
         #
         # depending on if IDA is using a dark or light theme, we paint
@@ -356,10 +367,10 @@ class Lighthouse(plugin_t):
         Open the Coverage Overview dialog.
         """
 
-        # refresh the coverage overview model before making it visible
+        # ensure the database coverage is installed in the coverage overview
         self._ui_coverage_list.update_model(self.db_coverage)
 
-        # make the dialog visible
+        # make the coverage overview visible
         self._ui_coverage_list.Show()
 
     def _select_code_coverage_files(self):
@@ -405,18 +416,17 @@ class Lighthouse(plugin_t):
         HexRays callback event handler.
         """
 
+        # decompilation text generation is complete and it is about to be shown
         if event == idaapi.hxe_text_ready:
             vdui = args[0]
 
             # grab the coverage data for the function of this decompilation
             try:
                 function_coverage = self.db_coverage.functions[vdui.cfunc.entry_ea]
-
-            # presumably, function does not exist for this function
             except KeyError:
                 return 0
 
-            # if coverage is zero, nothing to paint
+            # if coverage is zero for this function, there's nothing to paint
             if not function_coverage.percent_instruction:
                 return 0
 

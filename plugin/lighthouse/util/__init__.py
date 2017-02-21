@@ -3,6 +3,7 @@ import cProfile
 
 import idaapi
 
+from ida import *
 from log import lmsg, logging_started, start_logging
 from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
 
@@ -17,6 +18,7 @@ def profile(func):
         pr.enable()
         result = func(*args, **kwargs)
         pr.disable()
+        pr.print_stats(sort="tottime")
         return result
     return wrap
 
@@ -35,7 +37,7 @@ def get_disas_bg_color():
     else:
         raise RuntimeError("Failed to find donor IDA View")
 
-    # lookup the Qt Widget for the given form, and take a picture of it
+    # lookup the Qt Widget for the given form and take 2px tall image
     if using_pyqt5():
         widget = idaapi.PluginForm.FormToPyQtWidget(form)
         pixmap = widget.grab(QtCore.QRect(0, 0, widget.width(),2))
@@ -43,9 +45,11 @@ def get_disas_bg_color():
         widget = idaapi.PluginForm.FormToPySideWidget(form)
         pixmap = QtGui.QPixmap.grabWidget(widget, QtCore.QRect(0, 0, widget.width(), 2))
 
-    # extract a pixel from the top center like a pleb
+    # extract a pixel from the top center like a pleb (hopefully a background pixel :|)
     img    = QtGui.QImage(pixmap.toImage())
     color  = QtGui.QColor(img.pixel(img.width()/2,1))
+
+    # return the color of the pixel we extracted
     return color
 
 def compute_color_on_gradiant(percent, color1, color2):
@@ -66,5 +70,8 @@ def compute_color_on_gradiant(percent, color1, color2):
     return QtGui.QColor(r,g,b)
 
 def resource_file(filename):
+    """
+    Return the absolute 'resource' filepath for a given filename.
+    """
     return os.path.join(idaapi.idadir("plugins"), "lighthouse", "ui", "resources", filename)
 

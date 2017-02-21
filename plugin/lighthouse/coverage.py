@@ -4,63 +4,9 @@ import collections
 import idaapi
 import idautils
 
-from lighthouse.util import compute_color_on_gradiant
+from lighthouse.util import compute_color_on_gradiant, FlowChartCache
 
 logger = logging.getLogger("Lighthouse.Coverage")
-
-class FlowChartCache(object):
-    """
-    TODO
-    """
-
-    def __init__(self, capacity=6):
-        self.cache = collections.deque([], capacity)
-
-    def get(self, address):
-        """
-        Cached lookup of the flowchart for a given address.
-
-        On cache-miss, a new flowchart is generated.
-        """
-
-        # cache hit
-        for cache_entry in self.cache:
-            bounds = cache_entry[0].bounds
-            if bounds.startEA <= address < bounds.endEA:
-                #logger.debug("0x%08X: cache hit!" % address)
-                return cache_entry
-
-        #
-        # flow chart is NOT in the cache...
-        #
-
-        #logger.debug("0x%08X: cache miss!" % address)
-
-        # create a new flowchart corresponding to the address
-        function  = idaapi.get_func(address)
-        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-
-        # cache the newly created flowchart
-        cache_entry = (flowchart, 0)
-        self.set(cache_entry)
-
-        # return the created flowchart entry
-        return cache_entry
-
-    def set(self, cache_entry):
-        """
-        Update the cache with the given entry.
-        """
-        function_address = cache_entry[0].bounds.startEA
-
-        # evict an old entry if it exists
-        for i in xrange(len(self.cache)):
-            if self.cache[i][0].bounds.startEA == function_address:
-                del self.cache[i]
-                break
-
-        # put this new cache entry at the front of the list
-        self.cache.appendleft(cache_entry)
 
 #------------------------------------------------------------------------------
 # Database Level Coverage
@@ -68,7 +14,7 @@ class FlowChartCache(object):
 
 class DatabaseCoverage(object):
     """
-    Manages coverage data and metrics for the whole database.
+    Manage coverage data and metrics for the whole database.
 
     TODO/NOTE:
 
@@ -202,7 +148,7 @@ class FunctionCoverage(object):
         # function so that we may initialize a NodeEA --> NodeCoverage map
         #
 
-        for node_id in xrange(0, flowchart.size()):
+        for node_id in xrange(flowchart.size()):
 
             # first, create a new node coverage item for this node
             new_node = NodeCoverage(flowchart[node_id], node_id)
@@ -256,10 +202,6 @@ class FunctionCoverage(object):
 class NodeCoverage(object):
     """
     Manages coverage data at the node (basic block) level.
-
-    TODO:
-    This wraps basic function metadata (address, name, # of nodes, etc)
-    and provides access/metrics to coverage data at a function level.
     """
 
     def __init__(self, node, node_id):
@@ -268,8 +210,7 @@ class NodeCoverage(object):
         self.id            = node_id
         self.instructions  = 0
 
-        # loop through the entire region and count the instructions
-        # in this node
+        # loop through the node's entire range and count its instructions
         current_address = self.address
         while node.endEA > current_address:
             self.instructions += 1
@@ -295,7 +236,7 @@ def init_function_converage():
     functions = {}
     for function_address in idautils.Functions():
         function  = idaapi.get_func(function_address)
-        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADRR, 0)
+        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
         functions[function_address] = FunctionCoverage(flowchart)
     return functions
 
@@ -308,14 +249,14 @@ def build_function_coverage(coverage_blocks):
 
     NOTE:
 
-    I don't like writing overly large / complex functions. But this
-    will be an important high compute + IDB access point for larger
-    data sets.
+      I don't like writing overly large / complex functions. But this
+      will be an important high compute + IDB access point for larger
+      data sets.
 
-    I put some effort into reducing database access, excessive
-    searches, iterations, instantiations, etc. I am concerned about
-    performance overhead that may come with trying to break this out
-    into multiple functions, but I encourage you to try :-)
+      I put some effort into reducing database access, excessive
+      searches, iterations, instantiations, etc. I am concerned about
+      performance overhead that may come with trying to break this out
+      into multiple functions, but I encourage you to try :-)
 
     -----------------------------------------------------------------------
 
@@ -467,5 +408,5 @@ def build_function_coverage(coverage_blocks):
             flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
             function_map[function_address] = FunctionCoverage(flowchart)
 
-    # done
+    # done, return results
     return (function_map, orphans)

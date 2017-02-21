@@ -194,7 +194,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         try:
             sort_field = COLUMN_TO_FIELD[column]
         except KeyError as e:
-            logger.error("TODO: implement column %u sorting" % column)
+            logger.warning("TODO: implement column %u sorting" % column)
             return False
 
         #
@@ -274,9 +274,12 @@ class CoverageModel(QtCore.QAbstractItemModel):
                     self.row2func[row] = func_coverage
                     row += 1
 
+        #
         # map all items as visible. faster to have this loop seperate from
         # the above so that we don't have to check a conditional every
         # iteration when not in use
+        #
+
         else:
             for func_coverage in self._db_coverage.functions.itervalues():
                 self.row2func[row] = func_coverage
@@ -290,6 +293,8 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
 class CoverageOverview(idaapi.PluginForm):
     """
+    The Coverage Overview Qt Widget.
+
     TODO
     """
 
@@ -361,9 +366,9 @@ class CoverageOverview(idaapi.PluginForm):
 
         # connect a signal to jump to the function disas described by a row
         self.table.doubleClicked.connect(self._ui_entry_double_click)
+        #self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        #self.table.customContextMenuRequested.connect(...)
         self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
-        #self.treeView.setContextMenuPolicy(Qt.CustomContextMenu)
-        #self.treeView.customContextMenuRequested.connect(self.openMenu)
 
         #
         # ui layout
@@ -391,8 +396,8 @@ class CoverageOverview(idaapi.PluginForm):
         Handle double click event on the coverage table view.
         """
 
-        # a double click on the table view will jump the user to the
-        # clicked function in the disassembly view
+        # a double click on the table view will jump the user to the clicked
+        # function in the disassembly view
         try:
             idaapi.jumpto(self._model.row2func[index.row()].address)
         except KeyError as e:
