@@ -4,6 +4,7 @@ import os
 import sys
 import mmap
 import struct
+from ctypes import *
 
 #------------------------------------------------------------------------------
 # drcov log parser
@@ -52,11 +53,9 @@ class DrcovData(object):
             raise ValueError("Failed to find matching module in coverage")
 
         # loop through the coverage data and filter out data for only this module
-        coverage_blocks = []
-        for bb in self.basic_blocks:
-            if bb.mod_id == mod_id:
-                coverage_blocks.append((bb.start, bb.size))
+        coverage_blocks = [(bb.start, bb.size) for bb in self.basic_blocks if bb.mod_id == mod_id]
 
+        # return the filtered coverage blocks
         return coverage_blocks
 
     #--------------------------------------------------------------------------
@@ -67,8 +66,7 @@ class DrcovData(object):
         """
         Parse drcov coverage from the given log file.
         """
-        with open(filepath, "rb") as infile:
-            f = mmap.mmap(infile.fileno(), 0, access=mmap.ACCESS_READ)
+        with open(filepath, "rb") as f:
             self._parse_drcov_header(f)
             self._parse_module_table(f)
             self._parse_bb_table(f)
@@ -190,7 +188,7 @@ class DrcovData(object):
         # is this an ascii table?
         if f.read(len(token)) == token:
             self.bb_table_is_binary = False
-            f.readline() # yep, so dispose of the rest of this line
+            raise ValueError("ASCII DrCov logs are not supported at this time.")
 
         # nope! binary table, seek back to the start of the table
         else:
@@ -201,18 +199,11 @@ class DrcovData(object):
         """
         Parse drcov log basic block table entries from filestream.
         """
+        self.basic_blocks = [DrcovBasicBlock() for x in xrange(self.bb_table_count)]
 
         # loop through each *expected* line/blob in the bb table and parse it
-        for i in xrange(self.bb_table_count):
-
-            # parse the current filestream data into a new basic block
-            if self.bb_table_is_binary:
-                basic_block = DrcovBasicBlock(f.read(DrcovBasicBlock.BYTESIZE))
-            else:
-                basic_block = DrcovBasicBlock(f.readline().strip(), binary=False)
-
-            # save the parsed block
-            self.basic_blocks.append(basic_block)
+        for basic_block in self.basic_blocks:
+            f.readinto(basic_block)
 
 #------------------------------------------------------------------------------
 # drcov module parser
@@ -263,7 +254,7 @@ class DrcovModule(object):
 # drcov basic block parser
 #------------------------------------------------------------------------------
 
-class DrcovBasicBlock(object):
+class DrcovBasicBlock(Structure):
     """
     Parser & wrapper for basic block details as found in a drcov coverage log.
 
@@ -279,35 +270,11 @@ class DrcovBasicBlock(object):
         } bb_entry_t;
 
     """
-    BYTESIZE = 4 + 2 + 2 # uint + short + short
-
-    def __init__(self, bb_data, binary=True):
-
-        # basic block fields
-        self.start  = 0
-        self.size   = 0
-        self.mod_id = 0
-
-        # parse the basic block data
-        if binary:
-            self._parse_bb_binary(bb_data)
-        else:
-            self._parse_bb_ascii(bb_data)
-
-    def _parse_bb_binary(self, bb_data):
-        """
-        Parse a binary basic block entry.
-        """
-        assert len(bb_data) == self.BYTESIZE
-        self.start,  = struct.unpack('<I', bb_data[0:4])
-        self.size,   = struct.unpack('<H', bb_data[4:6])
-        self.mod_id, = struct.unpack('<H', bb_data[6:8])
-
-    def _parse_bb_ascii(self, bb_line):
-        """
-        Parse an ascii basic block entry.
-        """
-        raise ValueError("TODO: implement ascii/text bb_entry_t parsing")
+    _fields_ = [
+        ('start',  c_uint32),
+        ('size',   c_uint16),
+        ('mod_id', c_uint16)
+    ]
 
 #------------------------------------------------------------------------------
 # Command Line Testing
