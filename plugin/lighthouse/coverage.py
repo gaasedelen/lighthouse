@@ -1,10 +1,13 @@
+import bisect
 import logging
 import collections
 
 import idaapi
 import idautils
 
+from lighthouse.util import *
 from lighthouse.util import compute_color_on_gradiant, FlowChartCache
+from lighthouse.painting import *
 
 logger = logging.getLogger("Lighthouse.Coverage")
 
@@ -12,9 +15,8 @@ logger = logging.getLogger("Lighthouse.Coverage")
 # Database Level Coverage
 #------------------------------------------------------------------------------
 
-class DatabaseCoverage(object):
+class CoverageDirector(object):
     """
-    Manage coverage data and metrics for the whole database.
 
     TODO/NOTE:
 
@@ -29,192 +31,750 @@ class DatabaseCoverage(object):
       As the class sits now, it is minimal and caters to only a single
       source of coverage data.
 
+      # - Databbase/ function / node metadata can be a shared resource
+      # - Only coverage changes
+
+    """
+
+    def __init__(self, palette):
+        self._database_metadata = DatabaseMetadata()
+        self._database_coverage = {}
+        self._palette = palette
+        self._composite_coverage = None
+        self.refresh()
+
+    @property
+    def metadata(self):
+        return self._database_metadata
+
+    @property
+    def coverage(self):
+        return self._composite_coverage
+
+    @property
+    def loaded_filenames(self):
+        return self._database_coverage.iterkeys()
+
+    def refresh(self):
+        """
+        Complete refresh of coverage mapping to the active database.
+        """
+        logger.debug("Refreshing Coverage Director")
+
+        # (re)build our knowledge of the underlying database
+        self._refresh_database_info()
+
+        # (re)map each set of coverage data to the database
+        self._refresh_database_coverage()
+
+    def _refresh_database_info(self):
+        """
+        Refresh the database info cache utilized by the director.
+        """
+        logger.debug("Refreshing database metadata")
+
+        self._database_metadata.refresh()
+        # TODO: return metadata delta
+
+    def _refresh_database_coverage(self):
+        """
+        Refresh the database coverage mappings managed by the director.
+        """
+        logger.debug("Refreshing coverage mappings")
+        for name, coverage in self._database_coverage:
+            logger.debug(" - %s" % name)
+            coverage.refresh(self._database_metadata)
+
+    def select_coverage(self, coverage_name):
+        """
+        TODO
+        """
+        self._composite_coverage = self._database_coverage[coverage_name]
+        self.paint_coverage()
+
+    #@profile
+    def add_coverage(self, name, base, coverage_data):
+        """
+        Add new coverage data to the director.
+        """
+        logger.debug("Adding coverage %s" % name)
+
+        # initialize a new database coverage for this 'file' / data
+        new_coverage = DatabaseCoverage(base, coverage_data, self._palette)
+
+        # map the coverage data using the database metadata
+        new_coverage.refresh(self._database_metadata)
+
+        # coverage creation & mapping complete, looks like we're good. add it
+        # to the director's coverage table and surface it for use
+        self._database_coverage[name] = new_coverage
+
+    def paint_coverage(self):
+        """
+        TODO: do we really want this in here?
+        """
+
+        #
+        # depending on if IDA is using a dark or light theme, we paint
+        # coverage with a color that will hopefully keep things readable.
+        # determine whether to use a 'dark' or 'light' paint
+        #
+
+        bg_color = get_disas_bg_color()
+        if bg_color.lightness() > 255.0/2:
+            color = self._palette.paint_light
+        else:
+            color = self._palette.paint_dark
+
+        # color the database based on coverage
+        paint_coverage(self.metadata, self.coverage, color)
+
+#------------------------------------------------------------------------------
+# Database Level Coverage
+#------------------------------------------------------------------------------
+
+class DatabaseMetadata(object):
+    """
+    Fast access database level metadata.
     """
 
     def __init__(self):
-        self.coverage_data = None
+
+        # database defined nodes (basic blocks)
+        self.nodes = {}
+        self._node_addresses = []
+
+        # database defined functions
         self.functions = {}
+        self._function_addresses = []
+
+        # database defined segments
+        #self.segments = {}
+        #self._segment_addresses = {}
+
+    def get_node(self, address):
+        """
+        Get the node (basic block) for a given address.
+        """
+
+        # TODO: consider using sortedcontainers
+        #found = sorted_dict.iloc[(sorted_dict.bisect_left(address) - 1)]
+
+        # find the index of the closest address (rounding down) in the node list
+        node_index = bisect.bisect_right(self._node_addresses, address) - 1
+
+        # retrieve the actual node (basic block) from the node map
+        try:
+            node = self.nodes[self._node_addresses[node_index]]
+            if node.address <= address < node.address + node.size:
+                return node
+        except KeyError:
+            pass
+
+        raise ValueError("Given address does not fall within a known node")
+
+    #----------------------------------------------------------------------
+    # Metadata Population
+    #----------------------------------------------------------------------
+
+    def refresh(self):
+        """
+        Refresh database metadata.
+        """
+        self._build_metadata()
+
+    def _build_metadata(self):
+        """
+        Collect metadata from the underlying database.
+        """
+
+        # for now....
+        assert not self.nodes
+        assert not self.functions
+        assert not self._node_addresses
+        assert not self._function_addresses
+
+        # loop through every defined function in the database
+        for function_address in idautils.Functions():
+
+            # get the function & its associated flowchart
+            function  = idaapi.get_func(function_address)
+            flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
+
+            # initialize the metadata object for this function
+            function_metadata = FunctionMetadata(function_address)
+
+            #
+            # now we will walk the flowchart for this function, collecting
+            # information on each of its nodes (basic blocks) and populating
+            # the function & node metadata objects.
+            #
+
+            for node_id in xrange(flowchart.size()):
+                node_address = flowchart[node_id].startEA
+
+                #
+                # attempt to select the node via address from our current
+                # database-wide node list (should the node already exist)
+                #   eg: a node may be shared between multiple functions
+                #
+
+                try:
+                    node_metadata = self.nodes[node_address]
+
+                # the node metadata does NOT exist yet, so create it now
+                except KeyError as e:
+                    node_metadata = NodeMetadata(flowchart[node_id])
+                    self.nodes[node_address] = node_metadata
+
+                #
+                # establish a relationship between this node (basic block) and
+                # this function (as one of its owners)
+                #
+
+                function_metadata.nodes[node_address]     = node_metadata
+                node_metadata.functions[function_address] = function_metadata
+
+                #
+                # a node's id will be unique per flowchart (function). we need
+                # these id's cached such that we can quickly paint nodes.
+                #
+                # save the node's id as it exists in *this* function into a
+                # map, keyed by the function address
+                #
+
+                node_metadata.ids[function_address] = node_id
+
+            # 'bake' elements of the function metadata for faster future use
+            function_metadata.finalize()
+
+            # add the function metadata to our database-wide function list
+            self.functions[function_address] = function_metadata
+
+        #
+        # now that we have collected all the node & function metadata available
+        # to us at this time, we create sorted lists of just their addresses so
+        # we can perform fast fuzzy lookup (eg, bisect) by address later on.
+        #
+        # fuzzy lookup in this context is the ability to quickly identify
+        # the node or function that a given address may fall within. Since any
+        # given address is unlikely to fall on a node/function boundary, one
+        # will not be able to index directly into the nodes of functions dict
+        # we have built.
+        #
+        # Instead, one will want to locate the closest object prior to a given
+        # address via these address lists, and then extract the object from its
+        # respective dict.
+        #
+
+        self._node_addresses = sorted(self.nodes.keys())
+        self._function_addresses = sorted(self.functions.keys())
+
+        # done
+        #print "Done building metadata"
+        #print " %u nodes" % len(self._node_addresses)
+        #print " %u functions" % len(self._function_addresses)
+
+class DatabaseCoverage(object):
+    """
+    Database level coverage map.
+    """
+
+    def __init__(self, base, coverage_data, palette):
+        self._coverage_data = bake_coverage_addresses(base, coverage_data)
+        self._palette = palette
+
+        # coverage objects
+        self.nodes     = {}
+        self.functions = {}
+
+        # orphan coverage blocks
         self.orphans = []
 
-    def add_coverage(self, base, coverage_data):
-        """
-        Enlighten the database to new coverage data.
-        """
-        self.coverage_data = bake_coverage_addresses(base, coverage_data)
-        self.functions, self.orphans = build_function_coverage(self.coverage_data)
+    #----------------------------------------------------------------------
+    # Metadata Population
+    #----------------------------------------------------------------------
 
-    def finalize(self, palette):
+    def refresh(self, db_metadata):
+        """
+        Refresh the mapping of our coverage data to the database.
+        """
+        self._map_coverage(db_metadata)
+        self._finalize(db_metadata)
+
+    def _finalize(self, db_metadata):
         """
         Finalize coverage data.
         """
-        for function in self.functions.itervalues():
-            function.finalize(palette)
+
+        # finalize node level coverage data
+        for node_coverage in self.nodes.itervalues():
+            node_coverage.finalize(db_metadata.nodes[node_coverage.address], self._palette)
+
+        # finalize function level coverage data
+        for function_coverage in self.functions.itervalues():
+            function_coverage.finalize(db_metadata.functions[function_coverage.address], self._palette)
+
+    #----------------------------------------------------------------------
+    # Coverage Mapping
+    #----------------------------------------------------------------------
+
+    def _map_coverage(self, db_metadata):
+        """
+        Map loaded coverage data to the given database metadata.
+        """
+
+        # clear our existing mapping of coverage objects
+        self.nodes     = {}
+        self.functions = {}
+        self.orphans   = []
+
+        # TODO
+        self._map_nodes(db_metadata)
+
+        # TODO
+        self._map_functions(db_metadata)
+
+        #
+        # We are done processing the coverage data given to us. Now we
+        # enumerate and initialize all the functions that had no coverage.
+        #
+
+        ## NOTE: linear sweep, no reason to use the flowcache here
+        #for function_address in idautils.Functions():
+        #    if function_address not in function_map:
+        #        function  = idaapi.get_func(function_address)
+        #        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
+        #        function_map[function_address] = FunctionCoverage(flowchart)
+
+        ## done, return results
+        #return (function_map, orphans)
+
+    def _map_nodes(self, db_metadata):
+        """
+        Map loaded coverage data to database defined nodes (basic blocks).
+        """
+        assert self.nodes == {}
+
+        #
+        # The purpose of this mega while loop is to process the raw block
+        # based coverage data wrapped by this DatabaseCoverage object and
+        # build a comprehensive mapping of this data to elements of the
+        # database as defined by the given database metadata
+        #
+
+        blocks = collections.deque(self._coverage_data)
+        while blocks:
+
+            # pop off the next work item, eg a coverage block to map to the db
+            address, size = blocks.popleft()
+
+            # why would you have a zero size block??
+            assert size, "Size of coverage block must be non-zero"
+
+            # get the node (basic block) that contains this address
+            try:
+                node_metadata = db_metadata.get_node(address)
+
+            #
+            # failed to locate node (basic block) for this address. this
+            # address must not fall inside of a defined function... mark the
+            # block as an orphan and move on.
+            #
+            #  NOTE/TODO:
+            #    address --> address+size may contain the start of a node, so
+            #    we might actually skip some stuff here...
+            #
+
+            except ValueError:
+                self.orphans.append((address, size))
+                continue
+
+            #
+            # retrieve the coverage object for this node address
+            #
+
+            try:
+                node_coverage = self.nodes[node_metadata.address]
+
+            #
+            # failed to locate a node coverage object, looks like this is
+            # the first time we have identiied coverage for this node.
+            # creaate a coverage node object and use it now.
+            #
+
+            except KeyError as e:
+                node_coverage = NodeCoverage(node_metadata)
+                self.nodes[node_metadata.address] = node_coverage
+
+            #
+            # depending on coverage & bb quality, we also check for
+            # the possibility of a fragment due to the coverage block
+            # spilling into the next basic block.
+            #
+
+            # does the coverage block spill past this basic block?
+            coverage_end = address + size
+            node_end     = node_metadata.address + node_metadata.size
+            if node_end < coverage_end:
+
+                # yes, compute the fragment size and prepend the work
+                # to be consumed later (next iteration, technically)
+                fragment_address = node_end
+                fragment_size    = coverage_end - node_end
+                blocks.appendleft((fragment_address, fragment_size))
+
+        # end of blocks loop
+
+        # done
+        return
+
+    def _map_functions(self, db_metadata):
+        """
+        Map loaded coverage data to database defined nodes (basic blocks).
+        """
+        assert self.functions == {}
+
+        #
+        # TODO: comment cleanup
+        #
+
+        for node_coverage in self.nodes.itervalues():
+            functions = db_metadata.nodes[node_coverage.address].functions
+
+            # loop through every function that references this node so that we
+            for function_metadata in functions.itervalues():
+
+                #
+                # retrieve the coverage object for this function address
+                #
+
+                try:
+                    function_coverage = self.functions[function_metadata.address]
+
+                #
+                # failed to locate a function coverage object, looks like this
+                # is the first time we have identiied coverage for this
+                # function. creaate a coverage function object and use it now.
+                #
+
+                except KeyError as e:
+                    function_coverage = FunctionCoverage(function_metadata)
+                    self.functions[function_metadata.address] = function_coverage
+
+                #
+                # now we taint the basic block that we hit
+                #
+
+                function_coverage.mark_node(node_coverage)
+
+                # TODO: uh, anything else?
+
+            # end of functions loop
+
+        # end of nodes loop
+
+        # done
+        return
 
 #------------------------------------------------------------------------------
 # Function Level Coverage
 #------------------------------------------------------------------------------
 
-class FunctionCoverage(object):
+class FunctionMetadata(object):
     """
-    Manages coverage data at the function level.
-
-    This wraps basic function metadata (address, name, # of nodes, etc)
-    and provides access/metrics to coverage data at a function level.
+    Fast access function level metadata.
     """
 
-    def __init__(self, flowchart, name=None):
+    def __init__(self, address):
 
         # function metadata
-        self.name          = name
-        self.address       = flowchart.bounds.startEA
-        self.size          = 0
+        self.address = address
+        self.name    = None
 
         # node metadata
-        self.nodes      = {}
-        self.exec_nodes = set()
+        self.nodes = {}
 
         # baked metrics
-        self.insn_count = 0
-        self.node_count = 0
-        self.exec_insn_count = 0
-        self.exec_node_count = 0
-
-        # baked colors
-        self.coverage_color  = 0
-        self.profiling_color = 0
+        self.fast_size = 0
+        self.fast_node_count = 0
+        self.fast_instruction_count = 0
 
         # automatically fill the fields we were not passed
-        self._self_populate(flowchart)
+        self.refresh()
 
     @property
-    def instructions(self):
+    def instruction_count(self):
         """
         The number of instructions in this function.
         """
-        return sum(node.instructions for node in self.nodes.itervalues())
+        return sum(node.instruction_count for node in self.nodes.itervalues())
 
     @property
-    def executed_instructions(self):
+    def node_count(self):
         """
-        The number of executed instructions in this function.
+        The number of nodes in this function.
         """
-        return sum(node.instructions for node in self.exec_nodes)
+        return len(self.nodes)
 
     @property
-    def percent_instruction(self):
+    def size(self):
         """
-        The function coverage percentage by instruction execution.
+        The size of the function in bytes (by node contents).
         """
-        try:
-            return (float(self.executed_instructions) / self.instructions)
-        except ZeroDivisionError:
-            return 0
+        return sum(node.size for node in self.nodes.itervalues())
 
-    @property
-    def percent_node(self):
+    def finalize(self):
         """
-        The function coverage percentage by node (basic block) execution.
+        Bake function metadata for faster access.
         """
-        try:
-            return (float(len(self.exec_nodes)) / self.node_count)
-        except ZeroDivisionError:
-            return 0
+        self.fast_size = self.size
+        self.fast_node_count = self.node_count
+        self.fast_instruction_count = self.instruction_count
+        self.name = idaapi.get_func_name2(self.address) # TODO: this seems weird to have here
 
     #----------------------------------------------------------------------
-    # Information Population
+    # Metadata Population
     #----------------------------------------------------------------------
 
-    def _self_populate(self, flowchart):
+    def refresh(self):
         """
-        Populate the function fields against the open IDB.
+        Refresh the function fields against the open IDB.
         """
+        # TODO
+
+        # get function & flowchart object from IDB
+        #function  = idaapi.get_func(self.address)
+        #flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
 
         # get the function name from the database
-        if not self.name:
-            self.name = idaapi.get_func_name2(self.address)
+        #self._refresh_name()
 
         # get the function's nodes from the database
-        if not self.node_count:
-            self._self_populate_nodes(flowchart)
+        #self._refresh_nodes(flowchart)
+        pass
 
-    def _self_populate_nodes(self, flowchart):
+    def _refresh_name(self):
         """
-        Populate the function nodes against the open IDB.
+        Refresh the function name against the open IDB.
         """
-        assert self.size == 0
+        self.name = idaapi.get_func_name2(self.address)
+
+    def _refresh_nodes(self, flowchart):
+        """
+        Refresh the function nodes against the open IDB.
+        """
+
+        # dispose of stale information
+        self.nodes = {}
+        #self.instruction_count = 0 # TODO: profile
 
         #
         # iterate through every node (basic block) in the flowchart for a given
-        # function so that we may initialize a NodeEA --> NodeCoverage map
+        # function so that we may build node level metadata
         #
 
         for node_id in xrange(flowchart.size()):
 
             # first, create a new node coverage item for this node
-            new_node = NodeCoverage(flowchart[node_id], node_id)
+            new_node = NodeMetadata(flowchart[node_id], node_id)
 
+            # TODO: profile
             # add the node's byte size to our computed function size
-            self.size += new_node.size
+            #self.size += new_node.size
+            #self.instruction_count += new_node.instruction_count
 
             # save the node coverage item into our function's node map
             self.nodes[new_node.address] = new_node
 
-        # bake the total node count in so we don't re-compute it repeatedly
+        # TODO: profile
+        # bake function level metrics so they don't get re-computed every use
         self.node_count = flowchart.size()
+        self.size = sum(node.size for node in self.nodes)
+        self.instruction_count = sum(node.instruction_count for node in self.nodes)
+
+    #--------------------------------------------------------------------------
+    # Misc
+    #--------------------------------------------------------------------------
+
+    def name_changed(self, new_name):
+        """
+        Handler for rename event in IDA.
+        """
+        self.name = new_name
+
+#------------------------------------------------------------------------------
+# Metadata Population
+#------------------------------------------------------------------------------
+
+class FunctionCoverage(object):
+    """
+    Function level coverage map.
+    """
+
+    def __init__(self, function_metadata):
+        self.address = function_metadata.address
+
+        # addresses of nodes executed
+        self.executed_nodes = {} # TODO: Weakref?
+
+        # baked colors
+        self.coverage_color  = 0
+        self.profiling_color = 0
+
+        # compute the # of instructions executed by this function's coverage
+        self.instruction_percent = 0.0
+        self.instructions_executed = 0
+        self.node_percent = 0.0
+        self.nodes_executed = 0
+        self.coverage_color = QtGui.QColor(30, 30, 30)
+        self.profiling_color = 0
+
+        # TODO ?
+        #  - was the starting block hit?
+        #  - instruction count
+        #  - byte size
+
+    #@property
+    #def instructions_executed(self):
+    #    """
+    #    The number of executed instructions in this function.
+    #    """
+    #    return sum(node.instruction_count for node in self.exec_nodes)
+
+    #@property
+    #def percent_instruction(self):
+    #    """
+    #    The function coverage percentage by instruction execution.
+    #    """
+    #    try:
+    #        return (float(self.executed_instruction_count) / self.instructions)
+    #    except ZeroDivisionError:
+    #        return 0
+
+    #@property
+    #def percent_node(self):
+    #    """
+    #    The function coverage percentage by node (basic block) execution.
+    #    """
+    #    try:
+    #        return (float(len(self.exec_nodes)) / self.node_count)
+    #    except ZeroDivisionError:
+    #        return 0
 
     #----------------------------------------------------------------------
     # Controls
     #----------------------------------------------------------------------
 
-    def mark_node(self, start_address):
+    def mark_node(self, node_coverage):
         """
-        Add the given node ID to the set of tainted nodes.
+        Mark the given node address as executed.
         """
-        self.exec_nodes.add(self.nodes[start_address])
+        self.executed_nodes[node_coverage.address] = node_coverage
 
-    def finalize(self, palette):
+    def finalize(self, function_metadata, palette):
         """
         Finalize the coverage metrics for faster access.
         """
 
-        # bake metrics
-        self.insn_count = self.instructions
-        self.node_count = len(self.nodes)
-        self.exec_insn_count = self.executed_instructions
-        self.exec_node_count = len(self.exec_nodes)
-        self.insn_percent = self.percent_instruction
-        self.node_percent = self.percent_node
+        # compute the # of instructions executed by this function's coverage
+        self.instructions_executed = 0
+        for node_address in self.executed_nodes.iterkeys():
+            self.instructions_executed += function_metadata.nodes[node_address].instruction_count
+
+        # TODO: profile against fast_instruction_count
+        # compute the % of instructions executed
+        self.instruction_percent = float(self.instructions_executed) / function_metadata.instruction_count
+
+        # TODO: profile, is this really gonna be faster in the long term...?
+        # compute the number of nodes executed
+        self.nodes_executed = len(self.executed_nodes)
+
+        # TODO: profile against fast_node_count
+        # compute the % of nodes executed
+        self.node_percent = float(self.nodes_executed) / function_metadata.node_count
 
         # bake colors
         self.coverage_color = compute_color_on_gradiant(
-            self.insn_percent,
+            self.instruction_percent,
             palette.coverage_bad,
             palette.coverage_good
         )
 
         # TODO
-        #self.profiling_color = None
+        #self.profiling_color = compute_color_on_gradiant(
+        #    self.insn_percent,
+        #    palette.profiling_cold,
+        #    palette.profiling_hot
+        #)
 
 #------------------------------------------------------------------------------
 # Node Level Coverage
 #------------------------------------------------------------------------------
 
-class NodeCoverage(object):
+class NodeMetadata(object):
     """
-    Manages coverage data at the node (basic block) level.
+    Fast access node metadata container.
     """
 
-    def __init__(self, node, node_id):
-        self.address       = node.startEA
-        self.size          = node.endEA - node.startEA
-        self.id            = node_id
-        self.instructions  = 0
+    def __init__(self, node):
+
+        # node metadata
+        self.size = node.endEA - node.startEA
+        self.address = node.startEA
+        self.instruction_count = 0
+
+        # maps function_address --> node_id
+        self.ids = {}
+
+        # maps function_address --> function_metadata
+        self.functions = {}
+
+        # populate the node
+        self.refresh()
+
+    def refresh(self):
+        """
+        TODO
+        """
 
         # loop through the node's entire range and count its instructions
         current_address = self.address
-        while node.endEA > current_address:
-            self.instructions += 1
+        while current_address < self.address + self.size:
+            self.instruction_count += 1
             current_address = idaapi.next_not_tail(current_address)
+
+class NodeCoverage(object):
+    """
+    Manage coverage data at the node (basic block) level.
+
+    TODO
+    """
+    def __init__(self, node_metadata):
+        self.address = node_metadata.address
+
+    def finalize(self, node_metadata, palette):
+        """
+        TODO
+        """
+
+        # bake colors
+        self.coverage_color = 0xFF0000
+        #compute_color_on_gradiant(
+        #    1.0,                   # 100%, 
+        #    palette.coverage_bad,
+        #    palette.coverage_good
+        #)
+
+        # TODO:
+        #self.profiling_color = 0
+
+#------------------------------------------------------------------------------
+# Instruction Level Coverage
+#------------------------------------------------------------------------------
+#
+#   TODO: this will be important for profiling data
+#
 
 #------------------------------------------------------------------------------
 # Coverage Helpers
@@ -229,19 +789,16 @@ def bake_coverage_addresses(base, coverage_blocks):
         coverage_blocks[i] = (base + offset, size)
     return coverage_blocks
 
-def init_function_converage():
+def build_function_converage():
     """
     Build a clean function map ready to populate with future coverage.
     """
     functions = {}
     for function_address in idautils.Functions():
-        function  = idaapi.get_func(function_address)
-        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-        functions[function_address] = FunctionCoverage(flowchart)
+        functions[function_address] = FunctionMetadata(function_address)
     return functions
 
-
-def build_function_coverage(coverage_blocks):
+def build_function_coverage2(coverage_blocks):
     """
     Map block based coverage data to database defined basic blocks (nodes).
 

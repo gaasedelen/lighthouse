@@ -9,16 +9,16 @@ logger = logging.getLogger("Lighthouse.Paint")
 # Painting
 #------------------------------------------------------------------------------
 
-def paint_coverage(coverage, color):
+def paint_coverage(metadata, coverage, color):
     """
     Paint the database using the given coverage.
     """
 
     # paint individual instructions
-    paint_instructions(coverage.coverage_data, color)
+    paint_instructions(coverage._coverage_data, color)
 
     # paint nodes in function graphs
-    paint_nodes(coverage.functions, color)
+    paint_nodes(metadata.nodes, coverage.nodes, color)
 
     # NOTE: We paint hexrays on-request
 
@@ -29,66 +29,73 @@ def paint_coverage(coverage, color):
 def paint_instructions(coverage_blocks, color):
     """
     Paint instructions using the given coverage blocks.
+
+    TODO: Color a region of bytes as specified by address and size.
     """
+
+    # TODO
+
     for address, size in coverage_blocks:
-        color_items(address, size, color)
 
-def color_items(address, size, color):
-    """
-    Color a region of bytes as specified by address and size.
-    """
+        # loop through the entire region (address -> address+size) coloring lines
+        while size > 0:
 
-    # loop through the entire region (address -> address+size) coloring lines
-    while size > 0:
+            # color the current item
+            idaapi.set_item_color(address, color)
 
-        # color the current item
-        idaapi.set_item_color(address, color)
-
-        # move forward to the next item
-        next_address = idaapi.next_not_tail(address)
-        size -= next_address - address
-        address = next_address
-
-    # done
+            # move forward to the next item
+            next_address = idaapi.next_not_tail(address)
+            size -= next_address - address
+            address = next_address
 
 #------------------------------------------------------------------------------
 # Painting - Nodes (Basic Blocks)
 #------------------------------------------------------------------------------
 
-def paint_nodes(functions, color):
+def paint_nodes(nodes_metadata, nodes_coverage, color):
     """
-    Paint function graph nodes using the given function coverages.
-    """
-    for function_coverage in functions.itervalues():
-        color_nodes(function_coverage.address, function_coverage.exec_nodes, color)
-
-def color_nodes(function_address, nodes, color):
-    """
-    Color a list of nodes within the function graph at function_address.
+    Paint function graph nodes using the given node coverages.
     """
 
-    # create node info object with specified color
+    # create a node info object as our vehicle for setting the node color
     node_info = idaapi.node_info_t()
-    node_info.bg_color = color
 
-    # paint the specified nodes
-    for node in nodes:
-        idaapi.set_node_info2(
-            function_address,
-            node.id,
-            node_info,
-            idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
-        )
+    #
+    # loop through every node that we have coverage data for, painting them
+    # in the IDA graph view as applicable.
+    #
+
+    for node_coverage in nodes_coverage.itervalues():
+        node_metadata = nodes_metadata[node_coverage.address]
+
+        # assign the background color we would like to paint to this node
+        node_info.bg_color = node_coverage.coverage_color
+
+        #
+        # remember, nodes may technically be 'shared' between functions,
+        # so we need to paint the node in every function flowchart that
+        # has a reference to it.
+        #
+
+        for function_address, node_id in node_metadata.ids.iteritems():
+
+            # do the *actual* painting of a single node instance
+            idaapi.set_node_info2(
+                function_address,
+                node_id,
+                node_info,
+                idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
+            )
 
 #------------------------------------------------------------------------------
 # Painting - HexRays (Decompilation / Source)
 #------------------------------------------------------------------------------
 
-def paint_hexrays(vdui, function_coverage, color):
+def paint_hexrays(cfunc, metadata, coverage, color):
     """
     Paint decompilation text for the given HexRays Window.
     """
-    decompilation_text = vdui.cfunc.get_pseudocode()
+    decompilation_text = cfunc.get_pseudocode()
 
     #
     # the objective here is to paint hexrays lines that are associated with
@@ -112,7 +119,7 @@ def paint_hexrays(vdui, function_coverage, color):
     # relationship that ties graph nodes (basic blocks) to individual lines.
     #
 
-    line2node = map_line2node(vdui.cfunc, line2citem)
+    line2node = map_line2node(cfunc, metadata, line2citem)
 
     # great, now we have all the information we need to paint
 
@@ -122,8 +129,9 @@ def paint_hexrays(vdui, function_coverage, color):
 
     lines_painted = 0
 
-    # extract the node ids that have been hit by our function's coverage data
-    coverage_indexes = set(node.id for node in function_coverage.exec_nodes)
+    # extract the node addresses that have been hit by our function's coverage data
+    #    NOTE: we use viewkeys() here as it's a free set() for us :-)
+    coverage_nodes = coverage.functions[cfunc.entry_ea].executed_nodes.viewkeys()
 
     #
     # now we loop through every line_number of the decompiled text that claims
@@ -131,14 +139,14 @@ def paint_hexrays(vdui, function_coverage, color):
     # if it contains a node our coverage has marked as executed
     #
 
-    for line_number, node_indexes in line2node.iteritems():
+    for line_number, line_nodes in line2node.iteritems():
 
         #
         # if there is any intersection of nodes on this line and the coverage
-        # data's set of executed nodes, color it
+        # data's set of executed nodes, we are inclined to color it
         #
 
-        if node_indexes & coverage_indexes:
+        if line_nodes & coverage_nodes:
             decompilation_text[line_number].bgcolor = color
             lines_painted += 1
 
@@ -156,7 +164,7 @@ def paint_hexrays(vdui, function_coverage, color):
     # header (variable decleration) lines as their execution will be implied
     #
 
-    for line_number in xrange(0, vdui.cfunc.hdrlines):
+    for line_number in xrange(0, cfunc.hdrlines):
         decompilation_text[line_number].bgcolor = color
         lines_painted += 1
 

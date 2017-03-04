@@ -1,3 +1,4 @@
+import cProfile
 import logging
 import collections
 
@@ -199,9 +200,9 @@ def map_line2citem(decompilation_text):
 
     return line2citem
 
-def map_line2node(cfunc, line2citem):
+def map_line2node(cfunc, metadata, line2citem):
     """
-    Map decompilation line numbers to graph nodes (basic blocks).
+    Map decompilation line numbers to node (basic blocks) addresses.
 
     -----------------------------------------------------------------------
 
@@ -213,18 +214,15 @@ def map_line2node(cfunc, line2citem):
     Output:
 
         +- line2node:
-        |    a map keyed with line numbers, holding sets of node ID's
+        |    a map keyed with line numbers, holding sets of node addresses
         |
-        |      eg: { int(line_number): sets(nodes), ... }
+        |      eg: { int(line_number): set(nodes), ... }
         '
 
     """
-    line2node, cached_base = {}, 0
-
-    # bake items for faster access
+    line2node = {}
     treeitems = cfunc.treeitems
-    flowchart = map_flowchart(cfunc.entry_ea)
-    flowchart_size = len(flowchart)
+    function_address = cfunc.entry_ea
 
     #
     # prior to this function, a line2citem map was built to tell us which
@@ -249,49 +247,22 @@ def map_line2node(cfunc, line2citem):
             item = treeitems[index]
             address = item.ea
 
-            #
-            # walk the flowchart for this function and find the graph node
-            # (eg, basic block) that generated this citem
-            #
+            # find the graph node (eg, basic block) that generated this citem
+            try:
+                node = metadata.get_node(address)
 
-            for index in xrange(flowchart_size):
-                node_id = (cached_base + index) % flowchart_size
-                startEA, endEA = flowchart[node_id]
-
-                #
-                # does this citem address point into this graph node? if so,
-                # consider it a match, and break so we can save this node_id
-                #
-
-                if startEA <= address < endEA:
-                    break
-
-            #
-            # we never broke from the loop which means that the current citem
-            # could not be mapped to a node... weird. continue to the next citem
-            #
-
-            else:
+            # address not mapped to a node... weird. continue to the next citem
+            except ValueError:
                 #logger.warning("Failed to map node to basic block")
                 continue
 
             #
-            # we broke from walking the flowchart, so we must have found a node
-            # that contains this citem. save the computed node_id to the list of
-            # of known nodes we have associated with this line of text
+            # we made it this far, so we must have found a node that contains
+            # this citem. save the computed node_id to the list of of known
+            # nodes we have associated with this line of text
             #
 
-            nodes.add(node_id)
-
-            #
-            # to expedite future citem lookups, we cache the node_id we hit on
-            # for this flowchart walk, and use it as the starting point for the
-            # subsequent search. It's more likely than not that the next citem
-            # will fall in the same node, or one closer to this node than the
-            # start of the flowchart (eg, node_id = 0)
-            #
-
-            cached_base = node_id
+            nodes.add(node.address)
 
         #
         # finally, save the completed list of node ids as identified for this
