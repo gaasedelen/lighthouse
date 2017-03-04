@@ -199,11 +199,12 @@ class DrcovData(object):
         """
         Parse drcov log basic block table entries from filestream.
         """
-        self.basic_blocks = [DrcovBasicBlock() for x in xrange(self.bb_table_count)]
 
-        # loop through each *expected* line/blob in the bb table and parse it
-        for basic_block in self.basic_blocks:
-            f.readinto(basic_block)
+        # allocate the ctypes structure array of basic blocks
+        self.basic_blocks = (DrcovBasicBlock * self.bb_table_count)()
+
+        # read the basic block entries directly into the newly allocated array
+        f.readinto(self.basic_blocks)
 
 #------------------------------------------------------------------------------
 # drcov module parser
@@ -270,6 +271,7 @@ class DrcovBasicBlock(Structure):
         } bb_entry_t;
 
     """
+    _pack_   = 1
     _fields_ = [
         ('start',  c_uint32),
         ('size',   c_uint16),
