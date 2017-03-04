@@ -195,7 +195,7 @@ class DatabaseCoverage(object):
                 #
 
                 except KeyError as e:
-                    function_coverage = FunctionCoverage(function_metadata)
+                    function_coverage = FunctionCoverage(function_metadata.address)
                     self.functions[function_metadata.address] = function_coverage
 
                 #
@@ -222,8 +222,8 @@ class FunctionCoverage(object):
     Function level coverage map.
     """
 
-    def __init__(self, function_metadata):
-        self.address = function_metadata.address
+    def __init__(self, function_address):
+        self.address = function_address
 
         # addresses of nodes executed
         self.executed_nodes = {} # TODO: Weakref?
@@ -328,7 +328,7 @@ class NodeCoverage(object):
 
     TODO
     """
-    def __init__(self, node_metadata):
+    def __init__(self, node_metadata): # TODO: change to node address?
         self.address = node_metadata.address
 
     def finalize(self, node_metadata, palette):

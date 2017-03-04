@@ -37,7 +37,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
     def __init__(self, parent=None):
         super(CoverageModel, self).__init__(parent)
-        self._blank_coverage = FunctionCoverage(FunctionMetadata(idaapi.BADADDR)) # TODO: kinda dirty
+        self._blank_coverage = FunctionCoverage(idaapi.BADADDR)
 
         # a map to correlate a given row in the table to the function coverage
         self._rows = 0
