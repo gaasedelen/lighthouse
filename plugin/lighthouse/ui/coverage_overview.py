@@ -1,7 +1,8 @@
 import idaapi
 import logging
 from lighthouse.util import *
-from lighthouse.coverage import FunctionCoverage, FunctionMetadata
+from lighthouse.metadata import FunctionMetadata
+from lighthouse.coverage import FunctionCoverage
 
 from operator import itemgetter, attrgetter
 
@@ -368,34 +369,17 @@ class CoverageOverview(idaapi.PluginForm):
         self._director = director
         self._model = CoverageModel()
 
-    def refresh(self):
-        """
-        TODO
-        """
-        self._model.update_model(self._director.metadata, self._director.coverage)
+        # initialize UI elements
+        self._ui_init()
 
-    def Show(self):
-        """
-        Show the dialog.
-        """
-        return super(CoverageOverview, self).Show(
-            self._title,
-            options=idaapi.PluginForm.FORM_PERSIST
-        )
+    #--------------------------------------------------------------------------
+    # Initialization - UI
+    #--------------------------------------------------------------------------
 
-    def OnCreate(self, form):
+    def _ui_init(self):
         """
-        Called when the view is created.
+        Initialize UI elements.
         """
-
-        # NOTE/COMPAT
-        if using_pyqt5():
-            self.parent = self.FormToPyQtWidget(form)
-        else:
-            self.parent = self.FormToPySideWidget(form)
-
-        # set window icon to the coverage overview icon
-        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
 
         #
         # coverage list table
@@ -429,14 +413,13 @@ class CoverageOverview(idaapi.PluginForm):
         self.active_coverage_combobox = QtGui.QComboBox()
         self.active_coverage_combobox.setStyleSheet("QComboBox { padding-left: 2ex; padding-right: 2ex; }")
         self.active_coverage_combobox.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToContents)
-        self.active_coverage_combobox.addItems(list(self._director.loaded_filenames))
-
+        self.active_coverage_combobox.addItems(list(self._director.coverage_names))
 
         # checkbox to hide 0% coverage entries
         self.hide_zero_label    = QtWidgets.QLabel("Hide 0% Coverage: ")
         self.hide_zero_checkbox = QtWidgets.QCheckBox()
 
-        # populate the toolbar
+        # layout/populate the toolbar
         self.toolbar.addWidget(self.active_coverage_label)
         self.toolbar.addWidget(self.active_coverage_combobox)
         self.toolbar.addSeparator()
@@ -454,15 +437,18 @@ class CoverageOverview(idaapi.PluginForm):
         self.active_coverage_combobox.activated[str].connect(self._ui_active_coverage_changed)
         self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
 
-        #
-        # ui layout
-        #
+    def _ui_layout(self):
+        """
+        Layout the major UI elements of the window.
+        """
+        assert self.parent
 
+        # layout the major elements of our window
         layout = QtWidgets.QGridLayout()
         layout.addWidget(self.table)
         layout.addWidget(self.toolbar)
 
-        # install layout
+        # apply the widget layout to the window
         self.parent.setLayout(layout)
 
     #--------------------------------------------------------------------------
@@ -485,6 +471,7 @@ class CoverageOverview(idaapi.PluginForm):
         """
         Handle selection change of active coverage combobox.
         """
+        print "got coverage changed signal"
         self._director.select_coverage(coverage_name)
         self.refresh()
 
@@ -493,6 +480,67 @@ class CoverageOverview(idaapi.PluginForm):
         Handle state change of 'Hide 0% Coverage' checkbox.
         """
         self._model.hide_zero_coverage(checked)
+
+    #--------------------------------------------------------------------------
+    # PluginForm Overloads
+    #--------------------------------------------------------------------------
+
+    def Show(self):
+        """
+        Show the dialog.
+        """
+        return super(CoverageOverview, self).Show(
+            self._title,
+            options=idaapi.PluginForm.FORM_PERSIST
+        )
+
+    def OnCreate(self, form):
+        """
+        Called when the view is created.
+        """
+
+        # NOTE/COMPAT
+        if using_pyqt5():
+            self.parent = self.FormToPyQtWidget(form)
+        else:
+            self.parent = self.FormToPySideWidget(form)
+
+        # set window icon to the coverage overview icon
+        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
+
+        # layout the populated ui just before showing it
+        self._ui_layout()
+
+    #--------------------------------------------------------------------------
+    # Controls
+    #--------------------------------------------------------------------------
+
+    def refresh(self):
+        """
+        TODO
+        """
+        self._model.update_model(self._director.metadata, self._director.coverage)
+        self._ui_refresh_active_coverage_combobox()
+
+    #--------------------------------------------------------------------------
+    # Refresh Internals
+    #--------------------------------------------------------------------------
+
+    def _ui_refresh_active_coverage_combobox(self):
+        """
+        Refresh the active coverage combobox.
+        """
+
+        # clear the active coverage combobox
+        self.active_coverage_combobox.clear()
+
+        # re-populate the combobox with the latest coverage names
+        new_items = list(self._director.coverage_names)
+        self.active_coverage_combobox.addItems(new_items)
+
+        # select the index with the correct coverage name as the 'active' coverage
+        new_index = new_items.index(self._director.coverage_name)
+        self.active_coverage_combobox.setCurrentIndex(new_index)
 
 #------------------------------------------------------------------------------
 # Painting

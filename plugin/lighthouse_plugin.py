@@ -6,7 +6,8 @@ from idaapi import plugin_t
 from lighthouse.ui import *
 from lighthouse.util import *
 from lighthouse.parsers import *
-from lighthouse.coverage import *
+from lighthouse.director import CoverageDirector
+from lighthouse.painting import paint_hexrays
 
 # start the global logger *once*
 if not logging_started():
@@ -41,7 +42,6 @@ class Lighthouse(plugin_t):
 
         # plugin color palette
         self.palette = LighthousePalette()
-        self.color = 0
 
         #----------------------------------------------------------------------
 
@@ -52,7 +52,7 @@ class Lighthouse(plugin_t):
         self._hxe_events = None
 
         # plugin qt elements
-        self._ui_coverage_list = CoverageOverview(self.director)
+        self._ui_coverage_overview = CoverageOverview(self.director)
 
         # members for the 'Load Code Coverage' menu entry
         self._icon_id_load     = idaapi.BADADDR
@@ -119,10 +119,10 @@ class Lighthouse(plugin_t):
         """
         self._install_ui()
 
-        # TODO/NOTE: let's delay these till coverage load instead
+        # NOTE: let's delay these till coverage load instead
         #self._install_hexrays_hooks()
 
-    def _install_hexrays_hooks(self, _=None):
+    def _install_hexrays_hooks(self):
         """
         Install Hexrays hook listeners.
         """
@@ -133,7 +133,7 @@ class Lighthouse(plugin_t):
 
         # ensure hexrays is loaded & ready for use
         if not idaapi.init_hexrays_plugin():
-            raise RuntimeError("HexRays is not available yet")
+            raise RuntimeError("HexRays not available for hooking")
 
         #
         # map our callback function to an actual member since we can't properly
@@ -144,7 +144,7 @@ class Lighthouse(plugin_t):
         self._hxe_events = self._hexrays_callback
 
         # install the callback handler
-        idaapi.install_hexrays_callback(self._hxe_events)
+        assert idaapi.install_hexrays_callback(self._hxe_events)
 
     def print_banner(self):
         """
@@ -182,7 +182,6 @@ class Lighthouse(plugin_t):
 
         # createa a custom IDA icon
         self._icon_id_load = idaapi.load_custom_icon(
-            #data=str(QtCore.QResource(":/icons/overview.png").data())
             data=str(open(resource_file("icons/load.png"), "rb").read())
         )
 
@@ -220,7 +219,6 @@ class Lighthouse(plugin_t):
 
         # createa a custom IDA icon
         self._icon_id_overview = idaapi.load_custom_icon(
-            #data=str(QtCore.QResource(":/icons/overview.png").data())
             data=str(open(resource_file("icons/overview.png"), "rb").read())
         )
 
@@ -260,7 +258,19 @@ class Lighthouse(plugin_t):
         Cleanup & uninstall the plugin from IDA.
         """
         self._uninstall_ui()
-        # TODO: uninstall hxe hooks
+        self._uninstall_hexrays_hooks()
+
+    def _uninstall_hexrays_hooks(self):
+        """
+        Cleanup & uninstall Hexrays hook listeners.
+        """
+        if not self._hxe_events:
+            return
+
+        # remove the callbacks
+        #    NOTE: w/e IDA removes this anyway.....
+        #idaapi.remove_hexrays_callback(self._hxe_events)
+        self._hxe_events = None
 
     #--------------------------------------------------------------------------
     # Termination - UI
@@ -375,10 +385,6 @@ class Lighthouse(plugin_t):
         # select the 'first' coverage file loaded
         self.director.select_coverage(os.path.basename(coverage_files[0]))
 
-        # TODO: uncomment
-        # done loading coverage files, bake metrics
-        #self.db_coverage.finalize(self.palette)
-
         # install hexrays hooks if available for this arch/install
         try:
             self._install_hexrays_hooks()
@@ -394,10 +400,10 @@ class Lighthouse(plugin_t):
         """
 
         # TODO: ensure the database coverage is installed in the coverage overview
-        self._ui_coverage_list.refresh()
+        self._ui_coverage_overview.refresh()
 
         # make the coverage overview visible
-        self._ui_coverage_list.Show()
+        self._ui_coverage_overview.Show()
 
     def _select_code_coverage_files(self):
         """
