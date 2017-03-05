@@ -8,23 +8,72 @@ from lighthouse.painting import *
 logger = logging.getLogger("Lighthouse.Coverage")
 
 #------------------------------------------------------------------------------
+# Coverage
+#------------------------------------------------------------------------------
+#
+#    The primary role of the director is to centralize the loaded coverage
+#    and provide a platform for researchers to explore the relationship
+#    between multiple coverage sets.
+#
+#    Raw coverage data passed into the director is stored internally in
+#    DatabaseCoverage objects. A DatabaseCoverage object can be roughly
+#    equated to a loaded coverage file as it maps to the open database.
+#
+#    DatabaseCoverage objects simply map their raw coverage data to the
+#    database using the lifted metadata described in metadata.py. The
+#    coverage objects are effectively generated as a thin layer on top of
+#    cached metadata.
+#
+#    As coverage objects retain the raw coverage data internally, we are
+#    able to rebuild coverage mappings should the database/metadata get
+#    updated or refreshed by the user.
+#
+#    ----------------------------------------------------------------------
+#
+#    Note that this file / the coverage structures are still largely a
+#    work in progress and likely to change in the near future.
+#
+
+#------------------------------------------------------------------------------
 # Database Level Coverage
 #------------------------------------------------------------------------------
 
 class DatabaseCoverage(object):
     """
-    Database level coverage map.
+    Database level coverage mapping.
     """
 
     def __init__(self, base, coverage_data, palette):
-        self._coverage_data = bake_coverage_addresses(base, coverage_data)
+
+        #
+        # for now, we simply pass in the 'global' Lighthouse palette
+        # to each database level coverage object. But in the future,
+        # perhaps we will want to paint coverages with unique palettes.
+        #
+
         self._palette = palette
 
-        # coverage objects
+        #
+        # here we effectively translate the raw block based coveage from
+        # (offset,size) to (base+offset,size), effectively baking them
+        # into absolute addresses.
+        #
+        # this was originally done for perfomance concerns such that every
+        # usage of a block from the 'raw' coverage data required a compute
+        # of offset+size to get its 'usable' address.
+        #
+        # this may be refactored in the future
+        #
+
+        self._base = base
+        self._coverage_data = bake_coverage_addresses(base, coverage_data)
+
+        # maps for the child coverage objects
         self.nodes     = {}
         self.functions = {}
 
-        # orphan coverage blocks
+        # a list of orphan coverage blocks that could NOT be mapped to
+        # defined functions or nodes in the database
         self.orphans = []
 
     #----------------------------------------------------------------------
@@ -33,7 +82,7 @@ class DatabaseCoverage(object):
 
     def refresh(self, db_metadata):
         """
-        Refresh the mapping of our coverage data to the database.
+        Refresh the mapping of our coverage data to the database metadata.
         """
         self._map_coverage(db_metadata)
         self._finalize(db_metadata)
@@ -71,21 +120,6 @@ class DatabaseCoverage(object):
         # TODO
         self._map_functions(db_metadata)
 
-        #
-        # We are done processing the coverage data given to us. Now we
-        # enumerate and initialize all the functions that had no coverage.
-        #
-
-        ## NOTE: linear sweep, no reason to use the flowcache here
-        #for function_address in idautils.Functions():
-        #    if function_address not in function_map:
-        #        function  = idaapi.get_func(function_address)
-        #        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-        #        function_map[function_address] = FunctionCoverage(flowchart)
-
-        ## done, return results
-        #return (function_map, orphans)
-
     def _map_nodes(self, db_metadata):
         """
         Map loaded coverage data to database defined nodes (basic blocks).
@@ -95,17 +129,21 @@ class DatabaseCoverage(object):
         #
         # The purpose of this mega while loop is to process the raw block
         # based coverage data wrapped by this DatabaseCoverage object and
-        # build a comprehensive mapping of this data to elements of the
-        # database as defined by the given database metadata
+        # build a comprehensive mapping of this data to nodes (basic
+        # blocks) as defined by the given database metadata
+        #
+        # It should be noted that the rest of the database coverage
+        # mapping (eg functions) gets built ontop of the mappings we build
+        # for nodes here using the raw coverage data.
         #
 
         blocks = collections.deque(self._coverage_data)
         while blocks:
 
-            # pop off the next work item, eg a coverage block to map to the db
+            # retrieve the next coverage block to map to the database
             address, size = blocks.popleft()
 
-            # why would you have a zero size block??
+            # why would you have a zero size block?!?
             assert size, "Size of coverage block must be non-zero"
 
             # get the node (basic block) that contains this address
@@ -118,8 +156,8 @@ class DatabaseCoverage(object):
             # block as an orphan and move on.
             #
             #  NOTE/TODO:
-            #    address --> address+size may contain the start of a node, so
-            #    we might actually skip some stuff here...
+            #    address --> address+size may contain the start of a
+            #    nearby node, so we might actually skip some stuff here...
             #
 
             except ValueError:
@@ -149,13 +187,17 @@ class DatabaseCoverage(object):
             # spilling into the next basic block.
             #
 
-            # does the coverage block spill past this basic block?
+            # does the coverage block spill past this node??
             coverage_end = address + size
             node_end     = node_metadata.address + node_metadata.size
             if node_end < coverage_end:
 
-                # yes, compute the fragment size and prepend the work
-                # to be consumed later (next iteration, technically)
+                #
+                # yes this coverage block spills into the next node,
+                # compute the size of this fragment and prepend the work
+                # to be processed later (the next iteration, technically)
+                #
+
                 fragment_address = node_end
                 fragment_size    = coverage_end - node_end
                 blocks.appendleft((fragment_address, fragment_size))
@@ -167,18 +209,36 @@ class DatabaseCoverage(object):
 
     def _map_functions(self, db_metadata):
         """
-        Map loaded coverage data to database defined nodes (basic blocks).
+        Map loaded coverage data to database defined functions.
         """
         assert self.functions == {}
 
         #
-        # TODO: comment cleanup
+        # thanks to the _map_nodes function, we now have a repository of
+        # node coverage objects (self.nodes) that can be used to preciesly
+        # guide the generation of our function level coverage objects
+        #
+
+        #
+        # we loop through every node coverage object
         #
 
         for node_coverage in self.nodes.itervalues():
+
+            #
+            # using the node_coverage object, we retrieve its underlying
+            # metadata so that we can perform a reverse lookup of all the
+            # functions in the database that reference this node
+            #
+
             functions = db_metadata.nodes[node_coverage.address].functions
 
-            # loop through every function that references this node so that we
+            #
+            # now we can loop through every function that references this
+            # node and initialize or add this node to its respective
+            # coverage mapping
+            #
+
             for function_metadata in functions.itervalues():
 
                 #
@@ -199,34 +259,32 @@ class DatabaseCoverage(object):
                     self.functions[function_metadata.address] = function_coverage
 
                 #
-                # now we taint the basic block that we hit
+                # finally, we can taint this node in the function level mapping
                 #
 
                 function_coverage.mark_node(node_coverage)
 
-                # TODO: uh, anything else?
+                # end of functions loop
 
-            # end of functions loop
-
-        # end of nodes loop
+            # end of nodes loop
 
         # done
         return
 
 #------------------------------------------------------------------------------
-# TODO
+# Function Level Coverage
 #------------------------------------------------------------------------------
 
 class FunctionCoverage(object):
     """
-    Function level coverage map.
+    Function level coverage mapping.
     """
 
     def __init__(self, function_address):
         self.address = function_address
 
         # addresses of nodes executed
-        self.executed_nodes = {} # TODO: Weakref?
+        self.executed_nodes = {}
 
         # baked colors
         self.coverage_color  = 0
@@ -237,40 +295,9 @@ class FunctionCoverage(object):
         self.instructions_executed = 0
         self.node_percent = 0.0
         self.nodes_executed = 0
+
         self.coverage_color = QtGui.QColor(30, 30, 30)
         self.profiling_color = 0
-
-        # TODO ?
-        #  - was the starting block hit?
-        #  - instruction count
-        #  - byte size
-
-    #@property
-    #def instructions_executed(self):
-    #    """
-    #    The number of executed instructions in this function.
-    #    """
-    #    return sum(node.instruction_count for node in self.exec_nodes)
-
-    #@property
-    #def percent_instruction(self):
-    #    """
-    #    The function coverage percentage by instruction execution.
-    #    """
-    #    try:
-    #        return (float(self.executed_instruction_count) / self.instructions)
-    #    except ZeroDivisionError:
-    #        return 0
-
-    #@property
-    #def percent_node(self):
-    #    """
-    #    The function coverage percentage by node (basic block) execution.
-    #    """
-    #    try:
-    #        return (float(len(self.exec_nodes)) / self.node_count)
-    #    except ZeroDivisionError:
-    #        return 0
 
     #----------------------------------------------------------------------
     # Controls
@@ -292,15 +319,12 @@ class FunctionCoverage(object):
         for node_address in self.executed_nodes.iterkeys():
             self.instructions_executed += function_metadata.nodes[node_address].instruction_count
 
-        # TODO: profile against fast_instruction_count
         # compute the % of instructions executed
         self.instruction_percent = float(self.instructions_executed) / function_metadata.instruction_count
 
-        # TODO: profile, is this really gonna be faster in the long term...?
         # compute the number of nodes executed
         self.nodes_executed = len(self.executed_nodes)
 
-        # TODO: profile against fast_node_count
         # compute the % of nodes executed
         self.node_percent = float(self.nodes_executed) / function_metadata.node_count
 
@@ -319,15 +343,21 @@ class FunctionCoverage(object):
         #)
 
 #------------------------------------------------------------------------------
-# TODO
+# Node Level Coverage
 #------------------------------------------------------------------------------
 
 class NodeCoverage(object):
     """
-    Manage coverage data at the node (basic block) level.
+    Node (basic block) level coverage mapping.
 
-    TODO
+    NOTE:
+
+      At the moment this class is pretty bare and arguably unecessary. But
+      I have faith that it will find its place as Lighthouse matures and
+      features such as profiling / hit tracing are explicitly added.
+
     """
+
     def __init__(self, node_metadata): # TODO: change to node address?
         self.address = node_metadata.address
 
@@ -337,15 +367,8 @@ class NodeCoverage(object):
         """
 
         # bake colors
-        self.coverage_color = 0xFF0000
-        #compute_color_on_gradiant(
-        #    1.0,                   # 100%, 
-        #    palette.coverage_bad,
-        #    palette.coverage_good
-        #)
-
-        # TODO:
-        #self.profiling_color = 0
+        self.coverage_color = palette.ida_coverage
+        #self.profiling_color = 0 # TODO
 
 #------------------------------------------------------------------------------
 # Coverage Helpers

@@ -1,5 +1,4 @@
 import os
-import time
 
 from idaapi import plugin_t
 
@@ -344,43 +343,39 @@ class Lighthouse(plugin_t):
             return
 
         #
-        # collect underlying database metadata so that the plugin core can
-        # process, map, and manipulate coverage data in a performant manner.
-        #
-        # TODO: do this asynchronously as the user is selecting files
-        #
-
-        #----------------------- TODO - REMOVE ----------------------------------
-        lmsg("Building metadata...")
-        start = time.time()
-        #----------------------- TODO - REMOVE ----------------------------------
-
-        idaapi.show_wait_box("Building database metadata...")
-        self.director.refresh()
-
-        #----------------------- TODO - REMOVE ----------------------------------
-        end = time.time()
-        lmsg("Took %f seconds to build metadata" % (end-start))
-        #----------------------- TODO - REMOVE ----------------------------------
-
-        #
-        # load the selected code coverage files into the plugin core
+        # I do not hold great confidence in this code yet, so let's wrap
+        # this in a try/catch so the user doesn't get stuck with a wait
+        # box they can't close should things go poorly
         #
 
-        #----------------------- TODO - REMOVE ----------------------------------
-        lmsg("Loading coverage files...")
-        start = time.time()
-        #----------------------- TODO - REMOVE ----------------------------------
+        try:
 
-        idaapi.replace_wait_box("Loading coverage files from disk...")
-        for filename in coverage_files:
-            self.load_code_coverage_file(filename)
-        idaapi.hide_wait_box()
+            #
+            # collect underlying database metadata so that the plugin core can
+            # process, map, and manipulate coverage data in a performant manner.
+            #
+            # TODO: do this asynchronously as the user is selecting files
+            #
 
-        #----------------------- TODO - REMOVE ----------------------------------
-        end = time.time()
-        lmsg("Took %f seconds to load all the coverage files" % (end-start))
-        #----------------------- TODO - REMOVE ----------------------------------
+            idaapi.show_wait_box("Building database metadata...")
+            self.director.refresh()
+
+            #
+            # load the selected code coverage files into the plugin core
+            #
+
+            idaapi.replace_wait_box("Loading coverage files from disk...")
+            for filename in coverage_files:
+                self.load_code_coverage_file(filename)
+            idaapi.hide_wait_box()
+
+        # 'something happened :('
+        except Exception as e:
+            idaapi.hide_wait_box()
+            lmsg("Failed to load coverage:")
+            lmsg("- %s" % e)
+            logger.exception(e)
+            return
 
         # select the 'first' coverage file loaded
         self.director.select_coverage(os.path.basename(coverage_files[0]))
@@ -428,7 +423,6 @@ class Lighthouse(plugin_t):
     # Misc
     #--------------------------------------------------------------------------
 
-    #@profile
     def load_code_coverage_file(self, filename):
         """
         Load code coverage file by filename.
@@ -467,7 +461,7 @@ class Lighthouse(plugin_t):
                 cfunc,
                 self.director.metadata,
                 self.director.coverage,
-                self.palette.paint_dark # TODO: draw color based on theme
+                self.palette.ida_coverage
             )
 
         return 0
@@ -496,10 +490,32 @@ class LighthousePalette(object):
         #self.coverage_bad  = QtGui.QColor(207, 31, 0)
         #self.coverage_good = QtGui.QColor(75, 209, 42)
 
-        # TODO: unused for now
-        self.profiling_cold = QtGui.QColor(0,0,0)
-        self.profiling_hot  = QtGui.QColor(0,0,0)
+        # possible colors used for painting coverage in disassembly/graph/hexrays
+        self._ida_coverage_dark  = 0x00990000    # NOTE: IDA uses BBGGRR
+        self._ida_coverage_light = 0x00C8E696
 
-        # color used for painting disassembly/graph/hexrays
-        self.paint_dark  = 0x00990000    # NOTE: IDA uses BBGGRR
-        self.paint_light = 0x00C8E696
+        # dynamically computed based on IDA skin
+        self.ida_coverage = 0x00000000
+
+        # TODO: unused for now
+        #self.profiling_cold = QtGui.QColor(0,0,0)
+        #self.profiling_hot  = QtGui.QColor(0,0,0)
+
+    def refresh_colors(self):
+        """
+        Dynamically compute palette color based on IDA theme.
+
+        Depending on if IDA is using a dark or light theme, we *try*
+        to select colors that will hopefully keep things most readable.
+        """
+
+        #
+        # determine whether to use a 'dark' or 'light' paint based on the
+        # background color of the user's disassembly view
+        #
+
+        bg_color = get_disas_bg_color()
+        if bg_color.lightness() > 255.0/2:
+            self.ida_coverage = self._ida_coverage_light
+        else:
+            self.ida_coverage = self._ida_coverage_dark

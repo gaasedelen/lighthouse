@@ -9,6 +9,45 @@ from lighthouse.util import *
 logger = logging.getLogger("Lighthouse.Metadata")
 
 #------------------------------------------------------------------------------
+# Metadata
+#------------------------------------------------------------------------------
+#
+#    To aid in performance, the director lifts and indexes a limited
+#    representation of the database (referred to as 'metadata' in code.)
+#
+#    This lifted metadata effectively eliminates what becomes otherwise
+#    costly runtime communication between the director and IDA. It is also
+#    tailored for efficiency and speed to complement our needs. Once built,
+#    the metadata cache stands completely independent of IDA.
+#
+#    This opens up a realm of interesting possibilities. With this model,
+#    we can easily move any heavy director based compute to asynchrnous
+#    python-only threads without disrupting the user, or IDA.
+#
+#    However, there are two main caveats of this model -
+#
+#    1. The cached 'metadata' representation may not always be true to
+#       state of the database. For example, if the user defines/undefines
+#       functions, the metadata cache will not be aware of such changes.
+#
+#       Lighthouse will try to update the director's metadata cache when
+#       applicable, but there are instances when it will be in the best
+#       interest of the user to manually trigger a refresh of the metadata.
+#
+#    2. Building the metadata comes with an upfront cost, but this cost has
+#       been reduced as much as possible. For example, generating metadata
+#       for a database with ~17k functions, ~95k nodes (basic blocks), and
+#       ~563k instructions takes only ~2.5 seconds.
+#
+#       This will be negligible for small-medium sized databases, but may
+#       still be jarring for larger databases.
+#
+#    Ultimately, this model provides us responsive user experience at the
+#    expense of the ocassional inaccuracies that can be corrected by a
+#    reasonably low cost refresh.
+#
+
+#------------------------------------------------------------------------------
 # Database Level Metadata
 #------------------------------------------------------------------------------
 

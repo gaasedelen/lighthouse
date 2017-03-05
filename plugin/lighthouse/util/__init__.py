@@ -7,6 +7,10 @@ from ida import *
 from log import lmsg, logging_started, start_logging
 from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
 
+#------------------------------------------------------------------------------
+# Profiling / Testing Helpers
+#------------------------------------------------------------------------------
+
 pr = cProfile.Profile()
 
 def profile(func):
@@ -21,6 +25,41 @@ def profile(func):
         pr.print_stats(sort="tottime")
         return result
     return wrap
+
+# portable line profiler
+# from: https://gist.github.com/sibelius/3920b3eb5adab482b105
+try:
+    from line_profiler import LineProfiler
+    def line_profile(func):
+        def profiled_func(*args, **kwargs):
+            try:
+                profiler = LineProfiler()
+                profiler.add_function(func)
+                profiler.enable_by_count()
+                return func(*args, **kwargs)
+            finally:
+                profiler.print_stats()
+        return profiled_func
+
+except ImportError:
+    def line_profile(func):
+        def nothing(*args, **kwargs):
+            return func(*args, **kwargs)
+        return nothing
+
+#from line_profiler import LineProfiler
+#lpr = LineProfiler()
+
+#import lighthouse.metadata as metadata_module
+#lpr.add_module(metadata_module)
+#global lpr
+#lpr.enable_by_count()
+#lpr.disable_by_count()
+#lpr.print_stats()
+
+#------------------------------------------------------------------------------
+# Misc
+#------------------------------------------------------------------------------
 
 def get_disas_bg_color():
     """
@@ -55,6 +94,8 @@ def get_disas_bg_color():
 def compute_color_on_gradiant(percent, color1, color2):
     """
     Compute the color specified by a percent between two colors.
+
+    TODO: This is silly, heavy, and can be refactored.
     """
 
     # dump the rgb values from QColor objects

@@ -1,4 +1,6 @@
 import logging
+
+import idc
 import idaapi
 
 from lighthouse.util.ida import *
@@ -15,25 +17,30 @@ def paint_coverage(metadata, coverage, color):
     """
 
     # paint individual instructions
-    paint_instructions(coverage._coverage_data, color)
+    paint_instruction_coverage(coverage._coverage_data, color)
 
     # paint nodes in function graphs
-    paint_nodes(metadata.nodes, coverage.nodes, color)
+    paint_node_coverage(metadata.nodes, coverage.nodes)
 
     # NOTE: We paint hexrays on-request
+
+def unpaint_coverage(metadata, coverage):
+    """
+    Unpaint the database using the given coverage.
+
+    TODO: this will be refactored in v0.3.0
+    """
+    unpaint_instruction_coverage(coverage._coverage_data)
+    unpaint_node_coverage(metadata.nodes, coverage.nodes)
 
 #------------------------------------------------------------------------------
 # Painting - Instructions / Items (Lines)
 #------------------------------------------------------------------------------
 
-def paint_instructions(coverage_blocks, color):
+def paint_instruction_coverage(coverage_blocks, color):
     """
     Paint instructions using the given coverage blocks.
-
-    TODO: Color a region of bytes as specified by address and size.
     """
-
-    # TODO
 
     for address, size in coverage_blocks:
 
@@ -48,11 +55,32 @@ def paint_instructions(coverage_blocks, color):
             size -= next_address - address
             address = next_address
 
+def unpaint_instruction_coverage(coverage_blocks):
+    """
+    Unpaint instructions using the given coverage blocks.
+
+    TODO: this will be refactored in v0.3.0
+    """
+    color = idc.DEFCOLOR
+
+    for address, size in coverage_blocks:
+
+        # loop through the entire region (address -> address+size) clearing lines
+        while size > 0:
+
+            # color the current item
+            idaapi.set_item_color(address, color)
+
+            # move forward to the next item
+            next_address = idaapi.next_not_tail(address)
+            size -= next_address - address
+            address = next_address
+
 #------------------------------------------------------------------------------
 # Painting - Nodes (Basic Blocks)
 #------------------------------------------------------------------------------
 
-def paint_nodes(nodes_metadata, nodes_coverage, color):
+def paint_node_coverage(nodes_metadata, nodes_coverage):
     """
     Paint function graph nodes using the given node coverages.
     """
@@ -75,6 +103,41 @@ def paint_nodes(nodes_metadata, nodes_coverage, color):
         # remember, nodes may technically be 'shared' between functions,
         # so we need to paint the node in every function flowchart that
         # has a reference to it.
+        #
+
+        for function_address, node_id in node_metadata.ids.iteritems():
+
+            # do the *actual* painting of a single node instance
+            idaapi.set_node_info2(
+                function_address,
+                node_id,
+                node_info,
+                idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
+            )
+
+def unpaint_node_coverage(nodes_metadata, nodes_coverage):
+    """
+    Unpaint function graph nodes using the given node coverages.
+
+    TODO: this will be refactored in v0.3.0
+    """
+
+    # create a node info object as our vehicle for resetting the node color
+    node_info = idaapi.node_info_t()
+    node_info.bg_color = idc.DEFCOLOR
+
+    #
+    # loop through every node that we have coverage data for, clearing
+    # their paint (color) in the IDA graph view as applicable.
+    #
+
+    for node_coverage in nodes_coverage.itervalues():
+        node_metadata = nodes_metadata[node_coverage.address]
+
+        #
+        # remember, nodes may technically be 'shared' between functions,
+        # so we need to clear the node's paint in every function flowchart
+        # that has a reference to it.
         #
 
         for function_address, node_id in node_metadata.ids.iteritems():

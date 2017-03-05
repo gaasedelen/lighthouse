@@ -1,120 +1,9 @@
-import cProfile
 import logging
 import collections
 
 import idaapi
 
 logger = logging.getLogger("Lighthouse.Util.IDA")
-
-#------------------------------------------------------------------------------
-# FlowChart Helpers
-#------------------------------------------------------------------------------
-#
-#    Profiling revealed that working with flowcharts was creating the most
-#    expensive set of operations for Lighthouse. Specifically:
-#
-#     * Creating/requesting a flowchart from IDA
-#     * Repeatedly walking a flowchart from its base indexe (for our purposes)
-#     * idaapi.FlowChart & BasicBlock come with their own unecessary overhead
-#
-#    To try to make our flowchart operations as fast as possible throughout
-#    Lighthouse, we do our best to minimize the above three cases with the
-#    strategies outlined below.
-#
-#     * Cache the last N flowcharts requested in an LRU cache implementation
-#     * Cache & reuse the last node index used for a given flowchart
-#     * Use qflow_chart_t directly to remove FlowChart & BasicBlock overhead
-#
-
-class FlowChartCache(object):
-    """
-    A LRU cache implementation for IDA FlowChart lookup.
-
-    TODO: describe how & why the cache works
-    """
-
-    def __init__(self, capacity=6):
-        self.cache = collections.deque([], capacity)
-
-    def get(self, address):
-        """
-        Cached lookup of the flowchart for a given address.
-
-        On cache-miss, a new flowchart is generated.
-        """
-
-        # cache hit
-        for cache_entry in self.cache:
-            bounds = cache_entry[0].bounds
-            if bounds.startEA <= address < bounds.endEA:
-                #logger.debug("0x%08X: cache hit!" % address)
-                return cache_entry
-
-        #
-        # flow chart is NOT in the cache...
-        #
-
-        #logger.debug("0x%08X: cache miss!" % address)
-
-        # create a new flowchart corresponding to the address
-        function  = idaapi.get_func(address)
-        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-
-        # cache the newly created flowchart
-        cache_entry = (flowchart, 0)
-        self.set(cache_entry)
-
-        # return the created flowchart entry
-        return cache_entry
-
-    def set(self, cache_entry):
-        """
-        Update the cache with the given entry.
-        """
-        function_address = cache_entry[0].bounds.startEA
-
-        # evict an old entry if it exists
-        for i in xrange(len(self.cache)):
-            if self.cache[i][0].bounds.startEA == function_address:
-                del self.cache[i]
-                break
-
-        # put this new cache entry at the front of the list
-        self.cache.appendleft(cache_entry)
-
-def map_flowchart(function_address):
-    """
-    Map a FlowChart and its node bounds for fast access.
-
-    -----------------------------------------------------------------------
-
-    Walking the IDAPython flowcharts can actually be really slow. when we
-    need to repeatedly access or walk a given flowchart, we should instead
-    extract its layout one-time and use this minimal form when applicable.
-
-    -----------------------------------------------------------------------
-
-    Output:
-
-        +- flowchart_nodes:
-        |    a map keyed with node ID's, holding a tuple of node bounds
-        |
-        |      eg: { int(node_id): (startEA, endEA), ... }
-        '
-
-    """
-    flowchart_nodes = {}
-
-    # retrieve the flowchart for this function
-    function  = idaapi.get_func(function_address)
-    flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-
-    # cache the bounds for every node in this flowchart
-    for i in xrange(flowchart.size()):
-        node = flowchart[i]
-        flowchart_nodes[i] = (node.startEA, node.endEA)
-
-    return flowchart_nodes
 
 #------------------------------------------------------------------------------
 # HexRays Helpers
@@ -244,8 +133,13 @@ def map_line2node(cfunc, metadata, line2citem):
         for index in citem_indexes:
 
             # get the code address of the given citem
-            item = treeitems[index]
-            address = item.ea
+            try:
+                item = treeitems[index]
+                address = item.ea
+
+            # apparently this is a thing on IDA 6.95
+            except IndexError as e:
+                continue
 
             # find the graph node (eg, basic block) that generated this citem
             try:

@@ -13,22 +13,23 @@ logger = logging.getLogger("Lighthouse.Director")
 
 class CoverageDirector(object):
     """
+    The Coverage Director manages loaded coverage.
 
-    TODO/NOTE:
+    NOTE/TODO:
 
-      In the long run, I imagine this class will grow to become
-      the hub for all coverage data. By the time the coverage reaches
-      this hub, it should be in a generic (offset, size) block format.
+      The role of the director is critical in building the culminating
+      experience envisioned for Lighthouse. As of now (v0.2.0) its scope
+      and functionality is limited to simply hosting and switching between
+      the loaded coverage data sets.
 
-      This hub will be the data source should a user wish to flip
-      between any loaded coverage, or even view metrics on a union of
-      the loaded overages.
+      There are more interesting things to come.
 
-      As the class sits now, it is minimal and caters to only a single
-      source of coverage data.
 
-      # - Databbase/ function / node metadata can be a shared resource
-      # - Only coverage changes
+    #--------------------------------------------------------------------------
+
+    --[ Composing
+
+    TODO: coming soon
 
     """
 
@@ -53,14 +54,26 @@ class CoverageDirector(object):
 
     @property
     def metadata(self):
+        """
+        The active database metadata cache.
+        """
         return self._database_metadata
 
     @property
     def coverage(self):
-        return self._database_coverage[self.coverage_name]
+        """
+        The active database coverage.
+        """
+        try:
+            return self._database_coverage[self.coverage_name]
+        except KeyError as e:
+            return None
 
     @property
     def coverage_names(self):
+        """
+        The names of loaded coverage data.
+        """
         return self._database_coverage.iterkeys()
 
     #----------------------------------------------------------------------
@@ -72,6 +85,7 @@ class CoverageDirector(object):
         Activate loaded coverage by name.
         """
         logger.debug("Selecting coverage %s" % coverage_name)
+        self.unpaint_coverage() # TODO: this is a temporary implementation
         self.coverage_name = coverage_name
         self.paint_coverage()
 
@@ -80,6 +94,9 @@ class CoverageDirector(object):
         Add new coverage to the director.
         """
         logger.debug("Adding coverage %s" % coverage_name)
+
+        # ensure the palette colors are up to date before use
+        self._palette.refresh_colors()
 
         # initialize a new database-wide coverage object for this data
         new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
@@ -91,39 +108,16 @@ class CoverageDirector(object):
         # new coverage to the director's coverage table and surface it for use.
         self._database_coverage[coverage_name] = new_coverage
 
-    def paint_coverage(self):
-        """
-        Paint the active coverage to the database.
-
-        TODO: I am not convinced the director should have any of the painting code.
-        """
-        logger.debug("Painting active coverage")
-
-        #
-        # depending on if IDA is using a dark or light theme, we paint
-        # coverage with a color that will hopefully keep things readable.
-        # determine whether to use a 'dark' or 'light' paint
-        #
-
-        bg_color = get_disas_bg_color()
-        if bg_color.lightness() > 255.0/2:
-            color = self._palette.paint_light
-        else:
-            color = self._palette.paint_dark
-
-        # color the database based on coverage
-        paint_coverage(self.metadata, self.coverage, color)
-
     def refresh(self):
         """
         Complete refresh of coverage mapping to the active database.
         """
         logger.debug("Refreshing the CoverageDirector")
 
-        # (re)build our knowledge of the underlying database
+        # (re)build our metadata cache of the underlying database
         self._refresh_database_metadata()
 
-        # (re)map each set of coverage data to the database
+        # (re)map each set of loaded coverage data to the database
         self._refresh_database_coverage()
 
     #----------------------------------------------------------------------
@@ -146,3 +140,40 @@ class CoverageDirector(object):
         for name, coverage in self._database_coverage.iteritems():
             logger.debug(" - %s" % name)
             coverage.refresh(self.metadata)
+
+    #----------------------------------------------------------------------
+    # Painting / TODO: move/remove?
+    #----------------------------------------------------------------------
+
+    def paint_coverage(self):
+        """
+        Paint the active coverage to the database.
+
+        NOTE/TODO:
+
+          I am not convinced the director should have any of the
+          painting code. this may be refactored out.
+
+        """
+        logger.debug("Painting active coverage")
+
+        # refresh the palette to ensure our colors appropriate for painting.
+        self._palette.refresh_colors()
+
+        # color the database based on coverage
+        paint_coverage(self.metadata, self.coverage, self._palette.ida_coverage)
+
+    def unpaint_coverage(self):
+        """
+        Unpaint the active coverage from the database.
+
+        NOTE/TODO:
+
+          Please note that this 'unpainting' implementation is only a
+          temporary implementation for Lighthouse v0.2.0. The next version
+          will only bother to un-paint the delta between the 'old' and
+          the 'new' coverage sets.
+
+        """
+        if self.coverage:
+            unpaint_coverage(self.metadata, self.coverage)

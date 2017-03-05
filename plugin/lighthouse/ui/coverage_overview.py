@@ -80,7 +80,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
     def index(self, row, column, parent=QtCore.QModelIndex()):
         try:
-            return self.createIndex(row, column, self.row2func[row])
+            return self.createIndex(row, column, row)
         except KeyError as e:
             return QtCore.QModelIndex()
 
@@ -410,9 +410,9 @@ class CoverageOverview(idaapi.PluginForm):
 
         # loaded coverage combobox
         self.active_coverage_label    = QtWidgets.QLabel("Active Coverage: ")
-        self.active_coverage_combobox = QtGui.QComboBox()
+        self.active_coverage_combobox = QtWidgets.QComboBox()
         self.active_coverage_combobox.setStyleSheet("QComboBox { padding-left: 2ex; padding-right: 2ex; }")
-        self.active_coverage_combobox.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToContents)
+        self.active_coverage_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.active_coverage_combobox.addItems(list(self._director.coverage_names))
 
         # checkbox to hide 0% coverage entries
@@ -471,7 +471,6 @@ class CoverageOverview(idaapi.PluginForm):
         """
         Handle selection change of active coverage combobox.
         """
-        print "got coverage changed signal"
         self._director.select_coverage(coverage_name)
         self.refresh()
 
