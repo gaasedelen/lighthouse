@@ -11,6 +11,7 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 
 ## Releases
 
+* v0.2 -- Multifile support, perfomance improvements, bugfixes.
 * v0.1 -- Initial release
 
 ## Installation
@@ -33,7 +34,7 @@ Lighthouse loads automatically when an IDB is opened, installing the following m
 - View --> Open subviews --> Coverage Overview
 ```
 
-These are the entry points for a user to load and view coverage data.
+These are the entry points for a user to load and view coverage data. One can load multiple coverage files at once.
 
 ## Coverage Overview
 
@@ -73,7 +74,7 @@ While Lighthouse is considered a prototype, internally it is largely agnostic of
 
 Time and motivation permitting, future work may include:
 
-* Multi file/coverage support
+* ~~Multifile/coverage support~~
 * Profiling based heatmaps/painting
 * Automatic parser pickup
 * Parsers for additional coverage sources, eg PIN
