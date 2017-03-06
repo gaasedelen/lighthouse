@@ -12,7 +12,7 @@ from ctypes import *
 
 class DrcovData(object):
     """
-    DrcovData
+    A drcov log parser.
     """
     def __init__(self, filepath=None):
 
@@ -50,7 +50,7 @@ class DrcovData(object):
 
         # failed to find a module that matches the given name, bail
         else:
-            raise ValueError("Failed to find matching module in coverage")
+            raise ValueError("Failed to find module '%s' in coverage data" % module_name)
 
         # loop through the coverage data and filter out data for only this module
         coverage_blocks = [(bb.start, bb.size) for bb in self.basic_blocks if bb.mod_id == mod_id]
