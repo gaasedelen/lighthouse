@@ -6,116 +6,6 @@ import idaapi
 logger = logging.getLogger("Lighthouse.Util.IDA")
 
 #------------------------------------------------------------------------------
-# FlowChart Helpers
-#------------------------------------------------------------------------------
-#
-#    Profiling revealed that working with flowcharts was creating the most
-#    expensive set of operations for Lighthouse. Specifically:
-#
-#     * Creating/requesting a flowchart from IDA
-#     * Repeatedly walking a flowchart from its base indexe (for our purposes)
-#     * idaapi.FlowChart & BasicBlock come with their own unecessary overhead
-#
-#    To try to make our flowchart operations as fast as possible throughout
-#    Lighthouse, we do our best to minimize the above three cases with the
-#    strategies outlined below.
-#
-#     * Cache the last N flowcharts requested in an LRU cache implementation
-#     * Cache & reuse the last node index used for a given flowchart
-#     * Use qflow_chart_t directly to remove FlowChart & BasicBlock overhead
-#
-
-class FlowChartCache(object):
-    """
-    A LRU cache implementation for IDA FlowChart lookup.
-
-    TODO: describe how & why the cache works
-    """
-
-    def __init__(self, capacity=6):
-        self.cache = collections.deque([], capacity)
-
-    def get(self, address):
-        """
-        Cached lookup of the flowchart for a given address.
-
-        On cache-miss, a new flowchart is generated.
-        """
-
-        # cache hit
-        for cache_entry in self.cache:
-            bounds = cache_entry[0].bounds
-            if bounds.startEA <= address < bounds.endEA:
-                #logger.debug("0x%08X: cache hit!" % address)
-                return cache_entry
-
-        #
-        # flow chart is NOT in the cache...
-        #
-
-        #logger.debug("0x%08X: cache miss!" % address)
-
-        # create a new flowchart corresponding to the address
-        function  = idaapi.get_func(address)
-        flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-
-        # cache the newly created flowchart
-        cache_entry = (flowchart, 0)
-        self.set(cache_entry)
-
-        # return the created flowchart entry
-        return cache_entry
-
-    def set(self, cache_entry):
-        """
-        Update the cache with the given entry.
-        """
-        function_address = cache_entry[0].bounds.startEA
-
-        # evict an old entry if it exists
-        for i in xrange(len(self.cache)):
-            if self.cache[i][0].bounds.startEA == function_address:
-                del self.cache[i]
-                break
-
-        # put this new cache entry at the front of the list
-        self.cache.appendleft(cache_entry)
-
-def map_flowchart(function_address):
-    """
-    Map a FlowChart and its node bounds for fast access.
-
-    -----------------------------------------------------------------------
-
-    Walking the IDAPython flowcharts can actually be really slow. when we
-    need to repeatedly access or walk a given flowchart, we should instead
-    extract its layout one-time and use this minimal form when applicable.
-
-    -----------------------------------------------------------------------
-
-    Output:
-
-        +- flowchart_nodes:
-        |    a map keyed with node ID's, holding a tuple of node bounds
-        |
-        |      eg: { int(node_id): (startEA, endEA), ... }
-        '
-
-    """
-    flowchart_nodes = {}
-
-    # retrieve the flowchart for this function
-    function  = idaapi.get_func(function_address)
-    flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
-
-    # cache the bounds for every node in this flowchart
-    for i in xrange(flowchart.size()):
-        node = flowchart[i]
-        flowchart_nodes[i] = (node.startEA, node.endEA)
-
-    return flowchart_nodes
-
-#------------------------------------------------------------------------------
 # HexRays Helpers
 #------------------------------------------------------------------------------
 
@@ -199,9 +89,9 @@ def map_line2citem(decompilation_text):
 
     return line2citem
 
-def map_line2node(cfunc, line2citem):
+def map_line2node(cfunc, metadata, line2citem):
     """
-    Map decompilation line numbers to graph nodes (basic blocks).
+    Map decompilation line numbers to node (basic blocks) addresses.
 
     -----------------------------------------------------------------------
 
@@ -213,18 +103,15 @@ def map_line2node(cfunc, line2citem):
     Output:
 
         +- line2node:
-        |    a map keyed with line numbers, holding sets of node ID's
+        |    a map keyed with line numbers, holding sets of node addresses
         |
-        |      eg: { int(line_number): sets(nodes), ... }
+        |      eg: { int(line_number): set(nodes), ... }
         '
 
     """
-    line2node, cached_base = {}, 0
-
-    # bake items for faster access
+    line2node = {}
     treeitems = cfunc.treeitems
-    flowchart = map_flowchart(cfunc.entry_ea)
-    flowchart_size = len(flowchart)
+    function_address = cfunc.entry_ea
 
     #
     # prior to this function, a line2citem map was built to tell us which
@@ -246,52 +133,30 @@ def map_line2node(cfunc, line2citem):
         for index in citem_indexes:
 
             # get the code address of the given citem
-            item = treeitems[index]
-            address = item.ea
+            try:
+                item = treeitems[index]
+                address = item.ea
 
-            #
-            # walk the flowchart for this function and find the graph node
-            # (eg, basic block) that generated this citem
-            #
+            # apparently this is a thing on IDA 6.95
+            except IndexError as e:
+                continue
 
-            for index in xrange(flowchart_size):
-                node_id = (cached_base + index) % flowchart_size
-                startEA, endEA = flowchart[node_id]
+            # find the graph node (eg, basic block) that generated this citem
+            try:
+                node = metadata.get_node(address)
 
-                #
-                # does this citem address point into this graph node? if so,
-                # consider it a match, and break so we can save this node_id
-                #
-
-                if startEA <= address < endEA:
-                    break
-
-            #
-            # we never broke from the loop which means that the current citem
-            # could not be mapped to a node... weird. continue to the next citem
-            #
-
-            else:
+            # address not mapped to a node... weird. continue to the next citem
+            except ValueError:
                 #logger.warning("Failed to map node to basic block")
                 continue
 
             #
-            # we broke from walking the flowchart, so we must have found a node
-            # that contains this citem. save the computed node_id to the list of
-            # of known nodes we have associated with this line of text
+            # we made it this far, so we must have found a node that contains
+            # this citem. save the computed node_id to the list of of known
+            # nodes we have associated with this line of text
             #
 
-            nodes.add(node_id)
-
-            #
-            # to expedite future citem lookups, we cache the node_id we hit on
-            # for this flowchart walk, and use it as the starting point for the
-            # subsequent search. It's more likely than not that the next citem
-            # will fall in the same node, or one closer to this node than the
-            # start of the flowchart (eg, node_id = 0)
-            #
-
-            cached_base = node_id
+            nodes.add(node.address)
 
         #
         # finally, save the completed list of node ids as identified for this

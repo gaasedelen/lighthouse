@@ -1,10 +1,12 @@
+import os
+
 from idaapi import plugin_t
 
 from lighthouse.ui import *
 from lighthouse.util import *
 from lighthouse.parsers import *
-from lighthouse.coverage import *
-from lighthouse.painting import *
+from lighthouse.director import CoverageDirector
+from lighthouse.painting import paint_hexrays
 
 # start the global logger *once*
 if not logging_started():
@@ -14,7 +16,7 @@ if not logging_started():
 # IDA Plugin
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2017"
 
@@ -39,18 +41,17 @@ class Lighthouse(plugin_t):
 
         # plugin color palette
         self.palette = LighthousePalette()
-        self.color = 0
 
         #----------------------------------------------------------------------
 
         # the database coverage data conglomerate
-        self.db_coverage = DatabaseCoverage()
+        self.director = CoverageDirector(self.palette)
 
         # hexrays hooks
         self._hxe_events = None
 
         # plugin qt elements
-        self._ui_coverage_list = CoverageOverview(self.db_coverage)
+        self._ui_coverage_overview = CoverageOverview(self.director)
 
         # members for the 'Load Code Coverage' menu entry
         self._icon_id_load     = idaapi.BADADDR
@@ -117,10 +118,10 @@ class Lighthouse(plugin_t):
         """
         self._install_ui()
 
-        # TODO/NOTE: let's delay these till coverage load instead
+        # NOTE: let's delay these till coverage load instead
         #self._install_hexrays_hooks()
 
-    def _install_hexrays_hooks(self, _=None):
+    def _install_hexrays_hooks(self):
         """
         Install Hexrays hook listeners.
         """
@@ -131,7 +132,7 @@ class Lighthouse(plugin_t):
 
         # ensure hexrays is loaded & ready for use
         if not idaapi.init_hexrays_plugin():
-            raise RuntimeError("HexRays is not available yet")
+            raise RuntimeError("HexRays not available for hooking")
 
         #
         # map our callback function to an actual member since we can't properly
@@ -142,7 +143,7 @@ class Lighthouse(plugin_t):
         self._hxe_events = self._hexrays_callback
 
         # install the callback handler
-        idaapi.install_hexrays_callback(self._hxe_events)
+        assert idaapi.install_hexrays_callback(self._hxe_events)
 
     def print_banner(self):
         """
@@ -180,7 +181,6 @@ class Lighthouse(plugin_t):
 
         # createa a custom IDA icon
         self._icon_id_load = idaapi.load_custom_icon(
-            #data=str(QtCore.QResource(":/icons/overview.png").data())
             data=str(open(resource_file("icons/load.png"), "rb").read())
         )
 
@@ -218,7 +218,6 @@ class Lighthouse(plugin_t):
 
         # createa a custom IDA icon
         self._icon_id_overview = idaapi.load_custom_icon(
-            #data=str(QtCore.QResource(":/icons/overview.png").data())
             data=str(open(resource_file("icons/overview.png"), "rb").read())
         )
 
@@ -258,7 +257,19 @@ class Lighthouse(plugin_t):
         Cleanup & uninstall the plugin from IDA.
         """
         self._uninstall_ui()
-        # TODO: uninstall hxe hooks
+        self._uninstall_hexrays_hooks()
+
+    def _uninstall_hexrays_hooks(self):
+        """
+        Cleanup & uninstall Hexrays hook listeners.
+        """
+        if not self._hxe_events:
+            return
+
+        # remove the callbacks
+        #    NOTE: w/e IDA removes this anyway.....
+        #idaapi.remove_hexrays_callback(self._hxe_events)
+        self._hxe_events = None
 
     #--------------------------------------------------------------------------
     # Termination - UI
@@ -331,33 +342,49 @@ class Lighthouse(plugin_t):
         if not coverage_files:
             return
 
-        # load the selected code coverage files into the plugin core
-        for filename in coverage_files:
-            self.load_code_coverage_file(filename)
+        #
+        # I do not hold great confidence in this code yet, so let's wrap
+        # this in a try/catch so the user doesn't get stuck with a wait
+        # box they can't close should things go poorly
+        #
 
-        # done loading coverage files, bake metrics
-        self.db_coverage.finalize(self.palette)
+        try:
+
+            #
+            # collect underlying database metadata so that the plugin core can
+            # process, map, and manipulate coverage data in a performant manner.
+            #
+            # TODO: do this asynchronously as the user is selecting files
+            #
+
+            idaapi.show_wait_box("Building database metadata...")
+            self.director.refresh()
+
+            #
+            # load the selected code coverage files into the plugin core
+            #
+
+            idaapi.replace_wait_box("Loading coverage files from disk...")
+            for filename in coverage_files:
+                self.load_code_coverage_file(filename)
+            idaapi.hide_wait_box()
+
+        # 'something happened :('
+        except Exception as e:
+            idaapi.hide_wait_box()
+            lmsg("Failed to load coverage:")
+            lmsg("- %s" % e)
+            logger.exception(e)
+            return
+
+        # select the 'first' coverage file loaded
+        self.director.select_coverage(os.path.basename(coverage_files[0]))
 
         # install hexrays hooks if available for this arch/install
         try:
             self._install_hexrays_hooks()
         except RuntimeError:
             pass
-
-        #
-        # depending on if IDA is using a dark or light theme, we paint
-        # coverage with a color that will hopefully keep things readable.
-        # determine whether to use a 'dark' or 'light' paint
-        #
-
-        bg_color = get_disas_bg_color()
-        if bg_color.lightness() > 255.0/2:
-            self.color = self.palette.paint_light
-        else:
-            self.color = self.palette.paint_dark
-
-        # color the database based on coverage
-        paint_coverage(self.db_coverage, self.color)
 
         # show the coverage overview
         self.open_coverage_overview()
@@ -367,11 +394,11 @@ class Lighthouse(plugin_t):
         Open the Coverage Overview dialog.
         """
 
-        # ensure the database coverage is installed in the coverage overview
-        self._ui_coverage_list.update_model(self.db_coverage)
+        # TODO: ensure the database coverage is installed in the coverage overview
+        self._ui_coverage_overview.refresh()
 
         # make the coverage overview visible
-        self._ui_coverage_list.Show()
+        self._ui_coverage_overview.Show()
 
     def _select_code_coverage_files(self):
         """
@@ -384,9 +411,12 @@ class Lighthouse(plugin_t):
 
         # prompt the user with the file dialog, and await filename(s)
         filenames, _ = file_dialog.getOpenFileNames()
+
+        # log the captured (selected) filenames from the dialog
         logger.debug("Captured filenames from file dialog:")
         logger.debug(filenames)
 
+        # return the captured filenames
         return filenames
 
     #--------------------------------------------------------------------------
@@ -399,17 +429,18 @@ class Lighthouse(plugin_t):
 
         NOTE: At this time only binary drcov logs are supported.
         """
+        basename = os.path.basename(filename)
 
         # load coverage data from file
         coverage_data = DrcovData(filename)
 
         # extract the coverage relevant to this IDB (well, the root binary)
-        root_filename = idaapi.get_root_filename()
+        root_filename   = idaapi.get_root_filename()
         coverage_blocks = coverage_data.filter_by_module(root_filename)
 
-        # enlighten the databases' coverage hub to this new data
+        # enlighten the coverage director to this new data
         base = idaapi.get_imagebase()
-        self.db_coverage.add_coverage(base, coverage_blocks)
+        self.director.add_coverage(basename, base, coverage_blocks)
 
     def _hexrays_callback(self, event, *args):
         """
@@ -419,19 +450,19 @@ class Lighthouse(plugin_t):
         # decompilation text generation is complete and it is about to be shown
         if event == idaapi.hxe_text_ready:
             vdui = args[0]
+            cfunc = vdui.cfunc
 
-            # grab the coverage data for the function of this decompilation
-            try:
-                function_coverage = self.db_coverage.functions[vdui.cfunc.entry_ea]
-            except KeyError:
+            # if there's no coverage data for this function, there's nothing to do
+            if not cfunc.entry_ea in self.director.coverage.functions:
                 return 0
 
-            # if coverage is zero for this function, there's nothing to paint
-            if not function_coverage.percent_instruction:
-                return 0
-
-            # paint the decompilation for this function
-            paint_hexrays(vdui, function_coverage, self.color)
+            # paint the decompilation text for this function
+            paint_hexrays(
+                cfunc,
+                self.director.metadata,
+                self.director.coverage,
+                self.palette.ida_coverage
+            )
 
         return 0
 
@@ -459,10 +490,32 @@ class LighthousePalette(object):
         #self.coverage_bad  = QtGui.QColor(207, 31, 0)
         #self.coverage_good = QtGui.QColor(75, 209, 42)
 
-        # TODO: unused for now
-        self.profiling_cold = QtGui.QColor(0,0,0)
-        self.profiling_hot  = QtGui.QColor(0,0,0)
+        # possible colors used for painting coverage in disassembly/graph/hexrays
+        self._ida_coverage_dark  = 0x00990000    # NOTE: IDA uses BBGGRR
+        self._ida_coverage_light = 0x00C8E696
 
-        # color used for painting disassembly/graph/hexrays
-        self.paint_dark  = 0x00990000    # NOTE: IDA uses BBGGRR
-        self.paint_light = 0x00C8E696
+        # dynamically computed based on IDA skin
+        self.ida_coverage = 0x00000000
+
+        # TODO: unused for now
+        #self.profiling_cold = QtGui.QColor(0,0,0)
+        #self.profiling_hot  = QtGui.QColor(0,0,0)
+
+    def refresh_colors(self):
+        """
+        Dynamically compute palette color based on IDA theme.
+
+        Depending on if IDA is using a dark or light theme, we *try*
+        to select colors that will hopefully keep things most readable.
+        """
+
+        #
+        # determine whether to use a 'dark' or 'light' paint based on the
+        # background color of the user's disassembly view
+        #
+
+        bg_color = get_disas_bg_color()
+        if bg_color.lightness() > 255.0/2:
+            self.ida_coverage = self._ida_coverage_light
+        else:
+            self.ida_coverage = self._ida_coverage_dark
