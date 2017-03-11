@@ -142,6 +142,8 @@ def coalesce_blocks(blocks):
     # nothing to do
     if not blocks:
         return []
+    elif len(blocks) == 1:
+        return blocks
 
     # before we can operate on the blocks, we must ensure they are sorted
     blocks = sorted(blocks)

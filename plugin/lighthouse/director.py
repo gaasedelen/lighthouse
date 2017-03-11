@@ -102,7 +102,8 @@ class CoverageDirector(object):
         new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
 
         # map the coverage data using the database metadata
-        new_coverage.refresh(self.metadata)
+        new_coverage.update_metadata(self.metadata)
+        new_coverage.refresh()
 
         # coverage creation & mapping complete, looks like we're good. add the
         # new coverage to the director's coverage table and surface it for use.
@@ -150,7 +151,8 @@ class CoverageDirector(object):
 
         for name, coverage in self._database_coverage.iteritems():
             logger.debug(" - %s" % name)
-            coverage.refresh(self.metadata, delta)
+            coverage.update_metadata(self.metadata, delta)
+            coverage.refresh()
 
     #----------------------------------------------------------------------
     # Painting / TODO: move/remove?

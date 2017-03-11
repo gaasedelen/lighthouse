@@ -47,9 +47,11 @@ def paint_instruction_coverage(coverage, color):
     # given, coloring each byte individually
     #
 
-    for base_address, size in coverage.coverage_data:
-        for address in xrange(base_address, base_address+size):
+    for address, size in coverage.coverage_data:
+        end_address = address + size
+        while address < end_address:
             idaapi.set_item_color(address, color)
+            address += 1
 
 def unpaint_instruction_coverage(coverage):
     """
@@ -64,9 +66,11 @@ def unpaint_instruction_coverage(coverage):
     # given, clearing each byte individually
     #
 
-    for base_address, size in coverage.coverage_data:
-        for address in xrange(base_address, base_address+size):
+    for address, size in coverage.coverage_data:
+        end_address = address + size
+        while address < end_address:
             idaapi.set_item_color(address, color)
+            address += 1
 
 #------------------------------------------------------------------------------
 # Painting - Nodes (Basic Blocks)
