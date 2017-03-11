@@ -175,3 +175,16 @@ def coalesce_blocks(blocks):
     # return the list of coalesced blocks
     return coalesced
 
+def index_coverage(base, coverage_data):
+    """
+    TODO
+    """
+    output = collections.defaultdict(int)
+
+    for address, size in coverage_data:
+        end_address = address + size
+        while address < end_address:
+            output[base+address] += 1
+            address += 1
+
+    return output

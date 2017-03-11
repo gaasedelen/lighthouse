@@ -45,7 +45,7 @@ class DatabaseCoverage(object):
     Database level coverage mapping.
     """
 
-    def __init__(self, base, coverage_data, palette):
+    def __init__(self, base, indexed_coverage, palette):
 
         # the metadata this coverage will be mapped ontop of
         self._metadata = None
@@ -53,13 +53,9 @@ class DatabaseCoverage(object):
         # the color palette used when painting this coverage
         self.palette = palette
 
-        #
-        # translate the raw block based coveage from (offset, size) to
-        # (base + offset, size), effectively producing absolute addresses
-        #
-
         self._base = base
-        self.unmapped_blocks = collections.deque(bake_coverage_addresses(base, coverage_data))
+        self.unmapped_coverage = indexed_coverage
+        self.unmapped_coverage[idaapi.BADADDR] = 0
 
         # maps for the child coverage objects
         self.nodes     = {}
@@ -76,6 +72,7 @@ class DatabaseCoverage(object):
         #
 
         self._weak_self = weakref.proxy(self)
+
 
     #--------------------------------------------------------------------------
     # Properties
@@ -105,13 +102,13 @@ class DatabaseCoverage(object):
         # multiple iterators. 'mapped_blocks' is an abstract iterator
         # to enumerate all of the blocks mapped by this coverage.
         #
-        # We then chain the mapped_blocks iterator with the unmapped_blocks
+        # We then chain the mapped_blocks iterator with the unmapped_coverage
         # iterator, to create a complete enumeration of the 'raw' coverage
         # data in this DatabaseeCoverage.
         #
 
-        mapped_blocks = itertools.chain.from_iterable((node_coverage.blocks for node_coverage in self.nodes.itervalues()))
-        coverage_data = itertools.chain(self.unmapped_blocks, mapped_blocks)
+        mapped_addresses = itertools.chain.from_iterable((node_coverage.blocks for node_coverage in self.nodes.itervalues()))
+        coverage_data = itertools.chain(self.unmapped_coverage, mapped_addresses)
 
         # return the uber iterator of all tracked coverage data
         return coverage_data
@@ -180,13 +177,12 @@ class DatabaseCoverage(object):
         Map loaded coverage data to database defined nodes (basic blocks).
         """
         dirty_nodes = {}
-        blocks_to_map = self.unmapped_blocks
-        self.unmapped_blocks = collections.deque()
+        addresses_to_map = collections.deque(sorted(self.unmapped_coverage.keys()))
 
         #
         # This while loop is the core of our coverage mapping process.
         #
-        # The 'unmapped_blocks' list is consumed by this loop, mapping
+        # The 'unmapped_coverage' list is consumed by this loop, mapping
         # any unmapped coverage data maintained by this DatabaseCoverage
         # to the given database metadata.
         #
@@ -195,13 +191,10 @@ class DatabaseCoverage(object):
         # for nodes here using the more or less raw/recycled coverage data.
         #
 
-        while blocks_to_map:
+        while addresses_to_map:
 
-            # retrieve the next coverage block to map to the database
-            address, size = blocks_to_map.popleft()
-
-            # sanity check - why would you have a zero size block?!?
-            assert size, "Size of coverage block must be non-zero"
+            # get the next address to map
+            address = addresses_to_map.popleft()
 
             # get the node (basic block) that contains this address
             try:
@@ -210,16 +203,9 @@ class DatabaseCoverage(object):
             #
             # failed to locate the node (basic block) for this address.
             # this address must not fall inside of a defined function...
-            # mark the block as an orphan and move on.
-            #
-            #  NOTE/TODO:
-            #
-            #    address --> address+size may contain the start of a
-            #    nearby node, so we might actually skip some stuff here...
             #
 
             except ValueError:
-                self.unmapped_blocks.append((address, size))
                 continue
 
             #
@@ -227,7 +213,7 @@ class DatabaseCoverage(object):
             # to find the coverage object for this node address
             #
 
-            try:
+            if node_metadata.address in self.nodes:
                 node_coverage = self.nodes[node_metadata.address]
 
             #
@@ -236,48 +222,32 @@ class DatabaseCoverage(object):
             # create a coverage node object and use it now.
             #
 
-            except KeyError as e:
+            else:
                 node_coverage = NodeCoverage(node_metadata.address, self._weak_self)
                 self.nodes[node_metadata.address] = node_coverage
 
+            # compute the basic block end now to reduce overhead in the loop below
+            node_end = node_metadata.address + node_metadata.size
+
             #
-            # ensure that the block of coverage data we are trying to map
-            # to this node does not actually spill past it. If it does,
-            # we need to break it up and generate a 'fragment' coverage
-            # block consisting of the remainder.
+            # TODO: explain this loop
             #
 
-            coverage_end = address + size
-            node_end     = node_metadata.address + node_metadata.size
+            while 1:
 
-            # does the coverage block spill past this node??
-            if node_end < coverage_end:
+                # map the coverage data block to this node
+                node_coverage.blocks[address] = self.unmapped_coverage.pop(address)
 
-                #
-                # yes this coverage block spills into the next node,
-                # prepend the overflown coverage fragment to be processed
-                # later (the next iteration, technically)
-                #
+                # get the next address to attempt mapping on
+                address = addresses_to_map.popleft()
 
-                fragment_address = node_end
-                fragment_size    = coverage_end - node_end
-                blocks_to_map.appendleft((fragment_address, fragment_size))
-
-                #
-                # since we split the overflow coverage data into a fragment,
-                # the end of the current coverage data block we are mapping
-                # actually aligns with the end of this node.
-                #
-
-                coverage_end = node_end
-
-            # map the coverage data block to this node
-            node_coverage.add_mapping(address, coverage_end-address)
+                # if the address is not in this node, it's time to move on
+                if not (node_metadata.address <= address < node_end):
+                    addresses_to_map.appendleft(address)
+                    break
 
             # since we updated this node, ensure we're tracking it as dirty
             dirty_nodes[node_metadata.address] = node_coverage
-
-        # end of blocks loop
 
         # done
         return dirty_nodes
@@ -381,7 +351,7 @@ class DatabaseCoverage(object):
                 continue
 
             # the node was found, unmap any of its tracked coverage blocks
-            self.unmapped_blocks.extend(node_coverage.blocksp
+            self.unmapped_coverage.update(node_coverage.blocks)
 
             #
             # NOTE:
@@ -498,17 +468,17 @@ class NodeCoverage(object):
     def __init__(self, node_address, database=None):
         self._database = database
         self.address = node_address
-        self.blocks = []
+        self.blocks = {}
 
     #--------------------------------------------------------------------------
     # TODO
     #--------------------------------------------------------------------------
 
-    def add_mapping(self, address, size):
+    def add_mapping(self, address, hits):
         """
         Add a given coverage block (address, size) to this nodes mapping.
         """
-        self.blocks.append((address, size))
+        self.blocks[address] = hits
 
     def finalize(self):
         """
@@ -518,22 +488,9 @@ class NodeCoverage(object):
         #node_coverage = self._database._metadata.nodes[self.address]
 
         # coalesce the accumulated coverage blocks
-        self.blocks = coalesce_blocks(self.blocks)
+        #self.blocks = coalesce_blocks(self.blocks)
 
         # bake colors
         self.coverage_color = palette.ida_coverage
         #self.profiling_color = 0 # TODO
-
-#------------------------------------------------------------------------------
-# Coverage Helpers
-#------------------------------------------------------------------------------
-
-def bake_coverage_addresses(base, coverage_blocks):
-    """
-    Bake relative coverage offsets into absolute addresses, in-place.
-    """
-    for i in xrange(len(coverage_blocks)):
-        offset, size = coverage_blocks[i]
-        coverage_blocks[i] = (base + offset, size)
-    return coverage_blocks
 

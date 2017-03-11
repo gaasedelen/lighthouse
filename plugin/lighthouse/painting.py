@@ -17,7 +17,7 @@ def paint_coverage(metadata, coverage, color):
     """
 
     # paint individual instructions
-    paint_instruction_coverage(coverage, color) # TODO unmapped_blocks
+    paint_instruction_coverage(coverage, color)
 
     # paint nodes in function graphs
     paint_node_coverage(metadata.nodes, coverage.nodes)
@@ -47,11 +47,8 @@ def paint_instruction_coverage(coverage, color):
     # given, coloring each byte individually
     #
 
-    for address, size in coverage.coverage_data:
-        end_address = address + size
-        while address < end_address:
-            idaapi.set_item_color(address, color)
-            address += 1
+    for address in coverage.coverage_data:
+        idaapi.set_item_color(address, color)
 
 def unpaint_instruction_coverage(coverage):
     """
@@ -66,11 +63,8 @@ def unpaint_instruction_coverage(coverage):
     # given, clearing each byte individually
     #
 
-    for address, size in coverage.coverage_data:
-        end_address = address + size
-        while address < end_address:
-            idaapi.set_item_color(address, color)
-            address += 1
+    for address in coverage.coverage_data:
+        idaapi.set_item_color(address, color)
 
 #------------------------------------------------------------------------------
 # Painting - Nodes (Basic Blocks)

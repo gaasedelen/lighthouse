@@ -61,6 +61,7 @@ class DatabaseMetadata(object):
         # database defined nodes (basic blocks)
         self.nodes = {}
         self._node_addresses = []
+        self._last_node = [] # blank iterable for now
 
         # database defined functions
         self.functions = {}
@@ -121,13 +122,18 @@ class DatabaseMetadata(object):
 
         #found = self.nodes.iloc[(self.nodes.bisect_left(address) - 1)]
 
+        # fast path
+        if address in self._last_node:
+            return self._last_node
+
         # locate the index of the closest cached node address (rounding down)
         node_index = bisect.bisect_right(self._node_addresses, address) - 1
 
         # if the identified node contains our target address, it is a match
         try:
             node = self.nodes[self._node_addresses[node_index]]
-            if node.address <= address < node.address + node.size:
+            if address in node:
+                self._last_node = node
                 return node
         except KeyError:
             pass
@@ -305,6 +311,16 @@ class NodeMetadata(object):
 
         # collect metdata from the underlying database
         self._build_metadata()
+
+    def __contains__(self, address):
+        """
+        Overload of 'in' keyword.
+
+        Check if an address falls within a node (basic block).
+        """
+        if self.address <= address < self.address + self.size:
+            return True
+        return False
 
     #--------------------------------------------------------------------------
     # Metadata Population
