@@ -1,3 +1,4 @@
+import time
 import logging
 
 from lighthouse.util import *
@@ -67,7 +68,7 @@ class CoverageDirector(object):
         try:
             return self._database_coverage[self.coverage_name]
         except KeyError as e:
-            return None
+            return DatabaseCoverage(idaapi.BADADDR, None, self._palette)
 
     @property
     def coverage_names(self):
@@ -85,8 +86,22 @@ class CoverageDirector(object):
         Activate loaded coverage by name.
         """
         logger.debug("Selecting coverage %s" % coverage_name)
-        self.unpaint_coverage() # TODO: this is a temporary implementation
+
+        #
+        # before switching to the new coverage, we want to un-paint
+        # whatever will NOT be painted over by the new coverage data.
+        #
+
+        self.unpaint_difference(self.coverage, self._database_coverage[coverage_name])
+
+        # switch out the director's active coverage set
         self.coverage_name = coverage_name
+
+        #
+        # now we paint using the active coverage. any paint that was left over
+        # from the last coverage set will get painted over here (and more)
+        #
+
         self.paint_coverage()
 
     def add_coverage(self, coverage_name, coverage_base, coverage_data):
@@ -174,19 +189,18 @@ class CoverageDirector(object):
         self._palette.refresh_colors()
 
         # color the database based on coverage
-        paint_coverage(self.metadata, self.coverage, self._palette.ida_coverage)
+        paint_coverage(self.coverage, self._palette.ida_coverage)
 
-    def unpaint_coverage(self):
+    def unpaint_difference(self, old_coverage, new_coverage):
         """
-        Unpaint the active coverage from the database.
-
-        NOTE/TODO:
-
-          Please note that this 'unpainting' implementation is only a
-          temporary implementation for Lighthouse v0.2.0. The next version
-          will only bother to un-paint the delta between the 'old' and
-          the 'new' coverage sets.
-
+        Clear paint on the difference of two coverage sets.
         """
-        if self.coverage:
-            unpaint_coverage(self.metadata, self.coverage)
+        logger.debug("Clearing paint difference between coverages")
+
+        # compute the difference in coverage between two sets of coverage
+        difference = old_coverage - new_coverage
+        difference.update_metadata(self.metadata)
+        difference.refresh_nodes()
+
+        # clear the paint on the computed difference
+        unpaint_coverage(difference)

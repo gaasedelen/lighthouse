@@ -229,16 +229,31 @@ class DatabaseCoverage(object):
         # bake our coverage map
         self._finalize(dirty_nodes, dirty_functions)
 
+    def refresh_nodes(self):
+        """
+        Special fast-refresh of nodes as used in the un-painting process.
+        """
+        dirty_nodes = self._map_nodes()
+        self._finalize_nodes(dirty_nodes)
+
     def _finalize(self, dirty_nodes, dirty_functions):
         """
-        Finalize coverage data for use.
+        Finalize coverage objects for use.
         """
+        self._finalize_nodes(dirty_nodes)
+        self._finalize_functions(dirty_functions)
 
-        # finalize node level coverage data
+    def _finalize_nodes(self, dirty_nodes):
+        """
+        Finalize coverage nodes for use.
+        """
         for node_coverage in dirty_nodes.itervalues():
             node_coverage.finalize()
 
-        # finalize function level coverage data
+    def _finalize_functions(self, dirty_functions):
+        """
+        Finalize coverage nodes for use.
+        """
         for function_coverage in dirty_functions.itervalues():
             function_coverage.finalize()
 

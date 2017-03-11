@@ -11,7 +11,7 @@ logger = logging.getLogger("Lighthouse.Paint")
 # Painting
 #------------------------------------------------------------------------------
 
-def paint_coverage(metadata, coverage, color):
+def paint_coverage(coverage, color):
     """
     Paint the database using the given coverage.
     """
@@ -20,18 +20,18 @@ def paint_coverage(metadata, coverage, color):
     paint_instruction_coverage(coverage, color)
 
     # paint nodes in function graphs
-    paint_node_coverage(metadata.nodes, coverage.nodes)
+    paint_node_coverage(coverage._metadata.nodes, coverage.nodes)
 
     # NOTE: We paint hexrays on-request
 
-def unpaint_coverage(metadata, coverage):
+def unpaint_coverage(coverage):
     """
     Unpaint the database using the given coverage.
 
     TODO: this will be refactored in v0.3.0
     """
     unpaint_instruction_coverage(coverage)
-    unpaint_node_coverage(metadata.nodes, coverage.nodes)
+    unpaint_node_coverage(coverage._metadata.nodes, coverage.nodes)
 
 #------------------------------------------------------------------------------
 # Painting - Instructions / Items (Lines)
@@ -53,8 +53,6 @@ def paint_instruction_coverage(coverage, color):
 def unpaint_instruction_coverage(coverage):
     """
     Unpaint instructions using the given coverage blocks.
-
-    TODO: this will be refactored in v0.3.0
     """
     color = idc.DEFCOLOR
 
@@ -108,8 +106,6 @@ def paint_node_coverage(nodes_metadata, nodes_coverage):
 def unpaint_node_coverage(nodes_metadata, nodes_coverage):
     """
     Unpaint function graph nodes using the given node coverages.
-
-    TODO: this will be refactored in v0.3.0
     """
 
     # create a node info object as our vehicle for resetting the node color
