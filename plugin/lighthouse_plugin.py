@@ -440,10 +440,10 @@ class Lighthouse(plugin_t):
 
         # index the coverage for use
         base = idaapi.get_imagebase()
-        indexed_coverage = index_coverage(base, coverage_blocks)
+        indexed_data = index_coverage(base, coverage_blocks)
 
         # enlighten the coverage director to this new coverage data
-        self.director.add_coverage(basename, base, indexed_coverage)
+        self.director.add_coverage(basename, base, indexed_data)
 
     def _hexrays_callback(self, event, *args):
         """

@@ -45,26 +45,32 @@ class DatabaseCoverage(object):
     Database level coverage mapping.
     """
 
-    def __init__(self, base, indexed_coverage, palette):
+    def __init__(self, base, indexed_data, palette):
 
-        # the metadata this coverage will be mapped ontop of
-        self._metadata = None
 
         # the color palette used when painting this coverage
         self.palette = palette
 
-        self._base = base
-        self.unmapped_coverage = indexed_coverage
-        self.unmapped_coverage[idaapi.BADADDR] = 0
+        if not indexed_data:
+            indexed_data = collections.defaultdict(int)
 
-        # maps for the child coverage objects
+        self._base = base
+        self.coverage_data = indexed_data
+        self.unmapped_coverage = set(indexed_data.keys())
+        self.unmapped_coverage.add(idaapi.BADADDR)
+
+        # the metadata this coverage will be mapped to
+        self._metadata = None
+
+        # maps to the child coverage objects
         self.nodes     = {}
         self.functions = {}
 
         #
         # profiling revealed that letting every child (eg, FunctionCoverage
         # or NodeCoverage) create their own weakref to the parent/database
-        # was actually adding a reasonable and unecessary overhead.
+        # was actually adding a reasonable and unecessary overhead. There's
+        # really no reason they need to do that anyway.
         #
         # we instantiate a single weakref of ourself (the DatbaseCoverage
         # object) such that we can distribute it to the children we create
@@ -73,47 +79,129 @@ class DatabaseCoverage(object):
 
         self._weak_self = weakref.proxy(self)
 
-
     #--------------------------------------------------------------------------
-    # Properties
+    # Operator Overloads
     #--------------------------------------------------------------------------
 
-    @property
-    def coverage_data(self):
+    def __or__(self, other):
         """
-        The coverage data in (address, size) block format.
-
-        This is returned as an iterator.
+        Overload of '|' (logical or) operator.
         """
 
-        #
-        # TODO:
-        #
-        #   I admit, this level of code/python obscurity is both unruly
-        #   and uncharacteristic of me. it should be de-obfuscated
-        #
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot OR DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the union of the two coverage sets
+        for address, hit_count in self.coverage_data.iteritems():
+            composite_data[address]  = hit_count
+        for address, hit_count in other.coverage_data.iteritems():
+            composite_data[address] += hit_count
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def __and__(self, other):
+        """
+        Overload of '&' (logical and) operator.
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot AND DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the intersecting addresses of the two coverage sets
+        intersected_addresses = self.coverage_data.viewkeys() & other.coverage_data.viewkeys()
+
+        # accumulate the hit counters for the intersecting coverage
+        for address in intersected_addresses:
+            composite_data[address] = self.coverage_data[address] + other.coverage_data[address]
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def __sub__(self, other):
+        """
+        Overload of '-' (subtract) operator.
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot SUB DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the difference addresses of the two coverage sets
+        difference_addresses = self.coverage_data.viewkeys() - other.coverage_data.viewkeys()
 
         #
-        # The objective of this code is to create an abstract iterator
-        # 'coverage_data' which will enumerate every piece of coverage
-        # data tracked by this DatabaseCoverage object.
-        #
-        # What makes this so obscure is my attempt to chain and flatten
-        # multiple iterators. 'mapped_blocks' is an abstract iterator
-        # to enumerate all of the blocks mapped by this coverage.
-        #
-        # We then chain the mapped_blocks iterator with the unmapped_coverage
-        # iterator, to create a complete enumeration of the 'raw' coverage
-        # data in this DatabaseeCoverage.
+        # NOTE:
+        #   I'm not convinced I should acumulate the subtractee's hit counts,
+        #   and I don't think it makes sense to? so for now we don't.
         #
 
-        mapped_addresses = itertools.chain.from_iterable((node_coverage.blocks for node_coverage in self.nodes.itervalues()))
-        coverage_data = itertools.chain(self.unmapped_coverage, mapped_addresses)
+        # build the new coverage data
+        for address in difference_addresses:
+            composite_data[address] = self.coverage_data[address]
 
-        # return the uber iterator of all tracked coverage data
-        return coverage_data
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
 
-    #----------------------------------------------------------------------
+    def __xor__(self, other):
+        """
+        Overload of '^' xor operator.
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot XOR DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the symmetric difference (xor) between two coverage sets
+        xor_addresses = self.coverage_data.viewkeys() ^ other.coverage_data.viewkeys()
+
+        # accumulate the hit counters for the xor'd coverage
+        for address in xor_addresses & self.coverage_data.viewkeys():
+            composite_data[address] = self.coverage_data[address]
+        for address in xor_addresses & other.coverage_data.viewkeys():
+            composite_data[address] = other.coverage_data[address]
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def __ror__(self, other):
+        return self.__or__(other)
+
+    def __rand__(self, other):
+        return self.__and__(other)
+
+    #def __rsub__(self, other):
+    #    return self.__sub__(other)
+
+    def __rxor__(self, other):
+        return self.__xor__(other)
+
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
@@ -177,7 +265,7 @@ class DatabaseCoverage(object):
         Map loaded coverage data to database defined nodes (basic blocks).
         """
         dirty_nodes = {}
-        addresses_to_map = collections.deque(sorted(self.unmapped_coverage.keys()))
+        addresses_to_map = collections.deque(sorted(self.unmapped_coverage))
 
         #
         # This while loop is the core of our coverage mapping process.
@@ -235,8 +323,12 @@ class DatabaseCoverage(object):
 
             while 1:
 
-                # map the coverage data block to this node
-                node_coverage.blocks[address] = self.unmapped_coverage.pop(address)
+                # map the coverage data for this address to this node
+                node_coverage.executed_bytes.add(address)
+
+                # ownership has been transfered to node_coverage, so this
+                # address is no longer considered 'unmapped'
+                self.unmapped_coverage.discard(address)
 
                 # get the next address to attempt mapping on
                 address = addresses_to_map.popleft()
@@ -351,7 +443,7 @@ class DatabaseCoverage(object):
                 continue
 
             # the node was found, unmap any of its tracked coverage blocks
-            self.unmapped_coverage.update(node_coverage.blocks)
+            self.unmapped_coverage.update(node_coverage.executed_bytes)
 
             #
             # NOTE:
@@ -468,17 +560,11 @@ class NodeCoverage(object):
     def __init__(self, node_address, database=None):
         self._database = database
         self.address = node_address
-        self.blocks = {}
+        self.executed_bytes = set()
 
     #--------------------------------------------------------------------------
     # TODO
     #--------------------------------------------------------------------------
-
-    def add_mapping(self, address, hits):
-        """
-        Add a given coverage block (address, size) to this nodes mapping.
-        """
-        self.blocks[address] = hits
 
     def finalize(self):
         """
@@ -486,9 +572,6 @@ class NodeCoverage(object):
         """
         palette = self._database.palette
         #node_coverage = self._database._metadata.nodes[self.address]
-
-        # coalesce the accumulated coverage blocks
-        #self.blocks = coalesce_blocks(self.blocks)
 
         # bake colors
         self.coverage_color = palette.ida_coverage

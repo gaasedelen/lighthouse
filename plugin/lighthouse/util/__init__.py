@@ -119,6 +119,10 @@ def resource_file(filename):
     """
     return os.path.join(idaapi.idadir("plugins"), "lighthouse", "ui", "resources", filename)
 
+#------------------------------------------------------------------------------
+# Block Utilities
+#------------------------------------------------------------------------------
+
 def coalesce_blocks(blocks):
     """
     Coalesce a list of (address, size) blocks.
@@ -175,13 +179,13 @@ def coalesce_blocks(blocks):
     # return the list of coalesced blocks
     return coalesced
 
-def index_coverage(base, coverage_data):
+def index_coverage(base, coverage_blocks):
     """
     TODO
     """
     output = collections.defaultdict(int)
 
-    for address, size in coverage_data:
+    for address, size in coverage_blocks:
         end_address = address + size
         while address < end_address:
             output[base+address] += 1
