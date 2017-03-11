@@ -150,8 +150,7 @@ class CoverageDirector(object):
 
         for name, coverage in self._database_coverage.iteritems():
             logger.debug(" - %s" % name)
-            coverage.refresh(self.metadata)
-            #coverage.refresh(self.metadata, delta)
+            coverage.refresh(self.metadata, delta)
 
     #----------------------------------------------------------------------
     # Painting / TODO: move/remove?

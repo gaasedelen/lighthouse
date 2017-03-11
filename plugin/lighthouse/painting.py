@@ -17,7 +17,7 @@ def paint_coverage(metadata, coverage, color):
     """
 
     # paint individual instructions
-    paint_instruction_coverage(coverage._coverage_data, color)
+    paint_instruction_coverage(coverage, color) # TODO unmapped_blocks
 
     # paint nodes in function graphs
     paint_node_coverage(metadata.nodes, coverage.nodes)
@@ -30,32 +30,28 @@ def unpaint_coverage(metadata, coverage):
 
     TODO: this will be refactored in v0.3.0
     """
-    unpaint_instruction_coverage(coverage._coverage_data)
+    unpaint_instruction_coverage(coverage)
     unpaint_node_coverage(metadata.nodes, coverage.nodes)
 
 #------------------------------------------------------------------------------
 # Painting - Instructions / Items (Lines)
 #------------------------------------------------------------------------------
 
-def paint_instruction_coverage(coverage_blocks, color):
+def paint_instruction_coverage(coverage, color):
     """
     Paint instructions using the given coverage blocks.
     """
 
-    for address, size in coverage_blocks:
+    #
+    # loop through every byte in each block (base_address -> base_address+size)
+    # given, coloring each byte individually
+    #
 
-        # loop through the entire region (address -> address+size) coloring lines
-        while size > 0:
-
-            # color the current item
+    for base_address, size in coverage.coverage_data:
+        for address in xrange(base_address, base_address+size):
             idaapi.set_item_color(address, color)
 
-            # move forward to the next item
-            next_address = idaapi.next_not_tail(address)
-            size -= next_address - address
-            address = next_address
-
-def unpaint_instruction_coverage(coverage_blocks):
+def unpaint_instruction_coverage(coverage):
     """
     Unpaint instructions using the given coverage blocks.
 
@@ -63,18 +59,14 @@ def unpaint_instruction_coverage(coverage_blocks):
     """
     color = idc.DEFCOLOR
 
-    for address, size in coverage_blocks:
+    #
+    # loop through every byte in each block (base_address -> base_address+size)
+    # given, clearing each byte individually
+    #
 
-        # loop through the entire region (address -> address+size) clearing lines
-        while size > 0:
-
-            # color the current item
+    for base_address, size in coverage.coverage_data:
+        for address in xrange(base_address, base_address+size):
             idaapi.set_item_color(address, color)
-
-            # move forward to the next item
-            next_address = idaapi.next_not_tail(address)
-            size -= next_address - address
-            address = next_address
 
 #------------------------------------------------------------------------------
 # Painting - Nodes (Basic Blocks)
@@ -193,8 +185,7 @@ def paint_hexrays(cfunc, metadata, coverage, color):
     lines_painted = 0
 
     # extract the node addresses that have been hit by our function's coverage data
-    #    NOTE: we use viewkeys() here as it's a free set() for us :-)
-    coverage_nodes = coverage.functions[cfunc.entry_ea].executed_nodes.viewkeys()
+    coverage_nodes = set(coverage.functions[cfunc.entry_ea].executed_nodes.iterkeys())
 
     #
     # now we loop through every line_number of the decompiled text that claims
