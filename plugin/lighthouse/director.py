@@ -1,8 +1,9 @@
+import time
 import logging
 
 from lighthouse.util import *
 from lighthouse.painting import *
-from lighthouse.metadata import DatabaseMetadata
+from lighthouse.metadata import DatabaseMetadata, MetadataDelta
 from lighthouse.coverage import DatabaseCoverage
 
 logger = logging.getLogger("Lighthouse.Director")
@@ -67,7 +68,7 @@ class CoverageDirector(object):
         try:
             return self._database_coverage[self.coverage_name]
         except KeyError as e:
-            return None
+            return DatabaseCoverage(idaapi.BADADDR, None, self._palette)
 
     @property
     def coverage_names(self):
@@ -85,8 +86,22 @@ class CoverageDirector(object):
         Activate loaded coverage by name.
         """
         logger.debug("Selecting coverage %s" % coverage_name)
-        self.unpaint_coverage() # TODO: this is a temporary implementation
+
+        #
+        # before switching to the new coverage, we want to un-paint
+        # whatever will NOT be painted over by the new coverage data.
+        #
+
+        self.unpaint_difference(self.coverage, self._database_coverage[coverage_name])
+
+        # switch out the director's active coverage set
         self.coverage_name = coverage_name
+
+        #
+        # now we paint using the active coverage. any paint that was left over
+        # from the last coverage set will get painted over here (and more)
+        #
+
         self.paint_coverage()
 
     def add_coverage(self, coverage_name, coverage_base, coverage_data):
@@ -102,7 +117,8 @@ class CoverageDirector(object):
         new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
 
         # map the coverage data using the database metadata
-        new_coverage.refresh(self.metadata)
+        new_coverage.update_metadata(self.metadata)
+        new_coverage.refresh()
 
         # coverage creation & mapping complete, looks like we're good. add the
         # new coverage to the director's coverage table and surface it for use.
@@ -115,10 +131,10 @@ class CoverageDirector(object):
         logger.debug("Refreshing the CoverageDirector")
 
         # (re)build our metadata cache of the underlying database
-        self._refresh_database_metadata()
+        delta = self._refresh_database_metadata()
 
         # (re)map each set of loaded coverage data to the database
-        self._refresh_database_coverage()
+        self._refresh_database_coverage(delta)
 
     #----------------------------------------------------------------------
     # Refresh Internals
@@ -129,17 +145,29 @@ class CoverageDirector(object):
         Refresh the database metadata cache utilized by the director.
         """
         logger.debug("Refreshing database metadata")
-        self._database_metadata = DatabaseMetadata()
-        # TODO: return metadata delta
 
-    def _refresh_database_coverage(self):
+        # compute the metadata for the current state of the database
+        new_metadata = DatabaseMetadata()
+
+        # compute the delta between the old metadata, and latest
+        delta = MetadataDelta(new_metadata, self.metadata)
+
+        # save the new metadata in place of the old metadata
+        self._database_metadata = new_metadata
+
+        # finally, return the list of nodes that have changed (the delta)
+        return delta
+
+    def _refresh_database_coverage(self, delta):
         """
         Refresh the database coverage mappings managed by the director.
         """
         logger.debug("Refreshing database coverage mappings")
+
         for name, coverage in self._database_coverage.iteritems():
             logger.debug(" - %s" % name)
-            coverage.refresh(self.metadata)
+            coverage.update_metadata(self.metadata, delta)
+            coverage.refresh()
 
     #----------------------------------------------------------------------
     # Painting / TODO: move/remove?
@@ -161,19 +189,18 @@ class CoverageDirector(object):
         self._palette.refresh_colors()
 
         # color the database based on coverage
-        paint_coverage(self.metadata, self.coverage, self._palette.ida_coverage)
+        paint_coverage(self.coverage, self._palette.ida_coverage)
 
-    def unpaint_coverage(self):
+    def unpaint_difference(self, old_coverage, new_coverage):
         """
-        Unpaint the active coverage from the database.
-
-        NOTE/TODO:
-
-          Please note that this 'unpainting' implementation is only a
-          temporary implementation for Lighthouse v0.2.0. The next version
-          will only bother to un-paint the delta between the 'old' and
-          the 'new' coverage sets.
-
+        Clear paint on the difference of two coverage sets.
         """
-        if self.coverage:
-            unpaint_coverage(self.metadata, self.coverage)
+        logger.debug("Clearing paint difference between coverages")
+
+        # compute the difference in coverage between two sets of coverage
+        difference = old_coverage - new_coverage
+        difference.update_metadata(self.metadata)
+        difference.refresh_nodes()
+
+        # clear the paint on the computed difference
+        unpaint_coverage(difference)

@@ -1,4 +1,6 @@
 import logging
+import weakref
+import itertools
 import collections
 
 from lighthouse.util import *
@@ -43,175 +45,325 @@ class DatabaseCoverage(object):
     Database level coverage mapping.
     """
 
-    def __init__(self, base, coverage_data, palette):
+    def __init__(self, base, indexed_data, palette):
 
-        #
-        # for now, we simply pass in the 'global' Lighthouse palette
-        # to each database level coverage object. But in the future,
-        # perhaps we will want to paint coverages with unique palettes.
-        #
 
-        self._palette = palette
+        # the color palette used when painting this coverage
+        self.palette = palette
 
-        #
-        # here we effectively translate the raw block based coveage from
-        # (offset,size) to (base+offset,size), effectively baking them
-        # into absolute addresses.
-        #
-        # this was originally done for perfomance concerns such that every
-        # usage of a block from the 'raw' coverage data required a compute
-        # of offset+size to get its 'usable' address.
-        #
-        # this may be refactored in the future
-        #
+        if not indexed_data:
+            indexed_data = collections.defaultdict(int)
 
         self._base = base
-        self._coverage_data = bake_coverage_addresses(base, coverage_data)
+        self.coverage_data = indexed_data
+        self.unmapped_coverage = set(indexed_data.keys())
+        self.unmapped_coverage.add(idaapi.BADADDR)
 
-        # maps for the child coverage objects
+        # the metadata this coverage will be mapped to
+        self._metadata = None
+
+        # maps to the child coverage objects
         self.nodes     = {}
         self.functions = {}
 
-        # a list of orphan coverage blocks that could NOT be mapped to
-        # defined functions or nodes in the database
-        self.orphans = []
+        #
+        # profiling revealed that letting every child (eg, FunctionCoverage
+        # or NodeCoverage) create their own weakref to the parent/database
+        # was actually adding a reasonable and unecessary overhead. There's
+        # really no reason they need to do that anyway.
+        #
+        # we instantiate a single weakref of ourself (the DatbaseCoverage
+        # object) such that we can distribute it to the children we create
+        # without having to repeatedly instantiate new ones.
+        #
 
-    #----------------------------------------------------------------------
+        self._weak_self = weakref.proxy(self)
+
+    #--------------------------------------------------------------------------
+    # Operator Overloads
+    #--------------------------------------------------------------------------
+
+    def __or__(self, other):
+        """
+        Overload of '|' (logical or) operator.
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot OR DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the union of the two coverage sets
+        for address, hit_count in self.coverage_data.iteritems():
+            composite_data[address]  = hit_count
+        for address, hit_count in other.coverage_data.iteritems():
+            composite_data[address] += hit_count
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def __and__(self, other):
+        """
+        Overload of '&' (logical and) operator.
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot AND DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the intersecting addresses of the two coverage sets
+        intersected_addresses = self.coverage_data.viewkeys() & other.coverage_data.viewkeys()
+
+        # accumulate the hit counters for the intersecting coverage
+        for address in intersected_addresses:
+            composite_data[address] = self.coverage_data[address] + other.coverage_data[address]
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def __sub__(self, other):
+        """
+        Overload of '-' (subtract) operator.
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot SUB DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the difference addresses of the two coverage sets
+        difference_addresses = self.coverage_data.viewkeys() - other.coverage_data.viewkeys()
+
+        #
+        # NOTE:
+        #   I'm not convinced I should acumulate the subtractee's hit counts,
+        #   and I don't think it makes sense to? so for now we don't.
+        #
+
+        # build the new coverage data
+        for address in difference_addresses:
+            composite_data[address] = self.coverage_data[address]
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def __xor__(self, other):
+        """
+        Overload of '^' xor operator.
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot XOR DatabaseCoverage against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # compute the symmetric difference (xor) between two coverage sets
+        xor_addresses = self.coverage_data.viewkeys() ^ other.coverage_data.viewkeys()
+
+        # accumulate the hit counters for the xor'd coverage
+        for address in xor_addresses & self.coverage_data.viewkeys():
+            composite_data[address] = self.coverage_data[address]
+        for address in xor_addresses & other.coverage_data.viewkeys():
+            composite_data[address] = other.coverage_data[address]
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def __ror__(self, other):
+        return self.__or__(other)
+
+    def __rand__(self, other):
+        return self.__and__(other)
+
+    #def __rsub__(self, other):
+    #    return self.__sub__(other)
+
+    def __rxor__(self, other):
+        return self.__xor__(other)
+
+    #--------------------------------------------------------------------------
     # Metadata Population
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
-    def refresh(self, db_metadata):
+    def update_metadata(self, metadata, delta=None):
+        """
+        Update the installed metadata.
+        """
+
+        # install the new metadata
+        self._metadata = weakref.proxy(metadata)
+
+        # unmap all the coverage affected by the metadata delta
+        if delta:
+            self._unmap_dirty(delta)
+
+    def refresh(self):
         """
         Refresh the mapping of our coverage data to the database metadata.
         """
-        self._map_coverage(db_metadata)
-        self._finalize(db_metadata)
 
-    def _finalize(self, db_metadata):
+        # rebuild our coverage mapping
+        dirty_nodes, dirty_functions = self._map_coverage()
+
+        # bake our coverage map
+        self._finalize(dirty_nodes, dirty_functions)
+
+    def refresh_nodes(self):
         """
-        Finalize coverage data.
+        Special fast-refresh of nodes as used in the un-painting process.
         """
+        dirty_nodes = self._map_nodes()
+        self._finalize_nodes(dirty_nodes)
 
-        # finalize node level coverage data
-        for node_coverage in self.nodes.itervalues():
-            node_coverage.finalize(db_metadata.nodes[node_coverage.address], self._palette)
+    def _finalize(self, dirty_nodes, dirty_functions):
+        """
+        Finalize coverage objects for use.
+        """
+        self._finalize_nodes(dirty_nodes)
+        self._finalize_functions(dirty_functions)
 
-        # finalize function level coverage data
-        for function_coverage in self.functions.itervalues():
-            function_coverage.finalize(db_metadata.functions[function_coverage.address], self._palette)
+    def _finalize_nodes(self, dirty_nodes):
+        """
+        Finalize coverage nodes for use.
+        """
+        for node_coverage in dirty_nodes.itervalues():
+            node_coverage.finalize()
 
-    #----------------------------------------------------------------------
+    def _finalize_functions(self, dirty_functions):
+        """
+        Finalize coverage nodes for use.
+        """
+        for function_coverage in dirty_functions.itervalues():
+            function_coverage.finalize()
+
+    #--------------------------------------------------------------------------
     # Coverage Mapping
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
-    def _map_coverage(self, db_metadata):
+    def _map_coverage(self):
         """
         Map loaded coverage data to the given database metadata.
         """
 
-        # clear our existing mapping of coverage objects
-        self.nodes     = {}
-        self.functions = {}
-        self.orphans   = []
+        # re-map any unmapped coverage to nodes
+        dirty_nodes = self._map_nodes()
 
-        # TODO
-        self._map_nodes(db_metadata)
+        # re-map nodes to functions
+        dirty_functions = self._map_functions(dirty_nodes)
 
-        # TODO
-        self._map_functions(db_metadata)
+        # return the modified objects
+        return (dirty_nodes, dirty_functions)
 
-    def _map_nodes(self, db_metadata):
+    def _map_nodes(self):
         """
         Map loaded coverage data to database defined nodes (basic blocks).
         """
-        assert self.nodes == {}
+        dirty_nodes = {}
+        addresses_to_map = collections.deque(sorted(self.unmapped_coverage))
 
         #
-        # The purpose of this mega while loop is to process the raw block
-        # based coverage data wrapped by this DatabaseCoverage object and
-        # build a comprehensive mapping of this data to nodes (basic
-        # blocks) as defined by the given database metadata
+        # This while loop is the core of our coverage mapping process.
+        #
+        # The 'unmapped_coverage' list is consumed by this loop, mapping
+        # any unmapped coverage data maintained by this DatabaseCoverage
+        # to the given database metadata.
         #
         # It should be noted that the rest of the database coverage
         # mapping (eg functions) gets built ontop of the mappings we build
-        # for nodes here using the raw coverage data.
+        # for nodes here using the more or less raw/recycled coverage data.
         #
 
-        blocks = collections.deque(self._coverage_data)
-        while blocks:
+        while addresses_to_map:
 
-            # retrieve the next coverage block to map to the database
-            address, size = blocks.popleft()
-
-            # why would you have a zero size block?!?
-            assert size, "Size of coverage block must be non-zero"
+            # get the next address to map
+            address = addresses_to_map.popleft()
 
             # get the node (basic block) that contains this address
             try:
-                node_metadata = db_metadata.get_node(address)
+                node_metadata = self._metadata.get_node(address)
 
             #
-            # failed to locate node (basic block) for this address. this
-            # address must not fall inside of a defined function... mark the
-            # block as an orphan and move on.
-            #
-            #  NOTE/TODO:
-            #    address --> address+size may contain the start of a
-            #    nearby node, so we might actually skip some stuff here...
+            # failed to locate the node (basic block) for this address.
+            # this address must not fall inside of a defined function...
             #
 
             except ValueError:
-                self.orphans.append((address, size))
                 continue
 
             #
-            # retrieve the coverage object for this node address
+            # we found applicable node metadata for this address, now try
+            # to find the coverage object for this node address
             #
 
-            try:
+            if node_metadata.address in self.nodes:
                 node_coverage = self.nodes[node_metadata.address]
 
             #
             # failed to locate a node coverage object, looks like this is
             # the first time we have identiied coverage for this node.
-            # creaate a coverage node object and use it now.
+            # create a coverage node object and use it now.
             #
 
-            except KeyError as e:
-                node_coverage = NodeCoverage(node_metadata)
+            else:
+                node_coverage = NodeCoverage(node_metadata.address, self._weak_self)
                 self.nodes[node_metadata.address] = node_coverage
 
+            # compute the basic block end now to reduce overhead in the loop below
+            node_end = node_metadata.address + node_metadata.size
+
             #
-            # depending on coverage & bb quality, we also check for
-            # the possibility of a fragment due to the coverage block
-            # spilling into the next basic block.
+            # TODO: explain this loop
             #
 
-            # does the coverage block spill past this node??
-            coverage_end = address + size
-            node_end     = node_metadata.address + node_metadata.size
-            if node_end < coverage_end:
+            while 1:
 
-                #
-                # yes this coverage block spills into the next node,
-                # compute the size of this fragment and prepend the work
-                # to be processed later (the next iteration, technically)
-                #
+                # map the coverage data for this address to this node
+                node_coverage.executed_bytes.add(address)
 
-                fragment_address = node_end
-                fragment_size    = coverage_end - node_end
-                blocks.appendleft((fragment_address, fragment_size))
+                # ownership has been transfered to node_coverage, so this
+                # address is no longer considered 'unmapped'
+                self.unmapped_coverage.discard(address)
 
-        # end of blocks loop
+                # get the next address to attempt mapping on
+                address = addresses_to_map.popleft()
+
+                # if the address is not in this node, it's time to move on
+                if not (node_metadata.address <= address < node_end):
+                    addresses_to_map.appendleft(address)
+                    break
+
+            # since we updated this node, ensure we're tracking it as dirty
+            dirty_nodes[node_metadata.address] = node_coverage
 
         # done
-        return
+        return dirty_nodes
 
-    def _map_functions(self, db_metadata):
+    def _map_functions(self, dirty_nodes):
         """
         Map loaded coverage data to database defined functions.
         """
-        assert self.functions == {}
+        dirty_functions = {}
 
         #
         # thanks to the _map_nodes function, we now have a repository of
@@ -223,7 +375,7 @@ class DatabaseCoverage(object):
         # we loop through every node coverage object
         #
 
-        for node_coverage in self.nodes.itervalues():
+        for node_coverage in dirty_nodes.itervalues():
 
             #
             # using the node_coverage object, we retrieve its underlying
@@ -231,7 +383,7 @@ class DatabaseCoverage(object):
             # functions in the database that reference this node
             #
 
-            functions = db_metadata.nodes[node_coverage.address].functions
+            functions = self._metadata.nodes[node_coverage.address].functions
 
             #
             # now we can loop through every function that references this
@@ -255,7 +407,7 @@ class DatabaseCoverage(object):
                 #
 
                 except KeyError as e:
-                    function_coverage = FunctionCoverage(function_metadata.address)
+                    function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
                     self.functions[function_metadata.address] = function_coverage
 
                 #
@@ -263,13 +415,72 @@ class DatabaseCoverage(object):
                 #
 
                 function_coverage.mark_node(node_coverage)
+                dirty_functions[function_metadata.address] = function_coverage
 
                 # end of functions loop
 
             # end of nodes loop
 
         # done
-        return
+        return dirty_functions
+
+    def _unmap_dirty(self, delta):
+        """
+        Unmap node & function coverage affected by the metadata delta.
+
+        The metadata delta tells us exactly which parts of the database
+        changed since our last coverage mapping. This function surgically
+        unmaps the pieces of our coverage that may now be stale.
+
+        This enables us to recompute only what is necessary upon refresh.
+        """
+
+        #
+        # Dirty Nodes
+        #
+
+        #
+        # using the metdata delta as a guide, we loop through all the nodes it
+        # has noted as either modified, or deleted. it is in our best interest
+        # unmap any of these dirty (stale) node addresses in OUR coverage
+        # mapping so we can selectively regenerate their coverage later.
+        #
+
+        for node_address in itertools.chain(delta.nodes_removed, delta.nodes_modified):
+
+            #
+            # if there's no coverage for this node, then we have nothing to do.
+            # continue on to the next dirty node address
+            #
+
+            node_coverage = self.nodes.pop(node_address, None)
+            if not node_coverage:
+                continue
+
+            # the node was found, unmap any of its tracked coverage blocks
+            self.unmapped_coverage.update(node_coverage.executed_bytes)
+
+            #
+            # NOTE:
+            #
+            #   since we pop'd node_coverage from the database-wide self.nodes
+            #   list, this loop iteration owns the last remaining 'hard' ref to
+            #   the object. once the loop rolls over, it will be released.
+            #
+            #   what is cool about this is that its corresponding entry for
+            #   this node_coverage object in any FunctionCoverage objects that
+            #   reference this node will also dissapear. This is because the
+            #   executed_nodes dictionaries are built using WeakValueDictionary.
+            #
+
+        #
+        # Dirty Functions
+        #
+
+        # delete function coverage objects for the allegedly deleted functions
+        for function_address in delta.functions_removed:
+            self.functions.pop(function_address, None)
+
 
 #------------------------------------------------------------------------------
 # Function Level Coverage
@@ -280,11 +491,12 @@ class FunctionCoverage(object):
     Function level coverage mapping.
     """
 
-    def __init__(self, function_address):
+    def __init__(self, function_address, database=None):
+        self._database = database
         self.address = function_address
 
         # addresses of nodes executed
-        self.executed_nodes = {}
+        self.executed_nodes = weakref.WeakValueDictionary()
 
         # baked colors
         self.coverage_color  = 0
@@ -299,9 +511,9 @@ class FunctionCoverage(object):
         self.coverage_color = QtGui.QColor(30, 30, 30)
         self.profiling_color = 0
 
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Controls
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def mark_node(self, node_coverage):
         """
@@ -309,10 +521,12 @@ class FunctionCoverage(object):
         """
         self.executed_nodes[node_coverage.address] = node_coverage
 
-    def finalize(self, function_metadata, palette):
+    def finalize(self):
         """
-        Finalize the coverage metrics for faster access.
+        Finalize coverage data for use.
         """
+        palette = self._database.palette
+        function_metadata = self._database._metadata.functions[self.address]
 
         # compute the # of instructions executed by this function's coverage
         self.instructions_executed = 0
@@ -358,28 +572,23 @@ class NodeCoverage(object):
 
     """
 
-    def __init__(self, node_metadata): # TODO: change to node address?
-        self.address = node_metadata.address
+    def __init__(self, node_address, database=None):
+        self._database = database
+        self.address = node_address
+        self.executed_bytes = set()
 
-    def finalize(self, node_metadata, palette):
+    #--------------------------------------------------------------------------
+    # TODO
+    #--------------------------------------------------------------------------
+
+    def finalize(self):
         """
-        TODO
+        Finalize the coverage metrics for faster access.
         """
+        palette = self._database.palette
+        #node_coverage = self._database._metadata.nodes[self.address]
 
         # bake colors
         self.coverage_color = palette.ida_coverage
         #self.profiling_color = 0 # TODO
-
-#------------------------------------------------------------------------------
-# Coverage Helpers
-#------------------------------------------------------------------------------
-
-def bake_coverage_addresses(base, coverage_blocks):
-    """
-    Bake relative coverage offsets into absolute addresses, in-place.
-    """
-    for i in xrange(len(coverage_blocks)):
-        offset, size = coverage_blocks[i]
-        coverage_blocks[i] = (base + offset, size)
-    return coverage_blocks
 

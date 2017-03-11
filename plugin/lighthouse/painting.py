@@ -11,70 +11,58 @@ logger = logging.getLogger("Lighthouse.Paint")
 # Painting
 #------------------------------------------------------------------------------
 
-def paint_coverage(metadata, coverage, color):
+def paint_coverage(coverage, color):
     """
     Paint the database using the given coverage.
     """
 
     # paint individual instructions
-    paint_instruction_coverage(coverage._coverage_data, color)
+    paint_instruction_coverage(coverage, color)
 
     # paint nodes in function graphs
-    paint_node_coverage(metadata.nodes, coverage.nodes)
+    paint_node_coverage(coverage._metadata.nodes, coverage.nodes)
 
     # NOTE: We paint hexrays on-request
 
-def unpaint_coverage(metadata, coverage):
+def unpaint_coverage(coverage):
     """
     Unpaint the database using the given coverage.
 
     TODO: this will be refactored in v0.3.0
     """
-    unpaint_instruction_coverage(coverage._coverage_data)
-    unpaint_node_coverage(metadata.nodes, coverage.nodes)
+    unpaint_instruction_coverage(coverage)
+    unpaint_node_coverage(coverage._metadata.nodes, coverage.nodes)
 
 #------------------------------------------------------------------------------
 # Painting - Instructions / Items (Lines)
 #------------------------------------------------------------------------------
 
-def paint_instruction_coverage(coverage_blocks, color):
+def paint_instruction_coverage(coverage, color):
     """
     Paint instructions using the given coverage blocks.
     """
 
-    for address, size in coverage_blocks:
+    #
+    # loop through every byte in each block (base_address -> base_address+size)
+    # given, coloring each byte individually
+    #
 
-        # loop through the entire region (address -> address+size) coloring lines
-        while size > 0:
+    for address in coverage.coverage_data:
+        idaapi.set_item_color(address, color)
 
-            # color the current item
-            idaapi.set_item_color(address, color)
-
-            # move forward to the next item
-            next_address = idaapi.next_not_tail(address)
-            size -= next_address - address
-            address = next_address
-
-def unpaint_instruction_coverage(coverage_blocks):
+def unpaint_instruction_coverage(coverage):
     """
     Unpaint instructions using the given coverage blocks.
-
-    TODO: this will be refactored in v0.3.0
     """
     color = idc.DEFCOLOR
 
-    for address, size in coverage_blocks:
+    #
+    # loop through every byte in each block (base_address -> base_address+size)
+    # given, clearing each byte individually
+    #
 
-        # loop through the entire region (address -> address+size) clearing lines
-        while size > 0:
-
-            # color the current item
-            idaapi.set_item_color(address, color)
-
-            # move forward to the next item
-            next_address = idaapi.next_not_tail(address)
-            size -= next_address - address
-            address = next_address
+    for address in coverage.coverage_data:
+        idaapi.set_item_color(address, color)
 
 #------------------------------------------------------------------------------
 # Painting - Nodes (Basic Blocks)
@@ -118,8 +106,6 @@ def paint_node_coverage(nodes_metadata, nodes_coverage):
 def unpaint_node_coverage(nodes_metadata, nodes_coverage):
     """
     Unpaint function graph nodes using the given node coverages.
-
-    TODO: this will be refactored in v0.3.0
     """
 
     # create a node info object as our vehicle for resetting the node color
@@ -193,8 +179,7 @@ def paint_hexrays(cfunc, metadata, coverage, color):
     lines_painted = 0
 
     # extract the node addresses that have been hit by our function's coverage data
-    #    NOTE: we use viewkeys() here as it's a free set() for us :-)
-    coverage_nodes = coverage.functions[cfunc.entry_ea].executed_nodes.viewkeys()
+    coverage_nodes = set(coverage.functions[cfunc.entry_ea].executed_nodes.iterkeys())
 
     #
     # now we loop through every line_number of the decompiled text that claims

@@ -61,6 +61,7 @@ class DatabaseMetadata(object):
         # database defined nodes (basic blocks)
         self.nodes = {}
         self._node_addresses = []
+        self._last_node = [] # blank iterable for now
 
         # database defined functions
         self.functions = {}
@@ -121,13 +122,18 @@ class DatabaseMetadata(object):
 
         #found = self.nodes.iloc[(self.nodes.bisect_left(address) - 1)]
 
+        # fast path
+        if address in self._last_node:
+            return self._last_node
+
         # locate the index of the closest cached node address (rounding down)
         node_index = bisect.bisect_right(self._node_addresses, address) - 1
 
         # if the identified node contains our target address, it is a match
         try:
             node = self.nodes[self._node_addresses[node_index]]
-            if node.address <= address < node.address + node.size:
+            if address in node:
+                self._last_node = node
                 return node
         except KeyError:
             pass
@@ -306,6 +312,16 @@ class NodeMetadata(object):
         # collect metdata from the underlying database
         self._build_metadata()
 
+    def __contains__(self, address):
+        """
+        Overload of 'in' keyword.
+
+        Check if an address falls within a node (basic block).
+        """
+        if self.address <= address < self.address + self.size:
+            return True
+        return False
+
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
@@ -323,6 +339,22 @@ class NodeMetadata(object):
             self.instruction_count += 1
             current_address = idaapi.next_head(current_address, node_end)
 
+    #--------------------------------------------------------------------------
+    # Operator Overloads
+    #--------------------------------------------------------------------------
+
+    def __eq__(self, other):
+        """
+        Compute node equality (==)
+        """
+        result = True
+        result &= self.size == other.size
+        result &= self.address == other.address
+        result &= self.instruction_count == other.instruction_count
+        result &= self.functions.viewkeys() == other.functions.viewkeys()
+        result &= self.ids == other.ids
+        return result
+
 #------------------------------------------------------------------------------
 # Instruction Level Metadata
 #------------------------------------------------------------------------------
@@ -335,3 +367,185 @@ class InstructionMetadata(object):
 
     def __init__(self, address):
         pass
+
+#------------------------------------------------------------------------------
+# Metadata Helpers
+#------------------------------------------------------------------------------
+
+class MetadataDelta(object):
+    """
+    The computed delta between two DatabaseMetadata objects.
+    """
+
+    def __init__(self, new_metadata, old_metadata):
+
+        # nodes
+        self.nodes_added    = set()
+        self.nodes_removed  = set()
+        self.nodes_modified = set()
+
+        # functions
+        self.functions_added    = set()
+        self.functions_removed  = set()
+        self.functions_modified = set()
+        self._dirty_functions   = set() # internal use only
+
+        # compute the difference between the two metadata objects
+        self._compute_delta(new_metadata, old_metadata)
+
+    def _compute_delta(self, new_metadata, old_metadata):
+        """
+        Comptue the delta between two DatabaseMetadata objects.
+
+        op1 is assumed to be the 'newer' / latest metadata, whereas op2
+        is the 'older' / previous metadata.
+        """
+        assert isinstance(new_metadata, DatabaseMetadata)
+
+        # accept an old_metadata of type 'None'
+        if old_metadata is None:
+
+            #
+            # if the old metadata is 'None', we can assume *everything*
+            # that may exist in the new_metadata must have been 'added'
+            #
+
+            self.nodes_added     = set(new_metadata.nodes.viewkeys())
+            self.functions_added = set(new_metadata.functions.viewkeys())
+
+            # nothing else to do
+            return
+
+        #
+        # both new_metadata and old_metadata are real DatabaseMetadata objects
+        # that we need to diff against each other, so compute their delta now
+        #
+
+        # compute the node delta
+        self._compute_node_delta(new_metadata.nodes, old_metadata.nodes)
+
+        # compute the function delta
+        self._compute_function_delta(new_metadata.functions, old_metadata.functions)
+
+        # done
+        return
+
+    def _compute_node_delta(self, new_nodes, old_nodes):
+        """
+        Compute the delta between two dictionaries of node metadata.
+        """
+
+        # loop through *all* the node addresses in both metadata objects
+        all_node_addresses = new_nodes.viewkeys() | old_nodes.viewkeys()
+        for node_address in all_node_addresses:
+
+            # probe for this node in the metadata sets
+            new_node_metadata = new_nodes.get(node_address, None)
+            old_node_metadata = old_nodes.get(node_address, None)
+
+            # the node does NOT exist in the new metadata, so it was deleted
+            if not new_node_metadata:
+                self.nodes_removed.add(node_address)
+                self._dirty_functions |= set(old_node_metadata.functions.viewkeys())
+                continue
+
+            # the node does NOT exist in the old metadata, so it was added
+            if not old_node_metadata:
+                self.nodes_added.add(node_address)
+                self._dirty_functions |= set(new_node_metadata.functions.viewkeys())
+                continue
+
+            #
+            # ~ the node exists in *both* metadata sets ~
+            #
+
+            # if the nodes are identical, there's no delta (change)
+            if new_node_metadata == old_node_metadata:
+                continue
+
+            # the nodes do not match, that's a difference!
+            self.nodes_modified.add(node_address)
+            self._dirty_functions |= set(new_node_metadata.functions.viewkeys())
+            self._dirty_functions |= set(old_node_metadata.functions.viewkeys())
+
+    def _compute_function_delta(self, new_functions, old_functions):
+        """
+        Compute the delta between two dictionaries of function metadata.
+        """
+
+        #
+        # thanks to the work we did in _compute_node_delta, in theory we know
+        # exactly which functions may have changed between the two metadata sets
+        #
+        # we loop through only these addresses, and bucketize them as needed
+        #
+
+        for function_address in self._dirty_functions:
+
+            # probe for this function in the metadata sets
+            new_func_metadata = new_functions.get(function_address, None)
+            old_func_metadata = old_functions.get(function_address, None)
+
+            # the function does NOT exist in the new metadata, so it was deleted
+            if not new_func_metadata:
+                self.functions_removed.add(function_address)
+                continue
+
+            # the function does NOT exist in the old metadata, so it was added
+            if not old_func_metadata:
+                self.functions_added.add(function_address)
+                continue
+
+            #
+            # ~ the function exists in *both* metadata sets ~
+            #
+
+            #
+            # in theory, every function that makes it this far given the
+            # self._dirty_functions set should be different as one of its
+            # underlying nodes were known to have changed...
+            #
+
+            self.functions_modified.add(function_address)
+
+        # dispose of the dirty functions list as they're no longer needed
+        self._dirty_functions = set()
+
+    #--------------------------------------------------------------------------
+    # Informational / Debug
+    #--------------------------------------------------------------------------
+
+    def dump_delta(self):
+        """
+        Dump the delta in human readable format.
+        """
+        self.dump_node_delta()
+        self.dump_function_delta()
+
+    def dump_node_delta(self):
+        """
+        Dump the computed node delta.
+        """
+
+        lmsg("Nodes added:")
+        lmsg(hex_list(self.nodes_added))
+
+        lmsg("Nodes removed:")
+        lmsg(hex_list(self.nodes_removed))
+
+        lmsg("Nodes modified:")
+        lmsg(hex_list(self.nodes_modified))
+
+    def dump_function_delta(self):
+        """
+        Dump the computed function delta.
+        """
+
+        lmsg("Functions added:")
+        lmsg(hex_list(self.functions_added))
+
+        lmsg("Functions removed:")
+        lmsg(hex_list(self.functions_removed))
+
+        lmsg("Functions modified:")
+        lmsg(hex_list(self.functions_modified))

@@ -61,6 +61,9 @@ except ImportError:
 # Misc
 #------------------------------------------------------------------------------
 
+def hex_list(items):
+    return '[{}]'.format(', '.join('0x%08X' % x for x in items))
+
 def get_disas_bg_color():
     """
     Get the background color of the disas text area via pixel... YOLO
@@ -116,3 +119,76 @@ def resource_file(filename):
     """
     return os.path.join(idaapi.idadir("plugins"), "lighthouse", "ui", "resources", filename)
 
+#------------------------------------------------------------------------------
+# Block Utilities
+#------------------------------------------------------------------------------
+
+def coalesce_blocks(blocks):
+    """
+    Coalesce a list of (address, size) blocks.
+
+    ----------------------------------------------------------------------
+
+    Example:
+        blocks = [
+            (4100, 10),
+            (4200, 100),
+            (4300, 10),
+            (4310, 20),
+            (4400, 10),
+        ]
+
+    Returns:
+        coalesced = [(4100, 10), (4200, 130), (4400, 10)]
+
+    """
+
+    # nothing to do
+    if not blocks:
+        return []
+    elif len(blocks) == 1:
+        return blocks
+
+    # before we can operate on the blocks, we must ensure they are sorted
+    blocks = sorted(blocks)
+
+    #
+    # coalesce the list of given blocks
+    #
+
+    coalesced = [blocks.pop(0)]
+    while blocks:
+
+        block_start, block_size = blocks.pop(0)
+
+        #
+        # compute the end address of the current coalescing block. if the
+        # blocks do not overlap, create a new block to start coalescing from
+        #
+
+        if sum(coalesced[-1]) < block_start:
+            coalesced.append((block_start, block_size))
+            continue
+
+        #
+        # the blocks overlap, so update the current coalescing block
+        #
+
+        coalesced[-1] = (coalesced[-1][0], (block_start+block_size) - coalesced[-1][0])
+
+    # return the list of coalesced blocks
+    return coalesced
+
+def index_coverage(base, coverage_blocks):
+    """
+    TODO
+    """
+    output = collections.defaultdict(int)
+
+    for address, size in coverage_blocks:
+        end_address = address + size
+        while address < end_address:
+            output[base+address] += 1
+            address += 1
+
+    return output
