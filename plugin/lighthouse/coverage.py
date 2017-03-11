@@ -65,6 +65,18 @@ class DatabaseCoverage(object):
         self.nodes     = {}
         self.functions = {}
 
+        #
+        # profiling revealed that letting every child (eg, FunctionCoverage
+        # or NodeCoverage) create their own weakref to the parent/database
+        # was actually adding a reasonable and unecessary overhead.
+        #
+        # we instantiate a single weakref of ourself (the DatbaseCoverage
+        # object) such that we can distribute it to the children we create
+        # without having to repeatedly instantiate new ones.
+        #
+
+        self._weak_self = weakref.proxy(self)
+
     #--------------------------------------------------------------------------
     # Properties
     #--------------------------------------------------------------------------
@@ -170,7 +182,6 @@ class DatabaseCoverage(object):
         dirty_nodes = {}
         blocks_to_map = self.unmapped_blocks
         self.unmapped_blocks = collections.deque()
-        weak_self = weakref.proxy(self)
 
         #
         # This while loop is the core of our coverage mapping process.
@@ -226,7 +237,7 @@ class DatabaseCoverage(object):
             #
 
             except KeyError as e:
-                node_coverage = NodeCoverage(node_metadata.address, weak_self)
+                node_coverage = NodeCoverage(node_metadata.address, self._weak_self)
                 self.nodes[node_metadata.address] = node_coverage
 
             #
@@ -276,7 +287,6 @@ class DatabaseCoverage(object):
         Map loaded coverage data to database defined functions.
         """
         dirty_functions = {}
-        weak_self = weakref.proxy(self)
 
         #
         # thanks to the _map_nodes function, we now have a repository of
@@ -320,7 +330,7 @@ class DatabaseCoverage(object):
                 #
 
                 except KeyError as e:
-                    function_coverage = FunctionCoverage(function_metadata.address, weak_self)
+                    function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
                     self.functions[function_metadata.address] = function_coverage
 
                 #
