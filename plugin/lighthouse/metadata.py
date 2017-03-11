@@ -323,6 +323,22 @@ class NodeMetadata(object):
             self.instruction_count += 1
             current_address = idaapi.next_head(current_address, node_end)
 
+    #--------------------------------------------------------------------------
+    # Operator Overloads
+    #--------------------------------------------------------------------------
+
+    def __eq__(self, other):
+        """
+        Compute node equality (==)
+        """
+        result = True
+        result &= self.size == other.size
+        result &= self.address == other.address
+        result &= self.instruction_count == other.instruction_count
+        result &= self.functions.viewkeys() == other.functions.viewkeys()
+        result &= self.ids == other.ids
+        return result
+
 #------------------------------------------------------------------------------
 # Instruction Level Metadata
 #------------------------------------------------------------------------------
@@ -335,3 +351,51 @@ class InstructionMetadata(object):
 
     def __init__(self, address):
         pass
+
+#------------------------------------------------------------------------------
+# Metadata Helpers
+#------------------------------------------------------------------------------
+
+def metadata_delta(op1, op2):
+    """
+    Compute the list of nodes that changed between two metadata sets.
+    """
+
+    # accept an op2 of type 'None'
+    if op2 is None:
+        return set(op1.nodes.viewkeys())
+
+    # the other operand *must* be another DatabaseMetadata object
+    if not isinstance(op2, DatabaseMetadata):
+        raise NotImplementedError
+
+    # the output set of changed nodes
+    delta = set()
+
+    # loop through *all* the node addresses in both metadata objects
+    all_node_addresses = op1.nodes.viewkeys() | op2.nodes.viewkeys()
+    for node_address in all_node_addresses:
+
+        # does the node metadata exist in the second operand?
+        try:
+            op1_node_metadata = op1.nodes[node_address]
+            op2_node_metadata = op2.nodes[node_address]
+
+        # this node exists in only ONE coverage set, that's a difference!
+        except KeyError:
+            delta.add(node_address)
+            continue
+
+        #
+        # ~ the node exists in *both* coverage sets ~
+        #
+
+        # if the nodes are identical, there's no delta (change)
+        if op1_node_metadata == op2_node_metadata:
+            continue
+
+        # the nodes do not match, that's a difference!
+        delta.add(node_address)
+
+    # return the addresses of the nodes that were added/deleted/modified
+    return delta
