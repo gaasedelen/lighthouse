@@ -2,7 +2,7 @@ import logging
 
 from lighthouse.util import *
 from lighthouse.painting import *
-from lighthouse.metadata import DatabaseMetadata, metadata_delta
+from lighthouse.metadata import DatabaseMetadata, MetadataDelta
 from lighthouse.coverage import DatabaseCoverage
 
 logger = logging.getLogger("Lighthouse.Director")
@@ -118,7 +118,7 @@ class CoverageDirector(object):
         delta = self._refresh_database_metadata()
 
         # (re)map each set of loaded coverage data to the database
-        self._refresh_database_coverage()
+        self._refresh_database_coverage(delta)
 
     #----------------------------------------------------------------------
     # Refresh Internals
@@ -134,7 +134,7 @@ class CoverageDirector(object):
         new_metadata = DatabaseMetadata()
 
         # compute the delta between the old metadata, and latest
-        delta = metadata_delta(new_metadata, self.metadata)
+        delta = MetadataDelta(new_metadata, self.metadata)
 
         # save the new metadata in place of the old metadata
         self._database_metadata = new_metadata
@@ -142,14 +142,16 @@ class CoverageDirector(object):
         # finally, return the list of nodes that have changed (the delta)
         return delta
 
-    def _refresh_database_coverage(self):
+    def _refresh_database_coverage(self, delta):
         """
         Refresh the database coverage mappings managed by the director.
         """
         logger.debug("Refreshing database coverage mappings")
+
         for name, coverage in self._database_coverage.iteritems():
             logger.debug(" - %s" % name)
             coverage.refresh(self.metadata)
+            #coverage.refresh(self.metadata, delta)
 
     #----------------------------------------------------------------------
     # Painting / TODO: move/remove?

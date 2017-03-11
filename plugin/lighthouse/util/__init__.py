@@ -61,6 +61,9 @@ except ImportError:
 # Misc
 #------------------------------------------------------------------------------
 
+def hex_list(items):
+    return '[{}]'.format(', '.join('0x%08X' % x for x in items))
+
 def get_disas_bg_color():
     """
     Get the background color of the disas text area via pixel... YOLO
