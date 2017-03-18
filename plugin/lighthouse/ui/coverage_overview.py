@@ -1,6 +1,7 @@
 import idaapi
 import logging
 from lighthouse.util import *
+from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata
 from lighthouse.coverage import FunctionCoverage
 
@@ -419,8 +420,16 @@ class CoverageOverview(idaapi.PluginForm):
         self.hide_zero_label    = QtWidgets.QLabel("Hide 0% Coverage: ")
         self.hide_zero_checkbox = QtWidgets.QCheckBox()
 
+        # composing shell
+        self.shell_label = QtWidgets.QLabel("Composer")
+        self.shell_label.setStyleSheet("QLabel { margin: 0 0.5em 0 0.5em }")
+        self.shell = ComposingShell(self, self._director)
+
         # layout/populate the toolbar
-        self.toolbar.addWidget(self.active_coverage_label)
+        self.toolbar.addWidget(self.shell_label)
+        self.toolbar.addWidget(self.shell)
+        self.toolbar.addSeparator()
+        #self.toolbar.addWidget(self.active_coverage_label)
         self.toolbar.addWidget(self.active_coverage_combobox)
         self.toolbar.addSeparator()
         self.toolbar.addWidget(self.hide_zero_label)
