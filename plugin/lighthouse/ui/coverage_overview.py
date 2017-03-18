@@ -247,11 +247,26 @@ class CoverageModel(QtCore.QAbstractItemModel):
             # but since some functions may not have had coverage, they were
             # not included in the sort.
             #
-            # we simply append these (unsortable, no coverage) functions to
-            # the sorted list as they are part of the visible set regardless
+            # we simply append (or prepend) these unsortable (no coverage)
+            # functions to the sorted list as they are still members of
+            # the visible set regardless of their coverage status
             #
 
-            sorted_functions += self._no_coverage
+            #
+            # if the sort was descending (100% --> 0%), the no_coverage
+            # items (0%) should be appended to the *end*
+            #
+
+            if sort_order:
+                sorted_functions += self._no_coverage
+
+            #
+            # if the sort was ascending (0% --> 100%), the no_coverage
+            # items (0%) should be prepended to the *front*
+            #
+
+            else:
+                sorted_functions = self._no_coverage + sorted_functions
 
         # this should never be hit
         else:
@@ -389,148 +404,6 @@ class CoverageOverview(idaapi.PluginForm):
         self._ui_init()
 
     #--------------------------------------------------------------------------
-    # Initialization - UI
-    #--------------------------------------------------------------------------
-
-    def _ui_init(self):
-        """
-        Initialize UI elements.
-        """
-
-        # populate & initialize UI elements
-        self._ui_init_table()
-        self._ui_init_composer()
-
-        # connect qt signals
-        self._ui_init_signals()
-
-    def _ui_init_table(self):
-        """
-        Initialize the Coverage table UI elements.
-        """
-        self.table = QtWidgets.QTreeView()
-        self.table.setRootIsDecorated(False)
-        self.table.setUniformRowHeights(True)
-        self.table.setExpandsOnDoubleClick(False)
-
-        # enable sorting on the table, default to sort by func address
-        self.table.setSortingEnabled(True)
-        self.table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
-
-        # install a drawing delegate to draw the grid lines on the list view
-        delegate = GridDelegate(self.table)
-        self.table.setItemDelegate(delegate)
-
-        # install the data source for the list view
-        self.table.setModel(self._model)
-
-    def _ui_init_composer(self):
-        """
-        Initialize the Composer UI elements.
-        """
-
-        self.toolbar = QtWidgets.QToolBar()
-        self.toolbar.setStyleSheet("QToolBar::separator { background-color: #909090; width: 2px; margin: 0 0.5em 0 0.5em }")
-
-        # loaded coverage combobox
-        #self.active_coverage_label   = QtWidgets.QLabel("Active Coverage: ")
-        self.active_coverage_combobox = QtWidgets.QComboBox()
-
-        temp = QtWidgets.QListView()
-        temp.setItemDelegate(ComboBoxDelegate())
-
-        self.active_coverage_combobox.setView(temp)
-        self.active_coverage_combobox.setStyleSheet(\
-        """
-        QComboBox QAbstractItemView
-        {
-            outline: none;
-            padding: 0px 0 2px 0;
-        }
-        """)
-        self.active_coverage_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-
-        # checkbox to hide 0% coverage entries
-        self.hide_zero_label    = QtWidgets.QLabel("Hide 0% Coverage: ")
-        self.hide_zero_checkbox = QtWidgets.QCheckBox()
-
-        # composing shell
-        self.shell_label = QtWidgets.QLabel("Composer")
-        self.shell_label.setStyleSheet("QLabel { margin: 0 0.5em 0 0.5em }")
-        self.shell = ComposingShell(self, self._director)
-
-        # layout/populate the toolbar
-        self.toolbar.addWidget(self.shell_label)
-        self.toolbar.addWidget(self.shell)
-        self.toolbar.addSeparator()
-        #self.toolbar.addWidget(self.active_coverage_label)
-        self.toolbar.addWidget(self.active_coverage_combobox)
-        self.toolbar.addSeparator()
-        self.toolbar.addWidget(self.hide_zero_label)
-        self.toolbar.addWidget(self.hide_zero_checkbox)
-
-    def _ui_init_signals(self):
-        """
-        Connect UI signals.
-        """
-
-        # jump to disassembly on table row double click
-        self.table.doubleClicked.connect(self._ui_entry_double_click)
-
-        # right click popup menu
-        #self.table.setContextMenuPolicy(Qt.CustomContextMenu)
-        #self.table.customContextMenuRequested.connect(...)
-
-        # composer combobox selection was changed
-        self.active_coverage_combobox.activated[str].connect(self._ui_active_coverage_changed)
-
-        # toggle 0% coverage checkbox
-        self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
-
-    def _ui_layout(self):
-        """
-        Layout the major UI elements of the window.
-        """
-        assert self.parent
-
-        # layout the major elements of our window
-        layout = QtWidgets.QGridLayout()
-        layout.addWidget(self.table)
-        layout.addWidget(self.toolbar)
-
-        # apply the widget layout to the window
-        self.parent.setLayout(layout)
-
-    #--------------------------------------------------------------------------
-    # Signal Handlers
-    #--------------------------------------------------------------------------
-
-    def _ui_entry_double_click(self, index):
-        """
-        Handle double click event on the coverage table view.
-        """
-
-        # a double click on the table view will jump the user to the clicked
-        # function in the disassembly view
-        try:
-            idaapi.jumpto(self._model.row2func[index.row()])
-        except KeyError as e:
-            pass
-
-    def _ui_active_coverage_changed(self, coverage_name):
-        """
-        Handle selection change of active coverage combobox.
-        """
-        self._director.select_coverage(coverage_name)
-        self.refresh()
-
-    def _ui_hide_zero_toggle(self, checked):
-        """
-        Handle state change of 'Hide 0% Coverage' checkbox.
-        """
-        self._model.hide_zero_coverage(checked)
-
-    #--------------------------------------------------------------------------
     # PluginForm Overloads
     #--------------------------------------------------------------------------
 
@@ -560,6 +433,178 @@ class CoverageOverview(idaapi.PluginForm):
         # layout the populated ui just before showing it
         self._ui_layout()
 
+        # register for cues from the director
+        self._director.coverage_switched(self._coverage_changed)
+        self._director.coverage_modified(self._coverage_changed)
+
+    #--------------------------------------------------------------------------
+    # Initialization - UI
+    #--------------------------------------------------------------------------
+
+    def _ui_init(self):
+        """
+        Initialize UI elements.
+        """
+        self._ui_init_table()
+        self._ui_init_toolbar()
+        self._ui_init_signals()
+
+    def _ui_init_table(self):
+        """
+        Initialize the Coverage table UI elements.
+        """
+        self.table = QtWidgets.QTreeView()
+        self.table.setRootIsDecorated(False)
+        self.table.setUniformRowHeights(True)
+        self.table.setExpandsOnDoubleClick(False)
+
+        # enable sorting on the table, default to sort by func address
+        self.table.setSortingEnabled(True)
+        self.table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
+
+        # install a drawing delegate to draw the grid lines on the list view
+        delegate = GridDelegate(self.table)
+        self.table.setItemDelegate(delegate)
+
+        # install the data source for the list view
+        self.table.setModel(self._model)
+
+    def _ui_init_toolbar(self):
+        """
+        Initialize the Coverage toolbar UI elements.
+        """
+
+        #
+        # initialize toolbar elements
+        #
+
+        # the composing shell
+        self.shell = ComposingShell(self._director)
+
+        # the loaded coverage combobox
+        self.coverage_combobox = QtWidgets.QComboBox()
+        self.coverage_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+
+        # TODO
+        coverage_list = QtWidgets.QListView()
+        coverage_list.setItemDelegate(ComboBoxDelegate())
+
+        # TODO
+        self.coverage_combobox.setView(coverage_list)
+        self.coverage_combobox.setStyleSheet(
+        """
+        QComboBox QAbstractItemView
+        {
+            outline: none;
+            padding: 0px 0 2px 0;
+        }
+        """)
+
+        # checkbox to hide 0% coverage entries
+        self.hide_zero_label    = QtWidgets.QLabel("Hide 0% Coverage: ")
+        self.hide_zero_checkbox = QtWidgets.QCheckBox()
+
+        #
+        # populate the toolbar
+        #
+
+        self.toolbar = QtWidgets.QToolBar()
+
+        #
+        # customize the style of the bottom toolbar specifically, we are
+        # interested in tweaking the seperator and item padding.
+        #
+
+        self.toolbar.setStyleSheet(
+        """
+        QToolBar::separator
+        {
+            background-color: #909090;
+            width: 2px;
+            margin: 0 0.5em 0 0.5em
+        }
+        """)
+
+        # populate the toolbar with all our subordinates
+        self.toolbar.addWidget(self.shell)
+        self.toolbar.addSeparator()
+        self.toolbar.addWidget(self.coverage_combobox)
+        self.toolbar.addSeparator()
+        self.toolbar.addWidget(self.hide_zero_label)
+        self.toolbar.addWidget(self.hide_zero_checkbox)
+
+    def _ui_init_signals(self):
+        """
+        Connect UI signals.
+        """
+
+        # jump to disassembly on table row double click
+        self.table.doubleClicked.connect(self._ui_entry_double_click)
+
+        # right click popup menu
+        #self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        #self.table.customContextMenuRequested.connect(...)
+
+        # composer combobox selection was changed
+        self.coverage_combobox.activated[str].connect(self._ui_coverage_combobox_changed)
+
+        # toggle 0% coverage checkbox
+        self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
+
+    def _ui_layout(self):
+        """
+        Layout the major UI elements of the widget.
+        """
+        assert self.parent
+
+        # layout the major elements of our widget
+        layout = QtWidgets.QGridLayout()
+        layout.addWidget(self.table)
+        layout.addWidget(self.toolbar)
+
+        # apply the widget layout
+        self.parent.setLayout(layout)
+
+    #--------------------------------------------------------------------------
+    # Signal Handlers
+    #--------------------------------------------------------------------------
+
+    def _ui_entry_double_click(self, index):
+        """
+        Handle double click event on the coverage table view.
+        """
+
+        #
+        # a double click on the coverage table view will jump the user to
+        # the corresponding function in the IDA disassembly view
+        #
+
+        idaapi.jumpto(self._model.row2func[index.row()])
+
+    def _ui_coverage_combobox_changed(self, coverage_name):
+        """
+        Handle selection change of active coverage combobox.
+        """
+        self._director.select_coverage(coverage_name)
+
+    def _ui_hide_zero_toggle(self, checked):
+        """
+        Handle state change of 'Hide 0% Coverage' checkbox.
+        """
+        self._model.hide_zero_coverage(checked)
+
+    def _coverage_changed(self):
+        """
+        Handle a coverage (switched | modified) event from the director.
+        """
+
+        # only bother to act on an incoming director signal if we're visible
+        if not self.parent.isVisible():
+            return
+
+        # refresh the coverage overview
+        self.refresh()
+
     #--------------------------------------------------------------------------
     # Controls
     #--------------------------------------------------------------------------
@@ -569,32 +614,28 @@ class CoverageOverview(idaapi.PluginForm):
         TODO
         """
         self._model.update_model(self._director.metadata, self._director.coverage)
-        self._ui_refresh_active_coverage_combobox()
+        self._ui_refresh_coverage_combobox()
 
-    #--------------------------------------------------------------------------
-    # Refresh Internals
-    #--------------------------------------------------------------------------
-
-    def _ui_refresh_active_coverage_combobox(self):
+    def _ui_refresh_coverage_combobox(self):
         """
         Refresh the active coverage combobox.
         """
 
         # clear the active coverage combobox
-        self.active_coverage_combobox.clear()
+        self.coverage_combobox.clear()
 
         # add the special (eg 'Hot Shell', 'Aggregate') coverage names first
-        self.active_coverage_combobox.addItems(self._director.special_names)
+        self.coverage_combobox.addItems(self._director.special_names)
 
         # add a seperator to distinguish the special versus normal coverage sets
-        self.active_coverage_combobox.insertSeparator(self.active_coverage_combobox.count())
+        self.coverage_combobox.insertSeparator(self.coverage_combobox.count())
 
         # add the loaded/composed coverage names to the combobox
-        self.active_coverage_combobox.addItems(self._director.coverage_names)
+        self.coverage_combobox.addItems(self._director.coverage_names)
 
         # finally, select the index matching the active coverage name
-        new_index = self.active_coverage_combobox.findText(self._director.coverage_name)
-        self.active_coverage_combobox.setCurrentIndex(new_index)
+        new_index = self.coverage_combobox.findText(self._director.coverage_name)
+        self.coverage_combobox.setCurrentIndex(new_index)
 
 #------------------------------------------------------------------------------
 # Painting

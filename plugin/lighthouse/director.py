@@ -45,6 +45,9 @@ class CoverageDirector(object):
     def __init__(self, palette):
         self._NULL_COVERAGE = DatabaseCoverage(idaapi.BADADDR, None, palette)
 
+        # color palette
+        self._palette = palette
+
         # database metadata cache
         self._database_metadata = None
 
@@ -70,12 +73,13 @@ class CoverageDirector(object):
             '*': AGGREGATE
         }
 
-        # the active coverage name
+        # active coverage name (eg filename) and shorthand name (eg 'A')
         self.coverage_name  = None
         self.shorthand_name = None
 
-        # the color palette
-        self._palette = palette
+        # lists of registered notification callbacks, see 'Signals' below
+        self._coverage_switched_callbacks = []
+        self._coverage_modified_callbacks = []
 
     #----------------------------------------------------------------------
     # Properties
@@ -117,6 +121,36 @@ class CoverageDirector(object):
         return self.coverage_names + self.special_names
 
     #----------------------------------------------------------------------
+    # Signals
+    #----------------------------------------------------------------------
+
+    def coverage_switched(self, callback):
+        """
+        Subscribe a callback for coverage switch events.
+        """
+        self._coverage_switched_callbacks.append(callback)
+
+    def _notiy_coverage_switched(self):
+        """
+        Notify listeners of a coverage switch event.
+        """
+        for callback in self._coverage_switched_callbacks:
+            callback()
+
+    def coverage_modified(self, callback):
+        """
+        Subscribe a callback for coverage modification events.
+        """
+        self._coverage_modified_callbacks.append(callback)
+
+    def _notiy_coverage_modified(self):
+        """
+        Notify listeners of a coverage modification event.
+        """
+        for callback in self._coverage_modified_callbacks:
+            callback() # TODO: send delta?
+
+    #----------------------------------------------------------------------
     # Coverage
     #----------------------------------------------------------------------
 
@@ -126,6 +160,18 @@ class CoverageDirector(object):
         """
         logger.debug("Selecting coverage %s" % coverage_name)
 
+        # ensure coverage data actually exists for the given coverage_name
+        if not (coverage_name in self.all_names):
+            raise ValueError("No coverage matching '%s' was found" % coverage_name)
+
+        #
+        # if the requested switch target matches the currently active
+        # coverage, then there's nothing for us to do
+        #
+
+        if self.coverage_name == coverage_name:
+            return
+
         #
         # before switching to the new coverage, we want to un-paint
         # whatever will NOT be painted over by the new coverage data.
@@ -133,9 +179,12 @@ class CoverageDirector(object):
 
         self.unpaint_difference(self.coverage, self.get_coverage(coverage_name))
 
-        # switch out the director's active coverage set
+        #
+        # switch out the active coverage name with the new coverage name.
+        # this pivots the director
+        #
+
         self.coverage_name = coverage_name
-        #self.shorthand_name = self._shorthand[coverage_name]
 
         #
         # now we paint using the active coverage. any paint that was left over
@@ -143,6 +192,9 @@ class CoverageDirector(object):
         #
 
         self.paint_coverage()
+
+        # notify any listeners that we have switched our active coverage
+        self._notiy_coverage_switched()
 
     def add_coverage(self, coverage_name, coverage_base, coverage_data):
         """
@@ -220,11 +272,7 @@ class CoverageDirector(object):
             self.unpaint_difference(self.coverage, composite_coverage)
             self._database_coverage[self.coverage_name] = composite_coverage
             self.paint_coverage()
-            self.refresh()
-
-            return True
-
-        return False
+            self._notiy_coverage_modified()
 
     def _evaluate_composition(self, ast):
         """

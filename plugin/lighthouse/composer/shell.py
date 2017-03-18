@@ -1,18 +1,18 @@
 from lighthouse.util import *
 from .parser import ComposingParser
 
-class ComposingShell(QtWidgets.QLineEdit):
+class ComposingShell(QtWidgets.QWidget):
     """
-    The Composing Shell, where music is made.
+    TODO
     """
 
-    def __init__(self, parent, director):
+    def __init__(self, director):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
-        self.parent = parent
 
-        self.parser = ComposingParser()
+        # TODO
         self._director = director
+        self._parser = ComposingParser()
 
         # initialize UI elements
         self._ui_init()
@@ -25,19 +25,60 @@ class ComposingShell(QtWidgets.QLineEdit):
         """
         Initialize UI elements.
         """
-        self.textChanged[str].connect(self._text_changed)
+        self._ui_init_shell()
+        self._ui_init_signals()
+        self._ui_layout()
 
-    def _text_changed(self, data):
+    def _ui_init_shell(self):
+        """
+        Initialize the Composer UI elements.
+        """
+        self.line_label = QtWidgets.QLabel("Composer")
+        self.line_label.setStyleSheet("QLabel { margin: 0 1ex 0 1ex }")
+        self.line = QtWidgets.QLineEdit()
+
+    def _ui_init_signals(self):
+        """
+        Connect UI signals.
+        """
+
+        # text changed on the shell
+        self.line.textChanged[str].connect(self._ui_text_changed)
+
+    def _ui_layout(self):
+        """
+        Layout the major UI elements of the widget.
+        """
+
+        # layout the major elements of our window
+        layout = QtWidgets.QHBoxLayout()
+        layout.setContentsMargins(0,0,0,0)
+        layout.addWidget(self.line_label)
+        layout.addWidget(self.line)
+
+        # apply the widget layout
+        self.setLayout(layout)
+
+    #--------------------------------------------------------------------------
+    # Signal Handlers
+    #--------------------------------------------------------------------------
+
+    def _ui_text_changed(self, text):
         """
         TODO
         """
-        data = data.strip()
 
+        # attempt a parse against the composition grammar
         try:
-            ast = self.parser.parse(data)
+            ast = self._parser.parse(text)
+
+        # parse failed, nothing else to do
         except SyntaxError:
             return
 
         changed = self._director.apply_composition(ast)
-        if changed:
-            self.parent.refresh()
+
+        # TODO: remove
+        #if changed:
+        #    self.parent.refresh()
+

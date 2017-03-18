@@ -190,6 +190,7 @@ class ComposingParser(object):
         Raises SyntaxError on parse failure.
         """
 
+        # if the string is *only* whitespace, return an empty, but valid parse
         if not text.strip():
             return TokenNull()
 
