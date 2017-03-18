@@ -47,6 +47,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         # TODO
         self._metadata = {}
         self._coverage = {}
+        self._no_coverage = []
         self._visible_metadata = {}
         self._visible_coverage = {}
 
@@ -218,6 +219,8 @@ class CoverageModel(QtCore.QAbstractItemModel):
         #
         # sort the existing entries in the table by the selected field name
         #
+
+        #
         # NOTE:
         #   using attrgetter appears to profile ~8-12% faster than lambdas
         #   accessing the member on the member, hence the strange paradigm
@@ -238,6 +241,17 @@ class CoverageModel(QtCore.QAbstractItemModel):
                 key=attrgetter(sort_field),
                 reverse=sort_order
             )
+
+            #
+            # we sorted only the functions items that have known coverage.
+            # but since some functions may not have had coverage, they were
+            # not included in the sort.
+            #
+            # we simply append these (unsortable, no coverage) functions to
+            # the sorted list as they are part of the visible set regardless
+            #
+
+            sorted_functions += self._no_coverage
 
         # this should never be hit
         else:
@@ -308,6 +322,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         row = 0
         self.row2func = {}
+        self._no_coverage = []
         self._visible_coverage = {}
         self._visible_metadata = {}
 
@@ -343,7 +358,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
             # reminder: coverage is *not* guaranteed :-)
             except KeyError as e:
-                pass
+                self._no_coverage.append(self._metadata.functions[function_address])
 
             # map the function address to a visible row # for easy lookup
             self.row2func[row] = function_address
@@ -382,10 +397,17 @@ class CoverageOverview(idaapi.PluginForm):
         Initialize UI elements.
         """
 
-        #
-        # coverage list table
-        #
+        # populate & initialize UI elements
+        self._ui_init_table()
+        self._ui_init_composer()
 
+        # connect qt signals
+        self._ui_init_signals()
+
+    def _ui_init_table(self):
+        """
+        Initialize the Coverage table UI elements.
+        """
         self.table = QtWidgets.QTreeView()
         self.table.setRootIsDecorated(False)
         self.table.setUniformRowHeights(True)
@@ -402,19 +424,31 @@ class CoverageOverview(idaapi.PluginForm):
         # install the data source for the list view
         self.table.setModel(self._model)
 
-        #
-        # coverage list toolbar (& members)
-        #
+    def _ui_init_composer(self):
+        """
+        Initialize the Composer UI elements.
+        """
 
         self.toolbar = QtWidgets.QToolBar()
         self.toolbar.setStyleSheet("QToolBar::separator { background-color: #909090; width: 2px; margin: 0 0.5em 0 0.5em }")
 
         # loaded coverage combobox
-        self.active_coverage_label    = QtWidgets.QLabel("Active Coverage: ")
+        #self.active_coverage_label   = QtWidgets.QLabel("Active Coverage: ")
         self.active_coverage_combobox = QtWidgets.QComboBox()
-        self.active_coverage_combobox.setStyleSheet("QComboBox { padding-left: 2ex; padding-right: 2ex; }")
+
+        temp = QtWidgets.QListView()
+        temp.setItemDelegate(ComboBoxDelegate())
+
+        self.active_coverage_combobox.setView(temp)
+        self.active_coverage_combobox.setStyleSheet(\
+        """
+        QComboBox QAbstractItemView
+        {
+            outline: none;
+            padding: 0px 0 2px 0;
+        }
+        """)
         self.active_coverage_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.active_coverage_combobox.addItems(list(self._director.coverage_names))
 
         # checkbox to hide 0% coverage entries
         self.hide_zero_label    = QtWidgets.QLabel("Hide 0% Coverage: ")
@@ -435,15 +469,22 @@ class CoverageOverview(idaapi.PluginForm):
         self.toolbar.addWidget(self.hide_zero_label)
         self.toolbar.addWidget(self.hide_zero_checkbox)
 
-        #
-        # ui signals
-        #
+    def _ui_init_signals(self):
+        """
+        Connect UI signals.
+        """
 
-        # connect a signal to jump to the function disas described by a row
+        # jump to disassembly on table row double click
         self.table.doubleClicked.connect(self._ui_entry_double_click)
+
+        # right click popup menu
         #self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         #self.table.customContextMenuRequested.connect(...)
+
+        # composer combobox selection was changed
         self.active_coverage_combobox.activated[str].connect(self._ui_active_coverage_changed)
+
+        # toggle 0% coverage checkbox
         self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
 
     def _ui_layout(self):
@@ -542,12 +583,17 @@ class CoverageOverview(idaapi.PluginForm):
         # clear the active coverage combobox
         self.active_coverage_combobox.clear()
 
-        # re-populate the combobox with the latest coverage names
-        new_items = list(self._director.coverage_names)
-        self.active_coverage_combobox.addItems(new_items)
+        # add the special (eg 'Hot Shell', 'Aggregate') coverage names first
+        self.active_coverage_combobox.addItems(self._director.special_names)
 
-        # select the index with the correct coverage name as the 'active' coverage
-        new_index = new_items.index(self._director.coverage_name)
+        # add a seperator to distinguish the special versus normal coverage sets
+        self.active_coverage_combobox.insertSeparator(self.active_coverage_combobox.count())
+
+        # add the loaded/composed coverage names to the combobox
+        self.active_coverage_combobox.addItems(self._director.coverage_names)
+
+        # finally, select the index matching the active coverage name
+        new_index = self.active_coverage_combobox.findText(self._director.coverage_name)
         self.active_coverage_combobox.setCurrentIndex(new_index)
 
 #------------------------------------------------------------------------------
@@ -570,3 +616,29 @@ class GridDelegate(QtWidgets.QStyledItemDelegate):
         painter.drawRect(option.rect)
         painter.restore()
 
+class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    Used solely to draw a seperator in the CoverageOverview combobox.
+    """
+
+    def __init__(self, parent=None):
+        super(ComboBoxDelegate, self).__init__(parent)
+        self.separator_color = QtGui.QColor(0x909090)
+        self.padding = 2
+
+    def sizeHint(self, option, index):
+        if index.data(QtCore.Qt.AccessibleDescriptionRole) == "separator":
+            return QtCore.QSize(1, 5)
+        return super(ComboBoxDelegate, self).sizeHint(option, index)
+
+    def paint(self, painter, option, index):
+
+        # perform custom painting for the separator
+        if index.data(QtCore.Qt.AccessibleDescriptionRole) == "separator":
+            painter.setPen(self.separator_color)
+            painter.drawLine(option.rect.left()+self.padding, option.rect.center().y(),
+                             option.rect.right()-self.padding, option.rect.center().y())
+
+        # perform standard painting for everything else
+        else:
+            super(ComboBoxDelegate, self).paint(painter, option, index)

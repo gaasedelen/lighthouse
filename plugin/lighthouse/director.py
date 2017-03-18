@@ -1,5 +1,6 @@
 import time
 import logging
+import collections
 
 from lighthouse.util import *
 from lighthouse.painting import *
@@ -47,25 +48,31 @@ class CoverageDirector(object):
         # database metadata cache
         self._database_metadata = None
 
-        # database coverage mappings
-        self._database_coverage = \
-        {
-            HOT_SHELL: self._NULL_COVERAGE,
-            AGGREGATE: self._NULL_COVERAGE,
-        }
+        # loaded or composed database coverage mappings
+        self._database_coverage = {}
 
-        # shorthand names / 'symbols' mappings
+        #
+        # NOTE:
+        #   The ordering of the dict below is the order that its items will
+        #   be shown in lists such as UI dropwdowns, etc.
+        #
+
+        # special / director generated coverage mappings
+        self._special_coverage = collections.OrderedDict(
+        [
+            (HOT_SHELL, self._NULL_COVERAGE),
+            (AGGREGATE, self._NULL_COVERAGE),
+        ])
+
+        # shorthand symbol --> coverage_name mappings
         self._shorthand = \
         {
             '*': AGGREGATE
         }
 
-        # the active database name
+        # the active coverage name
         self.coverage_name  = None
         self.shorthand_name = None
-
-        # a user rendered composite of coverage data
-        self._composite_coverage = None
 
         # the color palette
         self._palette = palette
@@ -86,17 +93,28 @@ class CoverageDirector(object):
         """
         The active database coverage.
         """
-        try:
-            return self._database_coverage[self.coverage_name]
-        except KeyError as e:
-            return DatabaseCoverage(idaapi.BADADDR, None, self._palette)
+        return self.get_coverage(self.coverage_name)
 
     @property
     def coverage_names(self):
         """
-        The names of loaded coverage data.
+        The names of loaded / composed coverage data.
         """
-        return self._database_coverage.iterkeys()
+        return self._database_coverage.keys()
+
+    @property
+    def special_names(self):
+        """
+        The names of special / director coverage.
+        """
+        return self._special_coverage.keys()
+
+    @property
+    def all_names(self):
+        """
+        The names of both special & loaded/composed coverage data.
+        """
+        return self.coverage_names + self.special_names
 
     #----------------------------------------------------------------------
     # Coverage
@@ -113,7 +131,7 @@ class CoverageDirector(object):
         # whatever will NOT be painted over by the new coverage data.
         #
 
-        self.unpaint_difference(self.coverage, self._database_coverage[coverage_name])
+        self.unpaint_difference(self.coverage, self.get_coverage(coverage_name))
 
         # switch out the director's active coverage set
         self.coverage_name = coverage_name
@@ -151,12 +169,37 @@ class CoverageDirector(object):
         self._database_coverage[coverage_name] = new_coverage
 
         #
-        # append the new coverage to the aggregate
+        # TODO/PERF:
+        #
+        #   If we are calling add_coverage 1000x times, we don't want to
+        #   refresh the aggregate set every time... we will want to
+        #   restructure things such that we can refresh once only after a
+        #   batch load
         #
 
-        self._database_coverage[AGGREGATE] |= self._database_coverage[coverage_name]
-        self._database_coverage[AGGREGATE].update_metadata(self.metadata)
-        self._database_coverage[AGGREGATE].refresh()
+        # add the newly loaded coverage to the aggregate set
+        self._special_coverage[AGGREGATE] |= self._database_coverage[coverage_name]
+        self._special_coverage[AGGREGATE].update_metadata(self.metadata)
+        self._special_coverage[AGGREGATE].refresh()
+
+    def get_coverage(self, coverage_name):
+        """
+        Retrieve coverage data for the requested coverage_name.
+        """
+
+        # no active coverage, return a blank coverage set
+        if not coverage_name:
+            return self._NULL_COVERAGE
+
+        # attempt to retrieve the coverage from loaded / computed coverages
+        if coverage_name in self._database_coverage:
+            return self._database_coverage[coverage_name]
+
+        # attempt to retrieve the coverage from the special directory coverages
+        if coverage_name in self._special_coverage:
+            return self._special_coverage[coverage_name]
+
+        raise ValueError("No coverage data found for %s" % coverage_name)
 
     #----------------------------------------------------------------------
     # Composing
@@ -241,7 +284,7 @@ class CoverageDirector(object):
         Returns an existing coverage set.
         """
         assert isinstance(coverage_token, TokenCoverageSingle)
-        return self._database_coverage[self._shorthand[coverage_token.symbol]]
+        return self.get_coverage(self._shorthand[coverage_token.symbol])
 
     def _evaluate_coverage_range(self, range_token):
         """
@@ -260,7 +303,7 @@ class CoverageDirector(object):
 
         # build a coverage aggregate described by the range of shorthand symbols
         for symbol in symbols:
-            output = output | self._database_coverage[self._shorthand[symbol]]
+            output = output | self.get_coverage(self._shorthand[symbol])
 
         # return the computed coverage
         return output
@@ -305,8 +348,9 @@ class CoverageDirector(object):
         """
         logger.debug("Refreshing database coverage mappings")
 
-        for name, coverage in self._database_coverage.iteritems():
+        for name in self.all_names:
             logger.debug(" - %s" % name)
+            coverage = self.get_coverage(name)
             coverage.update_metadata(self.metadata, delta)
             coverage.refresh()
 
