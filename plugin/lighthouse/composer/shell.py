@@ -25,6 +25,12 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Initialize UI elements.
         """
+
+        # initialize a monospace font for our ui elements to use
+        self._font = MonospaceFont()
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
+
+        # initialize our ui elements
         self._ui_init_shell()
         self._ui_init_signals()
         self._ui_layout()
@@ -35,7 +41,9 @@ class ComposingShell(QtWidgets.QWidget):
         """
         self.line_label = QtWidgets.QLabel("Composer")
         self.line_label.setStyleSheet("QLabel { margin: 0 1ex 0 1ex }")
+        self.line_label.setFont(self._font)
         self.line = QtWidgets.QLineEdit()
+        self.line.setFont(self._font)
 
     def _ui_init_signals(self):
         """

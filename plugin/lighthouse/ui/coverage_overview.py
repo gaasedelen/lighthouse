@@ -17,9 +17,9 @@ logger = logging.getLogger("Lighthouse.UI.Overview")
 COV_PERCENT  = 0
 FUNC_NAME    = 1
 FUNC_ADDR    = 2
-BASIC_BLOCKS = 3
-BRANCHES     = 4
-LINES        = 5
+BLOCKS_HIT   = 3
+INST_HIT     = 4
+FUNC_SIZE    = 5
 FINAL_COLUMN = 7
 
 # column -> field name mapping
@@ -28,8 +28,20 @@ COLUMN_TO_FIELD = \
     COV_PERCENT:  "instruction_percent",
     FUNC_NAME:    "name",
     FUNC_ADDR:    "address",
-    BASIC_BLOCKS: "node_count",
+    BLOCKS_HIT:   "nodes_executed",
+    INST_HIT:     "instructions_executed",
+    FUNC_SIZE:    "size"
 }
+
+# column headers of the table
+SAMPLE_CONTENTS = \
+[
+    " 100.00% ",
+    " sub_140001B20 ",
+    " 0x140001b20 ",
+    " 100 / 100 ",
+    " 1000 / 1000 ",
+]
 
 class CoverageModel(QtCore.QAbstractItemModel):
     """
@@ -59,11 +71,15 @@ class CoverageModel(QtCore.QAbstractItemModel):
             COV_PERCENT:  "Coverage %",
             FUNC_NAME:    "Function Name",
             FUNC_ADDR:    "Address",
-            BASIC_BLOCKS: "Basic Blocks",
-            BRANCHES:     "Branches",
-            LINES:        "Lines",
+            BLOCKS_HIT:   "Blocks Hit",
+            INST_HIT:     "Insttructions Hit",
+            FUNC_SIZE:    "Function Size",
             FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
         }
+
+        # initialize a monospace font to use with the table
+        self._font = MonospaceFont()
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # members to enlighten the model to its last known sort state
         self._last_sort = FUNC_ADDR
@@ -144,6 +160,9 @@ class CoverageModel(QtCore.QAbstractItemModel):
             # center align all other columns
             return QtCore.Qt.AlignCenter
 
+        elif role == QtCore.Qt.FontRole:
+            return self._font
+
         # data display request
         elif role == QtCore.Qt.DisplayRole:
 
@@ -164,7 +183,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
             # Coverage % - (by instruction execution)
             if index.column() == COV_PERCENT:
-                return "%.2f%%" % (function_coverage.instruction_percent*100)
+                return "%5.2f%%" % (function_coverage.instruction_percent*100)
 
             # Function Name
             elif index.column() == FUNC_NAME:
@@ -175,17 +194,18 @@ class CoverageModel(QtCore.QAbstractItemModel):
                 return "0x%08X" % function_metadata.address
 
             # Basic Blocks
-            elif index.column() == BASIC_BLOCKS:
-                return "%u / %u" % (function_coverage.nodes_executed,
-                                    function_metadata.node_count)
+            elif index.column() == BLOCKS_HIT:
+                return "%3u / %-3u" % (function_coverage.nodes_executed,
+                                       function_metadata.node_count)
 
-            # Branches
-            elif index.column() == BRANCHES:
-                return "TODO"
+            # Instructions Hit
+            elif index.column() == INST_HIT:
+                return "%4u / %-4u" % (function_coverage.instructions_executed,
+                                     function_metadata.instruction_count)
 
-            # Source Lines
-            elif index.column() == LINES:
-                return "TODO"
+            # Function Size
+            elif index.column() == FUNC_SIZE:
+                return "%u" % function_metadata.size
 
         # cell background color request
         elif role == QtCore.Qt.BackgroundRole:
@@ -229,7 +249,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         #
 
         # sort by a metric stored in the metadata
-        if column in [FUNC_ADDR, FUNC_NAME, BASIC_BLOCKS]:
+        if column in [FUNC_NAME, FUNC_ADDR, FUNC_SIZE]:
             sorted_functions = sorted(
                 self._visible_metadata.itervalues(),
                 key=attrgetter(sort_field),
@@ -237,7 +257,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             )
 
         # sort by a metric stored in the coverage
-        elif column in [COV_PERCENT]:
+        elif column in [COV_PERCENT, BLOCKS_HIT, INST_HIT]:
             sorted_functions = sorted(
                 self._visible_coverage.itervalues(),
                 key=attrgetter(sort_field),
@@ -450,6 +470,12 @@ class CoverageOverview(idaapi.PluginForm):
         """
         Initialize UI elements.
         """
+
+        # initialize a monospace font for our ui elements to use
+        self._font = MonospaceFont()
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
+
+        # initialize our ui elements
         self._ui_init_table()
         self._ui_init_toolbar()
         self._ui_init_signals()
@@ -463,6 +489,10 @@ class CoverageOverview(idaapi.PluginForm):
         self.table.setUniformRowHeights(True)
         self.table.setExpandsOnDoubleClick(False)
 
+        # set these properties so that we can arbitrarily shrink the table
+        self.table.setMinimumHeight(0)
+        self.table.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+
         # enable sorting on the table, default to sort by func address
         self.table.setSortingEnabled(True)
         self.table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
@@ -473,6 +503,11 @@ class CoverageOverview(idaapi.PluginForm):
 
         # install the data source for the list view
         self.table.setModel(self._model)
+
+        # set initial column widths of the table
+        for i in xrange(len(SAMPLE_CONTENTS)):
+            rect = self._font_metrics.boundingRect(SAMPLE_CONTENTS[i])
+            self.table.setColumnWidth(i, rect.width())
 
     def _ui_init_toolbar(self):
         """
@@ -488,7 +523,8 @@ class CoverageOverview(idaapi.PluginForm):
 
         # the loaded coverage combobox
         self.coverage_combobox = QtWidgets.QComboBox()
-        self.coverage_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.coverage_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
+        self.coverage_combobox.setFont(self._font)
 
         # TODO
         coverage_list = QtWidgets.QListView()
@@ -498,15 +534,22 @@ class CoverageOverview(idaapi.PluginForm):
         self.coverage_combobox.setView(coverage_list)
         self.coverage_combobox.setStyleSheet(
         """
+        QComboBox
+        {
+            padding: 0 0.5em 0 0.5em;
+        }
+
         QComboBox QAbstractItemView
         {
             outline: none;
-            padding: 0px 0 2px 0;
+            padding: 0 0 2px 0;
         }
         """)
+        self.coverage_combobox.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
 
         # checkbox to hide 0% coverage entries
-        self.hide_zero_label    = QtWidgets.QLabel("Hide 0% Coverage: ")
+        self.hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
+        self.hide_zero_label.setFont(self._font)
         self.hide_zero_checkbox = QtWidgets.QCheckBox()
 
         #
@@ -530,10 +573,29 @@ class CoverageOverview(idaapi.PluginForm):
         }
         """)
 
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.splitter.setStyleSheet(
+        """
+        QSplitter::handle
+        {
+            background-color: #909090;
+            width: 2px;
+            height: 2px;
+            margin: 0 0.5em 0 0.5em
+        }
+
+        QSplitter::handle:horizontal:hover
+        {
+            background-color: #3399FF;
+        }
+        """)
+        self.splitter.addWidget(self.shell)
+        self.splitter.addWidget(self.coverage_combobox)
+        self.splitter.handle(1).setAttribute(QtCore.Qt.WA_Hover)
+        self.splitter.setStretchFactor(0, 1)
+
         # populate the toolbar with all our subordinates
-        self.toolbar.addWidget(self.shell)
-        self.toolbar.addSeparator()
-        self.toolbar.addWidget(self.coverage_combobox)
+        self.toolbar.addWidget(self.splitter)
         self.toolbar.addSeparator()
         self.toolbar.addWidget(self.hide_zero_label)
         self.toolbar.addWidget(self.hide_zero_checkbox)
@@ -637,6 +699,7 @@ class CoverageOverview(idaapi.PluginForm):
         # add the special (eg 'Hot Shell', 'Aggregate') coverage names first
         for name in self._director.special_names:
             self.coverage_combobox.addItem(self._director.get_coverage_string(name), name)
+            self.coverage_combobox.setItemData(self.coverage_combobox.count()-1, self._font, QtCore.Qt.FontRole)
 
         # add a seperator to distinguish the special versus normal coverage sets
         self.coverage_combobox.insertSeparator(self.coverage_combobox.count())
@@ -644,6 +707,7 @@ class CoverageOverview(idaapi.PluginForm):
         # add the loaded/composed coverage names to the combobox
         for name in self._director.coverage_names:
             self.coverage_combobox.addItem(self._director.get_coverage_string(name), name)
+            self.coverage_combobox.setItemData(self.coverage_combobox.count()-1, self._font, QtCore.Qt.FontRole)
 
         # finally, select the index matching the active coverage name
         new_index = self.coverage_combobox.findData(self._director.coverage_name)

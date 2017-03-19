@@ -328,7 +328,7 @@ class CoverageDirector(object):
         #   eg: 'A - 73.45% - drcov.boombox.exe.03820.0000.proc.log'
         #
 
-        coverage_string = "%s - %.2f%% - %s" % \
+        coverage_string = "%s - %5.2f%% - %s" % \
             (symbol, coverage.instruction_percent*100, coverage_name)
 
         return coverage_string

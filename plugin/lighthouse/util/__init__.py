@@ -7,6 +7,11 @@ from ida import *
 from log import lmsg, logging_started, start_logging
 from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
 
+def MonospaceFont():
+    font = QtGui.QFont("Monospace")
+    font.setStyleHint(QtGui.QFont.TypeWriter)
+    return font
+
 #------------------------------------------------------------------------------
 # Profiling / Testing Helpers
 #------------------------------------------------------------------------------
