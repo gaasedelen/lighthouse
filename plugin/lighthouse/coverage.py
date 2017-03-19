@@ -83,6 +83,17 @@ class DatabaseCoverage(object):
     # Operator Overloads
     #--------------------------------------------------------------------------
 
+    @property
+    def instruction_percent(self):
+        """
+        The coverage % by instructions executed.
+        """
+        return sum(f.instruction_percent for f in self.functions.itervalues()) / len(self._metadata.functions)
+
+    #--------------------------------------------------------------------------
+    # Operator Overloads
+    #--------------------------------------------------------------------------
+
     def __or__(self, other):
         """
         Overload of '|' (logical or) operator.

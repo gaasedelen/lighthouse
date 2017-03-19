@@ -1,11 +1,11 @@
 import idaapi
 import logging
+from operator import itemgetter, attrgetter
+
 from lighthouse.util import *
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata
 from lighthouse.coverage import FunctionCoverage
-
-from operator import itemgetter, attrgetter
 
 logger = logging.getLogger("Lighthouse.UI.Overview")
 
@@ -40,18 +40,20 @@ class CoverageModel(QtCore.QAbstractItemModel):
         super(CoverageModel, self).__init__(parent)
         self._blank_coverage = FunctionCoverage(idaapi.BADADDR)
 
-        # a map to correlate a given row in the table to the function coverage
+        # mapping to correlate a given row in the table to its function coverage
         self._rows = 0
         self.row2func = {}
 
-        # TODO
-        self._metadata = {}
-        self._coverage = {}
+        # internal references to the last known database metadata & coverage
+        self._metadata = None
+        self._coverage = None
+
+        # internal mappings of the explicit data / coverage we render
         self._no_coverage = []
         self._visible_metadata = {}
         self._visible_coverage = {}
 
-        # headers of the table
+        # column headers of the table
         self._column_headers = \
         {
             COV_PERCENT:  "Coverage %",
@@ -63,7 +65,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
         }
 
-        # used to make the model aware of its last sort state
+        # members to enlighten the model to its last known sort state
         self._last_sort = FUNC_ADDR
         self._last_sort_order = QtCore.Qt.AscendingOrder
 
@@ -280,9 +282,10 @@ class CoverageModel(QtCore.QAbstractItemModel):
         self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_addresses))
         self.layoutChanged.emit()
 
-        # save this as the most recent sort type
+        # save the details of this sort event as they may be needed later
         self._last_sort = column
         self._last_sort_order = sort_order
+
         return True
 
     #--------------------------------------------------------------------------
@@ -294,19 +297,21 @@ class CoverageModel(QtCore.QAbstractItemModel):
         Toggle zero coverage entries as visible.
         """
 
-        # state change matches current state, nothing to do
+        #
+        # the request to hide or unhide the 0% coverage items matches the
+        # current state, so there's nothing to do
+        #
+
         if self._hide_zero == hide:
             return
 
-        # rebuild the row map, using the new state (hide/unhide 0% items)
+        # the hide state is changing, so we need to recompute the model
         self._hide_zero = hide
         self._refresh()
 
     def update_model(self, metadata, coverage):
         """
         Replace the underlying data source and re-generate model mappings.
-
-        TODO: comment
         """
         self._metadata = metadata
         self._coverage = coverage
@@ -546,7 +551,7 @@ class CoverageOverview(idaapi.PluginForm):
         #self.table.customContextMenuRequested.connect(...)
 
         # composer combobox selection was changed
-        self.coverage_combobox.activated[str].connect(self._ui_coverage_combobox_changed)
+        self.coverage_combobox.activated[int].connect(self._ui_coverage_combobox_changed)
 
         # toggle 0% coverage checkbox
         self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
@@ -581,10 +586,11 @@ class CoverageOverview(idaapi.PluginForm):
 
         idaapi.jumpto(self._model.row2func[index.row()])
 
-    def _ui_coverage_combobox_changed(self, coverage_name):
+    def _ui_coverage_combobox_changed(self, index):
         """
         Handle selection change of active coverage combobox.
         """
+        coverage_name = self.coverage_combobox.itemData(index)
         self._director.select_coverage(coverage_name)
 
     def _ui_hide_zero_toggle(self, checked):
@@ -598,7 +604,11 @@ class CoverageOverview(idaapi.PluginForm):
         Handle a coverage (switched | modified) event from the director.
         """
 
-        # only bother to act on an incoming director signal if we're visible
+        #
+        # we only bother to act on an incoming director signal if the
+        # coverage overview is actually visible. return now if hidden
+        #
+
         if not self.parent.isVisible():
             return
 
@@ -606,7 +616,7 @@ class CoverageOverview(idaapi.PluginForm):
         self.refresh()
 
     #--------------------------------------------------------------------------
-    # Controls
+    # Refresh
     #--------------------------------------------------------------------------
 
     def refresh(self):
@@ -625,16 +635,18 @@ class CoverageOverview(idaapi.PluginForm):
         self.coverage_combobox.clear()
 
         # add the special (eg 'Hot Shell', 'Aggregate') coverage names first
-        self.coverage_combobox.addItems(self._director.special_names)
+        for name in self._director.special_names:
+            self.coverage_combobox.addItem(self._director.get_coverage_string(name), name)
 
         # add a seperator to distinguish the special versus normal coverage sets
         self.coverage_combobox.insertSeparator(self.coverage_combobox.count())
 
         # add the loaded/composed coverage names to the combobox
-        self.coverage_combobox.addItems(self._director.coverage_names)
+        for name in self._director.coverage_names:
+            self.coverage_combobox.addItem(self._director.get_coverage_string(name), name)
 
         # finally, select the index matching the active coverage name
-        new_index = self.coverage_combobox.findText(self._director.coverage_name)
+        new_index = self.coverage_combobox.findData(self._director.coverage_name)
         self.coverage_combobox.setCurrentIndex(new_index)
 
 #------------------------------------------------------------------------------

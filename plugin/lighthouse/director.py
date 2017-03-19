@@ -1,4 +1,5 @@
 import time
+import string
 import logging
 import collections
 
@@ -16,6 +17,9 @@ logger = logging.getLogger("Lighthouse.Director")
 
 HOT_SHELL = "Hot Shell"
 AGGREGATE = "Aggregate"
+AGGREGATE_ALIAS = '*'
+SHORTHAND_ALIASES = set(list(string.ascii_letters) + [AGGREGATE_ALIAS])
+RESERVED_NAMES = SHORTHAND_ALIASES | set([HOT_SHELL, AGGREGATE])
 
 #------------------------------------------------------------------------------
 # The Coverage Director
@@ -51,39 +55,84 @@ class CoverageDirector(object):
         # database metadata cache
         self._database_metadata = None
 
-        # loaded or composed database coverage mappings
-        self._database_coverage = {}
+        #----------------------------------------------------------------------
+        # Coverage
+        #----------------------------------------------------------------------
 
+        # active coverage name (eg filename)
+        self.coverage_name = None
+
+        # loaded or composed database coverage mappings
+        self._database_coverage = collections.OrderedDict()
+
+        #
+        # the director automatically maintains or generates a few coverage
+        # sets of its own. these are not directly modifiable by the user,
+        # but may be influenced by user actions, or loaded coverage data.
         #
         # NOTE:
         #   The ordering of the dict below is the order that its items will
         #   be shown in lists such as UI dropwdowns, etc.
         #
 
-        # special / director generated coverage mappings
         self._special_coverage = collections.OrderedDict(
         [
-            (HOT_SHELL, self._NULL_COVERAGE),
-            (AGGREGATE, self._NULL_COVERAGE),
+            (HOT_SHELL, self._NULL_COVERAGE), # composite described by the shell
+            (AGGREGATE, self._NULL_COVERAGE), # aggregate of database_coverage
         ])
 
-        # shorthand symbol --> coverage_name mappings
-        self._shorthand = \
-        {
-            '*': AGGREGATE
-        }
+        #----------------------------------------------------------------------
+        # Aliases
+        #----------------------------------------------------------------------
+        #
+        #   Within the director, one is allowed to alias the names of the
+        #   loaded coverage data it maintains. right now this is only used
+        #   to assign shorthand names to coverage data.
+        #
+        #   in the future, this can be used for more fun/interesting user
+        #   mappings and aliases :-)
+        #
 
-        # active coverage name (eg filename) and shorthand name (eg 'A')
-        self.coverage_name  = None
-        self.shorthand_name = None
+        #
+        # mapping of alias --> coverage_name
+        #   eg: 'A' --> 'my_loaded_coverage.log'
+        #
+
+        self._alias2name = {}
+
+        #
+        # mapping of coverage_name --> set(aliases)
+        #   eg: 'my_loaded_coverage.log' --> set('A', 'log1', 'foo')
+        #
+
+        self._name2alias = collections.defaultdict(set)
+
+        #
+        # default aliases
+        #
+
+        # alias the aggregate set to '*'
+        self._alias_coverage(AGGREGATE, AGGREGATE_ALIAS)
+
+        #----------------------------------------------------------------------
+        # Callbacks
+        #----------------------------------------------------------------------
+        #
+        #   As the director is the data source for much of Lighthouse, it
+        #   is important that anything built ontop of it can act on key
+        #   events or changes to the underlying data they consume.
+        #
+        #   Callbacks provide a way for us to notify any interested
+        #   parties of these key events.
+        #
 
         # lists of registered notification callbacks, see 'Signals' below
         self._coverage_switched_callbacks = []
         self._coverage_modified_callbacks = []
 
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Properties
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     @property
     def metadata(self):
@@ -200,6 +249,7 @@ class CoverageDirector(object):
         """
         Add new coverage to the director.
         """
+        assert not (coverage_name in RESERVED_NAMES)
         logger.debug("Adding coverage %s" % coverage_name)
 
         # ensure the palette colors are up to date before use
@@ -217,8 +267,13 @@ class CoverageDirector(object):
         # new coverage to the director's coverage table and surface it for use.
         #
 
-        self._shorthand[chr(ord('A') + len(self._shorthand) - 1)] = coverage_name
         self._database_coverage[coverage_name] = new_coverage
+
+        #
+        # refresh the shorthand alias mapping given the recent addition
+        #
+
+        self._refresh_shorthand_aliases()
 
         #
         # TODO/PERF:
@@ -234,14 +289,17 @@ class CoverageDirector(object):
         self._special_coverage[AGGREGATE].update_metadata(self.metadata)
         self._special_coverage[AGGREGATE].refresh()
 
-    def get_coverage(self, coverage_name):
+    def get_coverage(self, name):
         """
         Retrieve coverage data for the requested coverage_name.
         """
 
-        # no active coverage, return a blank coverage set
-        if not coverage_name:
+        # no matching coverage, return a blank coverage set
+        if not name:
             return self._NULL_COVERAGE
+
+        # if the given name was an alias, dereference it now
+        coverage_name = self._alias2name.get(name, name)
 
         # attempt to retrieve the coverage from loaded / computed coverages
         if coverage_name in self._database_coverage:
@@ -252,6 +310,82 @@ class CoverageDirector(object):
             return self._special_coverage[coverage_name]
 
         raise ValueError("No coverage data found for %s" % coverage_name)
+
+    def get_coverage_string(self, coverage_name):
+        """
+        TODO
+        """
+
+        # special case
+        if coverage_name == HOT_SHELL:
+            return HOT_SHELL
+
+        symbol   = self.get_shorthand(coverage_name)
+        coverage = self.get_coverage(coverage_name)
+
+        #
+        # build a detailed coverage string
+        #   eg: 'A - 73.45% - drcov.boombox.exe.03820.0000.proc.log'
+        #
+
+        coverage_string = "%s - %.2f%% - %s" % \
+            (symbol, coverage.instruction_percent*100, coverage_name)
+
+        return coverage_string
+
+    #----------------------------------------------------------------------
+    # Aliases
+    #----------------------------------------------------------------------
+
+    def alias_coverage(self, coverage_name, alias):
+        """
+        Assign an alias to loaded coverage.
+        """
+        assert not (alias in self.all_names)
+        assert not (alias in RESERVED_NAMES)
+        self._alias_coverage(coverage_name, alias)
+
+    def _alias_coverage(self, coverage_name, alias):
+        """
+        Internal alias assignment routine. No restrictions.
+        """
+
+        #
+        # if we are overwriting a known alias, we should remove its
+        # inverse mapping reference in the name --> [aliases] map first
+        #
+
+        if alias in self._alias2name:
+            self._name2alias[self._alias2name[alias]].remove(alias)
+
+        # save the new alias
+        self._alias2name[alias] = coverage_name
+        self._name2alias[coverage_name].add(alias)
+
+    def get_aliases(self, coverage_name):
+        """
+        Retrieve alias set for the requested coverage_name.
+        """
+        return self._name2alias[coverage_name]
+
+    def get_shorthand(self, coverage_name):
+        """
+        Retrieve shorthand symbol for the requested coverage.
+        """
+        try:
+
+            # reduce the coverage's aliases to only shorthand candidates
+            shorthand = self._name2alias[coverage_name] & SHORTHAND_ALIASES
+
+            # there can only ever be up to 1 shorthand symbols for a given coverage
+            assert len(shorthand) < 2
+
+            # pop the single shorthand symbol (if one is even aliased)
+            return shorthand.pop()
+
+        # there doesn't appear to be a shorthand symbol...
+        except KeyError:
+            return None
 
     #----------------------------------------------------------------------
     # Composing
@@ -270,8 +404,9 @@ class CoverageDirector(object):
             composite_coverage.refresh()
 
             self.unpaint_difference(self.coverage, composite_coverage)
-            self._database_coverage[self.coverage_name] = composite_coverage
+            self._special_coverage[HOT_SHELL] = composite_coverage
             self.paint_coverage()
+
             self._notiy_coverage_modified()
 
     def _evaluate_composition(self, ast):
@@ -332,7 +467,7 @@ class CoverageDirector(object):
         Returns an existing coverage set.
         """
         assert isinstance(coverage_token, TokenCoverageSingle)
-        return self.get_coverage(self._shorthand[coverage_token.symbol])
+        return self.get_coverage(self._alias2name[coverage_token.symbol])
 
     def _evaluate_coverage_range(self, range_token):
         """
@@ -347,11 +482,10 @@ class CoverageDirector(object):
 
         # exapand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
         symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
-        print "evaluating range", symbols
 
         # build a coverage aggregate described by the range of shorthand symbols
         for symbol in symbols:
-            output = output | self.get_coverage(self._shorthand[symbol])
+            output = output | self.get_coverage(self._alias2name[symbol])
 
         # return the computed coverage
         return output
@@ -362,7 +496,7 @@ class CoverageDirector(object):
 
     def refresh(self):
         """
-        Complete refresh of coverage mapping to the active database.
+        Complete refresh of the director and mapped coverage.
         """
         logger.debug("Refreshing the CoverageDirector")
 
@@ -401,6 +535,35 @@ class CoverageDirector(object):
             coverage = self.get_coverage(name)
             coverage.update_metadata(self.metadata, delta)
             coverage.refresh()
+
+    def _refresh_shorthand_aliases(self):
+        """
+        Refresh the shorthand A-Z aliases.
+        """
+        logger.debug("Refreshing shorthand aliases")
+
+        # define our shorthand bounds
+        start = ord('A')
+        end   = ord('Z') + 1
+
+        # starting from 'A', re-alias the loaded coverage
+        for coverage_name in self._database_coverage:
+            self._alias_coverage(coverage_name, chr(start))
+            start += 1
+
+            # if we have moved past 'Z', stop aliasing
+            if start > end:
+                return
+
+        # remove any old aliases that may exists from 'start' to end
+        #   eg: Q to Z
+        while start < end:
+            try:
+                name = self._alias2name[chr(start)]
+                self._name2alias[name].discard(chr(start))
+            except KeyError as e:
+                pass
+            start += 1
 
     #----------------------------------------------------------------------
     # Painting / TODO: move/remove?
