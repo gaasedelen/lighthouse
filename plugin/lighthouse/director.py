@@ -1,6 +1,7 @@
 import time
 import string
 import logging
+import weakref
 import collections
 
 from lighthouse.util import *
@@ -129,6 +130,8 @@ class CoverageDirector(object):
         # lists of registered notification callbacks, see 'Signals' below
         self._coverage_switched_callbacks = []
         self._coverage_modified_callbacks = []
+        self._coverage_created_callbacks  = []
+        self._coverage_deleted_callbacks  = []
 
     #--------------------------------------------------------------------------
     # Properties
@@ -177,27 +180,119 @@ class CoverageDirector(object):
         """
         Subscribe a callback for coverage switch events.
         """
-        self._coverage_switched_callbacks.append(callback)
+        self._register_callback(self._coverage_switched_callbacks, callback)
 
-    def _notiy_coverage_switched(self):
+    def _notify_coverage_switched(self):
         """
         Notify listeners of a coverage switch event.
         """
-        for callback in self._coverage_switched_callbacks:
-            callback()
+        self._notify_callback(self._coverage_switched_callbacks)
 
     def coverage_modified(self, callback):
         """
         Subscribe a callback for coverage modification events.
         """
-        self._coverage_modified_callbacks.append(callback)
+        self._register_callback(self._coverage_modified_callbacks, callback)
 
-    def _notiy_coverage_modified(self):
+    def _notify_coverage_modified(self):
         """
         Notify listeners of a coverage modification event.
         """
-        for callback in self._coverage_modified_callbacks:
-            callback() # TODO: send delta?
+        self._notify_callback(self._coverage_modified_callbacks)
+
+    def coverage_created(self, callback):
+        """
+        Subscribe a callback for coverage creation events.
+        """
+        self._register_callback(self._coverage_created_callbacks, callback)
+
+    def _notify_coverage_created(self):
+        """
+        Notify listeners of a coverage creation event.
+        """
+        self._notify_callback(self._coverage_created_callbacks) # TODO: send list of names created?
+
+    def coverage_deleted(self, callback):
+        """
+        Subscribe a callback for coverage deletion events.
+        """
+        self._coverage_deleted_callbacks.append(callback)
+
+    def _notify_coverage_deleted(self):
+        """
+        Notify listeners of a coverage deletion event.
+        """
+        self._notify_callback(self._coverage_deleted_callbacks) # TODO: send list of names deleted?
+
+    def _register_callback(self, callback_list, callback):
+        """
+        Internal callback registration.
+
+        Adapted from http://stackoverflow.com/a/21941670
+        """
+
+        # create a weakref callback to an object method
+        try:
+            callback_ref = weakref.ref(callback.__func__), weakref.ref(callback.__self__)
+
+        # create a wweakref callback to a stand alone function
+        except AttributeError:
+            callback_ref = weakref.ref(callback), None
+
+        # register the callback
+        callback_list.append(callback_ref)
+
+    def _notify_callback(self, callback_list):
+        """
+        Internal callback notification.
+
+        The given list is expected to consist of all items registered to the
+        same type of callback.
+
+         eg:
+           self._coverage_switched_callbacks
+           self._coverage_modified_callbacks
+           self._coverage_created_callbacks
+           self._coverage_deleted_callbacks
+
+        Adapted from http://stackoverflow.com/a/21941670
+        """
+        cleanup = []
+
+        #
+        # loop through all the registered callbacks in the given callback_list,
+        # notifying active callbacks, and removing dead ones.
+        #
+
+        for callback_ref in callback_list:
+            callback, obj_ref = callback_ref[0](), callback_ref[1]
+
+            # if the callback is an instance method...
+            if obj_ref:
+                obj = obj_ref()
+
+                # if the object instance is gone, mark this callback for cleanup
+                if obj is None:
+                    cleanup.append(callback_ref)
+                    continue
+
+                # call the object instance callback
+                callback(obj)
+
+            # if the callback is a static method...
+            else:
+
+                # if the static method is deleted, mark this callback for cleanup
+                if callback is None:
+                    cleanup.append(callback_ref)
+                    continue
+
+                # call the static callback
+                callback(self)
+
+        # remove the deleted callbacks
+        for callback_ref in cleanup:
+            callback_list.remove(callback_ref)
 
     #----------------------------------------------------------------------
     # Coverage
@@ -243,14 +338,19 @@ class CoverageDirector(object):
         self.paint_coverage()
 
         # notify any listeners that we have switched our active coverage
-        self._notiy_coverage_switched()
+        self._notify_coverage_switched()
 
     def add_coverage(self, coverage_name, coverage_base, coverage_data):
         """
-        Add new coverage to the director.
+        Add or update coverage in the director.
         """
         assert not (coverage_name in RESERVED_NAMES)
-        logger.debug("Adding coverage %s" % coverage_name)
+        updating_coverage = coverage_name in self.coverage_names
+
+        if updating_coverage:
+            logger.debug("Updating coverage %s" % coverage_name)
+        else:
+            logger.debug("Adding coverage %s" % coverage_name)
 
         # ensure the palette colors are up to date before use
         self._palette.refresh_colors()
@@ -288,6 +388,12 @@ class CoverageDirector(object):
         self._special_coverage[AGGREGATE] |= self._database_coverage[coverage_name]
         self._special_coverage[AGGREGATE].update_metadata(self.metadata)
         self._special_coverage[AGGREGATE].refresh()
+
+        # notify any listeners that we have added or updated coverage
+        if updating_coverage:
+            self._notify_coverage_modified()
+        else:
+            self._notify_coverage_created()
 
     def get_coverage(self, name):
         """
@@ -407,7 +513,7 @@ class CoverageDirector(object):
             self._special_coverage[HOT_SHELL] = composite_coverage
             self.paint_coverage()
 
-            self._notiy_coverage_modified()
+            self._notify_coverage_modified()
 
     def _evaluate_composition(self, ast):
         """

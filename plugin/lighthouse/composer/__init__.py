@@ -1,2 +1,2 @@
 from .shell import ComposingShell
-from .parser import ComposingParser
+from .parser import CompositionParser

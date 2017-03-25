@@ -2,18 +2,38 @@ import re
 import string
 import operator
 
-#--------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # Text Tokens
-#--------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+class TextToken(object):
+    """
+    A single tokenized text element.
+
+    TextTokens are effectively wrappers for individual regex matches found
+    when tokenizing a text string (eg, a composition string). They provide
+    location and type information for the token as it exists in the string.
+
+    Besides being used to normalize and guide the parsing of a given
+    string, TextTokens can be used for things like syntax highlighting.
+    """
+
+    def __init__(self, match):
+        self.type  = match.lastgroup
+        self.value = (str(match.group())).upper()
+        self.span  = match.span()
+
+    @property
+    def index(self):
+        return self.span[0]
 
 #
 # COVERAGE_TOKEN:
 #   'A' | 'B' | 'C' | ... | 'Z'
 #
-# TODO: *
-#
 
-COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[A-Za-z])'
+# NOTE: this is now dynamically computed in parse(...)
+#COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[A-Za-z])'
 
 #
 # LOGIC_TOKEN:
@@ -33,38 +53,31 @@ LPAREN  = r'(?P<LPAREN>\()'
 RPAREN  = r'(?P<RPAREN>\))'
 COMMA   = r'(?P<COMMA>\,)'
 WS      = r'(?P<WS>\s+)'
+UNKNOWN = r'(?P<UNKNOWN>.)'
 
-master_pattern = re.compile(
-    '|'.join((COVERAGE_TOKEN, OR, XOR, AND, MINUS, LPAREN, RPAREN, COMMA, WS))
-)
-
-class TextToken(object):
+def generate_tokens(regex_pattern, text):
     """
-    Text Token
+    Generate a TextToken stream using a given regex token pattern and text.
     """
-    def __init__(self, match):
-        self.type  = match.lastgroup
-        self.value = (str(match.group())).upper()
-        self.span  = match.span()
-
-    @property
-    def index(self):
-        return self.span[0]
-
-def generate_tokens(pattern, text):
-    scanner = pattern.scanner(text)
+    scanner = regex_pattern.scanner(text)
     for m in iter(scanner.match, None):
         token = TextToken(m)
-        if token.type != 'WS':
+        if token.type != 'WS': # ignore whitespace tokens
             yield token
 
-#--------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # AST Tokens
-#--------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 class AstToken(object):
     """
-    Abstract Syntax Tree (AST) Token
+    Base class for Abstract Syntax Tree (AST) Tokens.
+
+    The Tokens subclassed from AstToken are used to build an abstract
+    syntax tree representing a composition equation.
+
+    Once generated, an AST can be logically evaluated by Lighthouse's
+    director to compose a new coverage set described by the tree.
     """
 
     def __init__(self):
@@ -82,6 +95,8 @@ class TokenNull(AstToken):
 class TokenLogicOperator(AstToken):
     """
     AST Token for a logical operator.
+
+    eg: '|'
     """
 
     def __init__(self, logic_op, op1, op2=None):
@@ -114,7 +129,7 @@ class TokenCoverageRange(AstToken):
     """
     AST Token for a coverage range reference.
 
-    Eg: 'A,Z'
+    eg: 'A,Z'
     """
 
     def __init__(self, start, comma, end):
@@ -129,7 +144,7 @@ class TokenCoverageSingle(AstToken):
     """
     AST Token for a single coverage reference.
 
-    Eg: 'A'
+    eg: 'A'
     """
 
     def __init__(self, coverage_single):
@@ -139,21 +154,43 @@ class TokenCoverageSingle(AstToken):
         # referenced coverage set
         self.symbol = coverage_single.value
 
-#--------------------------------------------------------------------------
-# Composing Input Parser
-#--------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Parsing
+#------------------------------------------------------------------------------
 
-class ComposingParser(object):
+class ParseError(SyntaxError):
     """
-    A simple recursive descent parser for Composing.
+    Exception raised when composition parsing fails.
+
+    A ParseError will provide some contextual information to how and why
+    the parser failed. Information gleaned through the exception can still
+    be consumed for user hints, syntax highlighting, or other uses.
+    """
+
+    def __init__(self, message, expected, error_token, parsed_tokens):
+        super(ParseError, self).__init__(message)
+        self.expected = expected
+        self.error_token = error_token
+        self.parsed_tokens = parsed_tokens
+
+    def __str__(self):
+        return "%s: at %s, %s" % (self.__class__.__name__, self.error_token.span, self.msg)
+
+#------------------------------------------------------------------------------
+# Composition Parser
+#------------------------------------------------------------------------------
+
+class CompositionParser(object):
+    """
+    A simple recursive descent parser for Compositions.
 
     Heavily modified from:
       https://rockie-yang.gitbooks.io/python-cookbook/content/ch2/simple_parser.html
 
     #----------------------------------------------------------------------
 
-    Below is the spec for the LL(1) grammar that was designed to parse
-    the ComposingShell input.
+    Below is the spec for the LL(1) 'Composition Grammar' that was designed
+    to generically parse coverage composition equations form raw text.
 
     #----------------------------------------------------------------------
 
@@ -165,7 +202,6 @@ class ComposingParser(object):
 
     EXPRESSION:
         '(' EXPRESSION ')' COMPOSITION_TAIL | COVERAGE COMPOSITION_TAIL
-        #'(' EXPRESSION ')' | COVERAGE COMPOSITION_TAIL
 
     COVERAGE:
         COVERAGE_TOKEN COVERAGE_RANGE
@@ -181,36 +217,59 @@ class ComposingParser(object):
 
     """
 
-    def parse(self, text):
+    def parse(self, text, coverage_tokens):
         """
         Parse a string using the Composition Grammar.
 
         Returns an Abstract Syntax Tree (AST) of the parsed input.
 
-        Raises SyntaxError on parse failure.
+        Raises ParseError on parse failure.
         """
 
         # if the string is *only* whitespace, return an empty, but valid parse
         if not text.strip():
-            return TokenNull()
+            return ([], TokenNull())
 
-        # prepare the token stream for parsing
+        #
+        # we used to parse [A-Za-z] as the COVERAGE_TOKEN, but that means we
+        # would technically tokenize and construct trees with COVERAGE_TOKEN's
+        # that have no matching (eg invalid) loaded coverage data.
+        #
+        # now we construct the COVERAGE_TOKEN regex just before parsing.
+        # this enables us to tokenize/parse only the shorthand names that
+        # reflect the state of loaded coverage
+        #
+
+        COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[%s])' % ''.join(coverage_tokens)
+
+        # build our master tokenizer regex pattern to parse the text stream
+        master_pattern = re.compile(
+            '|'.join(
+                (COVERAGE_TOKEN, OR, XOR, AND, MINUS,
+                 LPAREN, RPAREN, COMMA, WS, UNKNOWN)
+            )
+        )
+
+        # reset the parser's runtime variables
+        self._parsed_tokens = []
+        self.current_token  = None
+        self.next_token     = None
+
+        # tokenize the raw text stream
         self.tokens = generate_tokens(master_pattern, text)
-        self.current_token = None
-        self.next_token = None
 
-        # roll us onto the first token in the token stream
+        # initialize the parser state by bumping the parser onto the first token
         self._advance()
 
-        # run the token stream through the defined grammar
+        # parse the token stream using the grammar defined by this class
         ast = self._COMPOSITION()
 
         # if there are any tokens remaining in the stream, the text is invalid
         if self.next_token:
-            raise SyntaxError("Expected $$")
+            self._parse_error("Expected $$", TokenNull)
 
-        # return the computed abstract syntax tree
-        return ast
+        # return the parsed tokens and generated AST
+        return (self._parsed_tokens, ast)
 
     #--------------------------------------------------------------------------
     # Token Stream Operations
@@ -218,9 +277,12 @@ class ComposingParser(object):
 
     def _advance(self):
         """
-        Advance one token in the tokenstream.
+        Advance one token in the token stream.
         """
         self.current_token, self.next_token = self.next_token, next(self.tokens, None)
+        if self.current_token:
+            self._parsed_tokens.append(self.current_token)
+
     def _accept(self, token_type):
         """
         Match and accept the lookahead token.
@@ -231,12 +293,11 @@ class ComposingParser(object):
         else:
             return False
 
-    def _expect(self, token_type):
+    def _parse_error(self, message, expected):
         """
-        Match and discard the lookahead token.
+        Raises a ParseError, capturing elements of the parser state.
         """
-        if not self._accept(token_type):
-            raise SyntaxError('Expected ' + token_type)
+        raise ParseError(message, expected, self.next_token, self._parsed_tokens)
 
     #--------------------------------------------------------------------------
     # Grammar Rules
@@ -247,25 +308,10 @@ class ComposingParser(object):
         COMPOSITION:
             EXPRESSION COMPOSITION_TAIL
         """
-
         expression = self._EXPRESSION()
-        composition_tail = self._COMPOSITION_TAIL()
+        return self._COMPOSITION_TAIL(expression)
 
-        if composition_tail:
-
-            # unpack COMPOSITION := EXPRESSION [COMPOSITION_TAIL]
-            logic_op, compisition = composition_tail
-
-            # construct and build the logic op
-            return TokenLogicOperator(logic_op, expression, compisition)
-
-        #
-        # the expression evaluated only to a coverage item
-        #
-
-        return expression
-
-    def _COMPOSITION_TAIL(self):
+    def _COMPOSITION_TAIL(self, head):
         """
         COMPOSITION_TAIL:
             LOGIC_TOKEN COMPOSITION | None
@@ -277,13 +323,15 @@ class ComposingParser(object):
 
         logic_op = self._LOGIC_TOKEN()
         if logic_op:
-            return (logic_op, self._COMPOSITION())
+            composition = self._COMPOSITION()
+            return TokenLogicOperator(logic_op, head, composition)
 
         #
         # None
         #
 
-        return None
+        # no COMPOSITION_TAIL to parse, simply return the leading expression
+        return head
 
     def _EXPRESSION(self):
         """
@@ -292,11 +340,12 @@ class ComposingParser(object):
         """
 
         #
-        # '(' EXPRESSION ')'
+        # ['(' EXPRESSION ')'] COMPOSITION_TAIL
         #
 
-        # parse left paren
         if self._accept('LPAREN'):
+
+            # parse left paren
             left_paren = self.current_token
 
             # parse the expression
@@ -304,47 +353,22 @@ class ComposingParser(object):
 
             # parse the right paren
             if not self._accept('RPAREN'):
-                raise SyntaxError("Expected RPAREN")
+                self._parse_error("Expected RPAREN", TextToken)
             right_paren = self.current_token
 
-            # inject parenthesesis TextTokens into the expression
+            # inject parenthesis TextTokens into the expression
             expression.text_tokens.append(left_paren)
             expression.text_tokens.append(right_paren)
 
-            # TODO: condense
-            compisition_tail = self._COMPOSITION_TAIL()
-            if compisition_tail:
-                logic_op, compisition = compisition_tail
-                return TokenLogicOperator(logic_op, expression, compisition)
-
-            # return the parsed expression
-            return expression
-
         #
-        # COVERAGE COMPOSITION_TAIL
+        # [COVERAGE] COMPOSITION_TAIL
         #
 
-        coverage = self._COVERAGE()
-        compisition_tail = self._COMPOSITION_TAIL()
+        else:
+            expression = self._COVERAGE()
 
-        #
-        # this case being true implies that there exists a composition
-        # tail for this expression, eg a 'logic' op and something else
-        #
-
-        if compisition_tail:
-
-            # unpack EXPRESION := COVERAGE [COMPOSITION_TAIL]
-            logic_op, compisition = compisition_tail
-
-            # construct and build the logic op
-            return TokenLogicOperator(logic_op, coverage, compisition)
-
-        #
-        # the expression evaluated only to a coverage item
-        #
-
-        return coverage
+        # ... [COMPOSITION_TAIL]
+        return self._COMPOSITION_TAIL(expression)
 
     def _COVERAGE(self):
         """
@@ -378,18 +402,16 @@ class ComposingParser(object):
         """
         if self._accept("COVERAGE_TOKEN"):
             return self.current_token
-        raise SyntaxError("Expected COVERAGE_TOKEN")
+        self._parse_error("Expected COVERAGE_TOKEN", TokenCoverageSingle)
 
     def _LOGIC_TOKEN(self):
         """
         LOGIC_TOKEN:
             '&' | '|' | '^' | '-'
         """
-
         if self._accept("OR")  or \
            self._accept("XOR") or \
            self._accept("AND") or \
            self._accept("MINUS"):
             return self.current_token
-
         return None
