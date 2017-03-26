@@ -6,6 +6,8 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
     TODO
     """
 
+    returnPressed = QtCore.pyqtSignal()
+
     def __init__(self, parent=None):
         super(ComposingLine, self).__init__(parent)
 
@@ -16,6 +18,8 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
         self.setWordWrapMode(QtGui.QTextOption.NoWrap)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setTabChangesFocus(True)
+        self.setMaximumBlockCount(1)
 
         LINE_PADDING = 6
         line_height = self._font_metrics.lineSpacing() + LINE_PADDING
@@ -25,16 +29,16 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
         """
         Overload of the Text Edit's key press event.
         """
+
         if e.key() == QtCore.Qt.Key_Return or \
-           e.key() == QtCore.Qt.Key_Enter  or \
-           e.key() == QtCore.Qt.Key_Tab:
+           e.key() == QtCore.Qt.Key_Enter:
+            self.returnPressed.emit()
             e.accept()
         #elif e.key() == QtCore.Qt.Key_Down:
         #    self.table.setFocus(QtCore.Qt.TabFocusReason)
         #    e.accept()
         else:
             super(ComposingLine, self).keyPressEvent(e)
-
 
 class ComposingShell(QtWidgets.QWidget):
     """
@@ -78,7 +82,7 @@ class ComposingShell(QtWidgets.QWidget):
 
     def _ui_init_completer(self):
         """
-        Initialize the autocomplete UI elements.
+        Initialize the coverage hint UI elements.
         """
 
         # NOTE/COMPAT:
@@ -115,12 +119,15 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # text changed on the shell
-        self._line.textChanged.connect(self._ui_text_changed)
+        self._line.textChanged.connect(self.ui_shell_text_changed)
 
         # cursor position changed on the shell
-        self._line.cursorPositionChanged.connect(self._ui_cursor_pos_changed)
+        self._line.cursorPositionChanged.connect(self._ui_shell_cursor_changed)
 
-        # refresh on certain events from the director
+        # return key pressed in the shell
+        self._line.returnPressed.connect(self._ui_shell_return_pressed)
+
+        # refresh the shell on certain events from the director
         self._director.coverage_created(self.refresh)
         self._director.coverage_deleted(self.refresh)
         self._director.coverage_modified(self.refresh)
@@ -149,7 +156,7 @@ class ComposingShell(QtWidgets.QWidget):
 
     def _refresh_hint_list(self):
         """
-        Refresh the shell coverage hint.
+        Refresh the shell's coverage hint contents.
         """
 
         # get the most recent coverage strings from the director
@@ -158,21 +165,64 @@ class ComposingShell(QtWidgets.QWidget):
         self._shorthand = [x[0] for x in detailed_strings]
 
         # queue a UI hint if necessary
-        self._ui_draw_hint()
+        self._ui_hint_coverage_refresh()
 
     #--------------------------------------------------------------------------
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    def _ui_cursor_pos_changed(self):
+    def _ui_hint_save_error(self):
         """
-        Line edit cursor position changed.
+        Display a non-intrusive save error hint / tooltip.
         """
-        self._ui_draw_hint()
+        assert self._parser_error
 
-    def _ui_text_changed(self):
+        # hide the coverage hint
+        self._ui_hint_coverage_hide()
+
+        # create a cursor and move it to the parse error location
+        cursor_tip = QtGui.QTextCursor(self._line.document())
+        cursor_tip.setPosition(self._parser_error.error_index)
+
+        # get the absolute address of this cursor position on the screen
+        position = self._line.mapToGlobal(self._line.cursorRect(cursor_tip).topLeft())
+        x = QtWidgets.QToolTip.showText(position, "Invalid Composition (Parse Error)")
+
+    def _ui_shell_return_pressed(self):
         """
-        Line edit text changed.
+        Return / enter pressed in the shell dialog.
+        """
+
+        # there's an existing parse error, nothing to do
+        if self._parser_error:
+            self._ui_hint_save_error()
+            return
+
+        # there's no text in the shell dialog, nothing to do
+        if len(self._line.toPlainText()) == 0:
+            return
+
+        # TODO/UX: disallow if not new composition?
+
+        # prompt the user for a coverage name
+        coverage_name = idaapi.askstr(0, str(("COMP_%s" % self._line.toPlainText())), "Save composition as...")
+
+        # the user did not enter a coverage name / hit cancel, so abort
+        if not coverage_name:
+            return
+
+        # save the last / cached composition under the given name
+        self._director.accept_composition(coverage_name)
+
+    def _ui_shell_cursor_changed(self):
+        """
+        Cursor position changed in the shell dialog.
+        """
+        self._ui_hint_coverage_refresh()
+
+    def ui_shell_text_changed(self):
+        """
+        Text changed in the shell dialog.
         """
         text = self._line.toPlainText()
 
@@ -185,7 +235,7 @@ class ComposingShell(QtWidgets.QWidget):
             self._parsed_tokens, ast = self._parser.parse(text, self._shorthand)
 
             # parse success, inform the director of the new composition
-            self._director.apply_composition(ast)
+            self._director.build_composition(ast)
 
         # parse failure
         except ParseError as e:
@@ -200,7 +250,7 @@ class ComposingShell(QtWidgets.QWidget):
             self._parsed_tokens = e.parsed_tokens
 
         # queue a refresh of the coverage hintbox
-        self._ui_draw_hint()
+        self._ui_hint_coverage_refresh()
 
         #
         # ~ syntax highlighting ~
@@ -220,7 +270,7 @@ class ComposingShell(QtWidgets.QWidget):
     # Coverage Hint
     #--------------------------------------------------------------------------
 
-    def _ui_draw_hint(self):
+    def _ui_hint_coverage_refresh(self):
         """
         Draw the coverage hint as applicable.
         """
@@ -241,7 +291,7 @@ class ComposingShell(QtWidgets.QWidget):
             #
 
             if self._parser_error.expected == TokenCoverageSingle:
-                self._ui_show_hint()
+                self._ui_hint_coverage_show()
 
         #
         # the user's text cursor is directly before or after a coverage token,
@@ -249,18 +299,18 @@ class ComposingShell(QtWidgets.QWidget):
         #
 
         elif text_token and (text_token.type == "COVERAGE_TOKEN"):
-            self._ui_show_hint(text_token.value)
+            self._ui_hint_coverage_show(text_token.value)
 
         # the cursor is not over an index of interest, no reason to hint coverage
         else:
-            self._ui_hide_hint()
+            self._ui_hint_coverage_hide()
 
         # done
         return
 
-    def _ui_show_hint(self, prefix=''):
+    def _ui_hint_coverage_show(self, prefix=''):
         """
-        Show the completion hint popup at the shell's cursor position.
+        Show the coverage hint at the shell's cursor position.
 
         Optionally, one can specify a prefix (eg, the shorthand 'A') to
         limit the list of coverage items hinted.
@@ -290,9 +340,9 @@ class ComposingShell(QtWidgets.QWidget):
         self._completer.complete(cr)
         self._completer.popup().repaint() # reduces Hot Shell flicker
 
-    def _ui_hide_hint(self):
+    def _ui_hint_coverage_hide(self):
         """
-        Hide the completion hint popup.
+        Hide the coverage hint.
         """
         self._completer.popup().hide()
 

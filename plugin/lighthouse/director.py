@@ -16,11 +16,12 @@ logger = logging.getLogger("Lighthouse.Director")
 # Constant Definitions
 #------------------------------------------------------------------------------
 
-HOT_SHELL = "Hot Shell"
-AGGREGATE = "Aggregate"
+HOT_SHELL       = "Hot Shell"
+NEW_COMPOSITION = "New Composition"
+AGGREGATE       = "Aggregate"
 AGGREGATE_ALIAS = '*'
 SHORTHAND_ALIASES = set(list(string.ascii_letters) + [AGGREGATE_ALIAS])
-RESERVED_NAMES = SHORTHAND_ALIASES | set([HOT_SHELL, AGGREGATE])
+RESERVED_NAMES = SHORTHAND_ALIASES | set([HOT_SHELL, AGGREGATE, NEW_COMPOSITION])
 
 #------------------------------------------------------------------------------
 # The Coverage Director
@@ -78,8 +79,9 @@ class CoverageDirector(object):
 
         self._special_coverage = collections.OrderedDict(
         [
-            (HOT_SHELL, self._NULL_COVERAGE), # composite described by the shell
-            (AGGREGATE, self._NULL_COVERAGE), # aggregate of database_coverage
+            (HOT_SHELL, self._NULL_COVERAGE),       # hot shell composition
+            (NEW_COMPOSITION, self._NULL_COVERAGE), # slow shell composition
+            (AGGREGATE, self._NULL_COVERAGE),       # aggregate composition
         ])
 
         #----------------------------------------------------------------------
@@ -419,12 +421,12 @@ class CoverageDirector(object):
 
     def get_coverage_string(self, coverage_name):
         """
-        TODO
+        Retrieve a detailed coverage string for the given coverage_name.
         """
 
         # special case
-        if coverage_name == HOT_SHELL:
-            return HOT_SHELL
+        if coverage_name == HOT_SHELL or coverage_name == NEW_COMPOSITION:
+            return coverage_name
 
         symbol   = self.get_shorthand(coverage_name)
         coverage = self.get_coverage(coverage_name)
@@ -497,23 +499,63 @@ class CoverageDirector(object):
     # Composing
     #----------------------------------------------------------------------
 
-    def apply_composition(self, ast):
+    def accept_composition(self, coverage_name):
+        """
+        Save the hot/new composition to the specified name.
+        """
+        updating_coverage = coverage_name in self.coverage_names
+
+        # save the cached (hot shell) coverage under the given name
+        self._database_coverage[coverage_name] = self._special_coverage[HOT_SHELL]
+
+        # since we just touched the database coverage list, we should also refresh
+        # the shorthand aliases
+        self._refresh_shorthand_aliases()
+
+        #
+        # if we created a new set of coverage (versus replacing one), send
+        # out a notification of such creation
+        #
+
+        if not updating_coverage:
+            self._notify_coverage_created()
+
+        # TODO: remove?
+        # switch to the newly created composition
+        self.select_coverage(coverage_name)
+
+        #
+        # if we updated an existing coverage set, (the one we just switched to)
+        # we should send out a notification indicating that this coverage may
+        # have been modified.
+        #
+
+        if updating_coverage:
+            self._notify_coverage_modified()
+
+        #
+        # replace the Hot Shell & New Composition coverage entries with fresh
+        # NULL entries for the next use
+        #
+
+        self._special_coverage[HOT_SHELL]       = self._NULL_COVERAGE
+        self._special_coverage[NEW_COMPOSITION] = self._NULL_COVERAGE
+
+    def build_composition(self, ast):
         """
         Compute the given composition, and store it as applicable.
         """
-
         composite_coverage = self._evaluate_composition(ast)
+        composite_coverage.update_metadata(self.metadata)
+        composite_coverage.refresh()
 
         if self.coverage_name == HOT_SHELL:
-
-            composite_coverage.update_metadata(self.metadata)
-            composite_coverage.refresh()
-
             self.unpaint_difference(self.coverage, composite_coverage)
             self._special_coverage[HOT_SHELL] = composite_coverage
             self.paint_coverage()
-
             self._notify_coverage_modified()
+        else:
+            self._special_coverage[HOT_SHELL] = composite_coverage
 
     def _evaluate_composition(self, ast):
         """

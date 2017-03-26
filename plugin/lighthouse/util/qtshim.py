@@ -23,3 +23,5 @@ else:
     import PySide.QtGui as QtGui
     import PySide.QtCore as QtCore
     QtWidgets = QtGui
+    QtCore.pyqtSignal = QtCore.Signal
+    QtCore.pyqtSlot = QtCore.Slot
