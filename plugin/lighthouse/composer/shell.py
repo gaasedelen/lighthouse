@@ -80,7 +80,13 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Initialize the autocomplete UI elements.
         """
-        self._completer_model = QtWidgets.QStringListModel([])
+
+        # NOTE/COMPAT:
+        if using_pyqt5():
+            self._completer_model = QtCore.QStringListModel([])
+        else:
+            self._completer_model = QtGui.QStringListModel([])
+
         self._completer = QtWidgets.QCompleter(self)
         self._completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
         self._completer.setModelSorting(QtWidgets.QCompleter.CaseInsensitivelySortedModel)
@@ -326,7 +332,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # setup the red highlighter
         highlight = QtGui.QTextCharFormat()
-        #highlight.setFontWeight(QtGui.QFont.Bold)
+        highlight.setFontWeight(QtGui.QFont.Bold)
 
         self._line.blockSignals(True)
         ################# UPDATES DISABLED #################

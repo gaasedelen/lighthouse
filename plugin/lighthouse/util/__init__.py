@@ -118,6 +118,15 @@ def compute_color_on_gradiant(percent, color1, color2):
     # return the new color
     return QtGui.QColor(r,g,b)
 
+def test_color_brightness(color):
+    """
+    Test the brightness of a color.
+    """
+    if color.lightness() > 255.0/2:
+        return "Light"
+    else:
+        return "Dark"
+
 def resource_file(filename):
     """
     Return the absolute 'resource' filepath for a given filename.
