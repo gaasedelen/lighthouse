@@ -485,24 +485,53 @@ class LighthousePalette(object):
         Initialize default palette colors for Lighthouse.
         """
 
-        # blue to red - 'dark' theme
-        self.coverage_bad  = QtGui.QColor(221, 0, 0)
-        self.coverage_good = QtGui.QColor(51, 153, 255)
+        # the active theme name
+        self._active_theme = "Dark"
 
-        # green to red - 'light' theme
-        #self.coverage_bad  = QtGui.QColor(207, 31, 0)
-        #self.coverage_good = QtGui.QColor(75, 209, 42)
+        # the list of available themes
+        self._themes = \
+        {
+            "Dark":  0,
+            "Light": 1
+        }
 
-        # possible colors used for painting coverage in disassembly/graph/hexrays
-        self._ida_coverage_dark  = 0x00990000    # NOTE: IDA uses BBGGRR
-        self._ida_coverage_light = 0x00C8E696
+        #
+        # Coverage Overview
+        #
 
-        # dynamically computed based on IDA skin
-        self.ida_coverage = 0x00000000
+        self._coverage_bad  = [QtGui.QColor(221, 0, 0),    QtGui.QColor(207, 31, 0)]
+        self._coverage_good = [QtGui.QColor(51, 153, 255), QtGui.QColor(75, 209, 42)]
 
         # TODO: unused for now
-        #self.profiling_cold = QtGui.QColor(0,0,0)
-        #self.profiling_hot  = QtGui.QColor(0,0,0)
+        #self._profiling_cold = QtGui.QColor(0,0,0)
+        #self._profiling_hot  = QtGui.QColor(0,0,0)
+
+        #
+        # IDA Views / HexRays
+        #
+
+        self._ida_coverage = [0x990000, 0xC8E696] # NOTE: IDA uses BBGGRR
+
+        #
+        # Composing Shell
+        #
+                               #  dark   -  light
+        self._logic_token    = [0xF02070, 0xF02070] #TODO: light theme colors
+        self._comma_token    = [0x00FF00, 0x00FF00]
+        self._paren_token    = [0x40FF40, 0x40FF40]
+        self._coverage_token = [0x80F0FF, 0x80F0FF]
+        self._invalid_text   = [0x990000, 0x990000]
+
+    #--------------------------------------------------------------------------
+    # Theme Management
+    #--------------------------------------------------------------------------
+
+    @property
+    def theme_number(self):
+        """
+        Retruns the active theme #.
+        """
+        return self._themes[self._active_theme]
 
     def refresh_colors(self):
         """
@@ -519,6 +548,76 @@ class LighthousePalette(object):
 
         bg_color = get_disas_bg_color()
         if bg_color.lightness() > 255.0/2:
-            self.ida_coverage = self._ida_coverage_light
+            self._active_theme = "Light"
         else:
-            self.ida_coverage = self._ida_coverage_dark
+            self._active_theme = "Dark"
+
+    #--------------------------------------------------------------------------
+    # Coverage Overview
+    #--------------------------------------------------------------------------
+
+    @property
+    def coverage_bad(self):
+        return self._coverage_bad[self.theme_number]
+
+    @property
+    def coverage_good(self):
+        return self._coverage_good[self.theme_number]
+
+    #--------------------------------------------------------------------------
+    # IDA Views / HexRays
+    #--------------------------------------------------------------------------
+
+    @property
+    def ida_coverage(self):
+        return self._ida_coverage[self.theme_number]
+
+    #--------------------------------------------------------------------------
+    # Composing Shell
+    #--------------------------------------------------------------------------
+
+    @property
+    def logic_token(self):
+        return self._logic_token[self.theme_number]
+
+    @property
+    def comma_token(self):
+        return self._comma_token[self.theme_number]
+
+    @property
+    def paren_token(self):
+        return self._paren_token[self.theme_number]
+
+    @property
+    def coverage_token(self):
+        return self._coverage_token[self.theme_number]
+
+    @property
+    def invalid_text(self):
+        return self._invalid_text[self.theme_number]
+
+    @property
+    def TOKEN_COLORS(self):
+        """
+        Return the palette of token colors.
+        """
+
+        return \
+        {
+
+            # logic operators
+            "OR":    self.logic_token,
+            "XOR":   self.logic_token,
+            "AND":   self.logic_token,
+            "MINUS": self.logic_token,
+
+            # misc
+            "COMMA":   self.comma_token,
+            "LPAREN":  self.paren_token,
+            "RPAREN":  self.paren_token,
+            #"WS":      self.whitepsace_token,
+            #"UNKNOWN": self.unknown_token,
+
+            # coverage
+            "COVERAGE_TOKEN": self.coverage_token,
+        }

@@ -55,16 +55,6 @@ COMMA   = r'(?P<COMMA>\,)'
 WS      = r'(?P<WS>\s+)'
 UNKNOWN = r'(?P<UNKNOWN>.)'
 
-def generate_tokens(regex_pattern, text):
-    """
-    Generate a TextToken stream using a given regex token pattern and text.
-    """
-    scanner = regex_pattern.scanner(text)
-    for m in iter(scanner.match, None):
-        token = TextToken(m)
-        if token.type != 'WS': # ignore whitespace tokens
-            yield token
-
 #------------------------------------------------------------------------------
 # AST Tokens
 #------------------------------------------------------------------------------
@@ -173,6 +163,12 @@ class ParseError(SyntaxError):
         self.error_token = error_token
         self.parsed_tokens = parsed_tokens
 
+        if error_token == self.parsed_tokens[-1]:
+            fail = self.parsed_tokens.pop()
+            self.error_index = fail.span[0]
+        else:
+            self.error_index = self.parsed_tokens[-1].span[1]
+
     def __str__(self):
         return "%s: at %s, %s" % (self.__class__.__name__, self.error_token.span, self.msg)
 
@@ -256,7 +252,7 @@ class CompositionParser(object):
         self.next_token     = None
 
         # tokenize the raw text stream
-        self.tokens = generate_tokens(master_pattern, text)
+        self.tokens = self._generate_tokens(master_pattern, text)
 
         # initialize the parser state by bumping the parser onto the first token
         self._advance()
@@ -280,8 +276,6 @@ class CompositionParser(object):
         Advance one token in the token stream.
         """
         self.current_token, self.next_token = self.next_token, next(self.tokens, None)
-        if self.current_token:
-            self._parsed_tokens.append(self.current_token)
 
     def _accept(self, token_type):
         """
@@ -292,6 +286,17 @@ class CompositionParser(object):
             return True
         else:
             return False
+
+    def _generate_tokens(self, regex_pattern, text):
+        """
+        Generate a TextToken stream using a given regex token pattern and text.
+        """
+        scanner = regex_pattern.scanner(text)
+        for m in iter(scanner.match, None):
+            token = TextToken(m)
+            self._parsed_tokens.append(token)
+            if token.type != 'WS': # ignore whitespace tokens
+                yield token
 
     def _parse_error(self, message, expected):
         """

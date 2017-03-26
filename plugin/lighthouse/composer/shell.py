@@ -1,6 +1,41 @@
 from lighthouse.util import *
 from .parser import *
 
+class ComposingLine(QtWidgets.QPlainTextEdit):
+    """
+    TODO
+    """
+
+    def __init__(self, parent=None):
+        super(ComposingLine, self).__init__(parent)
+
+        self._font = MonospaceFont()
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
+
+        self.setFont(self._font)
+        self.setWordWrapMode(QtGui.QTextOption.NoWrap)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+        LINE_PADDING = 6
+        line_height = self._font_metrics.lineSpacing() + LINE_PADDING
+        self.setFixedHeight(line_height)
+
+    def keyPressEvent(self, e):
+        """
+        Overload of the Text Edit's key press event.
+        """
+        if e.key() == QtCore.Qt.Key_Return or \
+           e.key() == QtCore.Qt.Key_Enter  or \
+           e.key() == QtCore.Qt.Key_Tab:
+            e.accept()
+        #elif e.key() == QtCore.Qt.Key_Down:
+        #    self.table.setFocus(QtCore.Qt.TabFocusReason)
+        #    e.accept()
+        else:
+            super(ComposingLine, self).keyPressEvent(e)
+
+
 class ComposingShell(QtWidgets.QWidget):
     """
     TODO
@@ -13,8 +48,8 @@ class ComposingShell(QtWidgets.QWidget):
 
         # parser related members
         self._parser = CompositionParser()
+        self._parser_error = None
         self._parsed_tokens = []
-        self._error_index = None
 
         # list of valid shorthand coverage symbols
         self._shorthand = []
@@ -66,8 +101,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._line_label.setFont(self._font)
 
         # composer line/shell
-        self._line = QtWidgets.QLineEdit()
-        self._line.setFont(self._font)
+        self._line = ComposingLine()
 
     def _ui_init_signals(self):
         """
@@ -75,7 +109,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # text changed on the shell
-        self._line.textChanged[str].connect(self._ui_text_changed)
+        self._line.textChanged.connect(self._ui_text_changed)
 
         # cursor position changed on the shell
         self._line.cursorPositionChanged.connect(self._ui_cursor_pos_changed)
@@ -124,38 +158,32 @@ class ComposingShell(QtWidgets.QWidget):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    def _ui_cursor_pos_changed(self, old_index, new_index):
+    def _ui_cursor_pos_changed(self):
         """
         Line edit cursor position changed.
         """
         self._ui_draw_hint()
 
-    def _ui_text_changed(self, text):
+    def _ui_text_changed(self):
         """
         Line edit text changed.
         """
+        text = self._line.toPlainText()
 
         try:
 
             # clear any previous parse attempts/failures
-            self._error_index = 0
+            self._parser_error = None
 
-            # parse the user input against the composition grammar
+            # attempt to parse the user input against the composition grammar
             self._parsed_tokens, ast = self._parser.parse(text, self._shorthand)
 
-            # inform the director of the freshly parsed composition
+            # parse success, inform the director of the new composition
             self._director.apply_composition(ast)
 
         # parse failure
         except ParseError as e:
-
-            #
-            # if the parse failed because we expected a coverage token,
-            # show the user the fuller coverage list
-            #
-
-            if e.expected == TokenCoverageSingle:
-                self._error_index = self._line.cursorPosition()
+            self._parser_error = e
 
             #
             # even though we failed to generate an AST that can be evaluated,
@@ -165,10 +193,19 @@ class ComposingShell(QtWidgets.QWidget):
 
             self._parsed_tokens = e.parsed_tokens
 
-        # refresh the coverage hint box
+        # queue a refresh of the coverage hintbox
         self._ui_draw_hint()
 
-        # TODO: syntax highlight using self._parsed_tokens
+        #
+        # ~ syntax highlighting ~
+        #
+
+        # the parse failed, so there will be invalid text to highlight
+        if self._parser_error:
+            self._color_invalid()
+
+        # paint any valid tokens
+        self._color_tokens()
 
         # done
         return
@@ -181,7 +218,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Draw the coverage hint as applicable.
         """
-        cursor_index = self._line.cursorPosition()
+        cursor_index = self._line.textCursor().position()
         text_token   = self._get_cursor_coverage_token(cursor_index)
 
         #
@@ -190,8 +227,15 @@ class ComposingShell(QtWidgets.QWidget):
         # what coverage options are available.
         #
 
-        if self._error_index and (self._error_index == cursor_index):
-            self._ui_show_hint()
+        if self._parser_error and self._parser_error.error_index == cursor_index:
+
+            #
+            # if the parse failed because we expected a coverage token,
+            # show the user the fuller coverage list
+            #
+
+            if self._parser_error.expected == TokenCoverageSingle:
+                self._ui_show_hint()
 
         #
         # the user's text cursor is directly before or after a coverage token,
@@ -264,3 +308,103 @@ class ComposingShell(QtWidgets.QWidget):
 
         # no coverage token on either side of the cursor
         return None
+
+    #--------------------------------------------------------------------------
+    # Syntax Highlighting
+    #--------------------------------------------------------------------------
+
+    def _color_tokens(self):
+        """
+        Highlight the valid composition tokens.
+        """
+        text = self._line.toPlainText()
+        TOKEN_COLORS = self._director._palette.TOKEN_COLORS
+
+        # alias the edit cursor, and save its original position
+        cursor = self._line.textCursor()
+        cursor_position = cursor.position()
+
+        # setup the red highlighter
+        highlight = QtGui.QTextCharFormat()
+        #highlight.setFontWeight(QtGui.QFont.Bold)
+
+        self._line.blockSignals(True)
+        ################# UPDATES DISABLED #################
+
+        # paint every parsed token
+        for token in self._parsed_tokens:
+
+            # no style defined for this token, nothing to do
+            if token.type not in TOKEN_COLORS:
+                continue
+
+            # alias the start and end of the text token
+            token_start, token_end = token.span
+
+            # select the token text
+            cursor.setPosition(token_start, QtGui.QTextCursor.MoveAnchor)
+            cursor.setPosition(token_end,   QtGui.QTextCursor.KeepAnchor)
+
+            # delete the existing token text
+            cursor.removeSelectedText()
+
+            # insert a highlighted version of the token text
+            #highlight.setBackground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
+            highlight.setForeground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
+            cursor.setCharFormat(highlight)
+            cursor.insertText(token.value)
+
+        # reset the cursor position & style
+        cursor.setPosition(cursor_position)
+        cursor.setCharFormat(QtGui.QTextCharFormat())
+        self._line.setTextCursor(cursor)
+
+        ################# UPDATES ENABLED #################
+        self._line.blockSignals(False)
+
+    def _color_invalid(self):
+        """
+        Highlight the invalid (un-parsable) text.
+        """
+        assert self._parser_error
+        text = self._line.toPlainText()
+
+        # the invalid text starts from the token that caused a parse error
+        invalid_start = self._parser_error.error_index
+        invalid_text  = text[invalid_start:]
+
+        # no invalid text? nothing to highlight I guess
+        if not invalid_text:
+            return
+
+        # alias the user cursor, and save its original position
+        cursor = self._line.textCursor()
+        cursor_position = cursor.position()
+
+        # setup the invalid text highlighter
+        invalid_color = self._director._palette.invalid_text
+        highlight = QtGui.QTextCharFormat()
+        highlight.setFontWeight(QtGui.QFont.Bold)
+        highlight.setBackground(QtGui.QBrush(QtGui.QColor(invalid_color)))
+
+        self._line.blockSignals(True)
+        ################# UPDATES DISABLED #################
+
+        # select the invalid text
+        cursor.setPosition(invalid_start, QtGui.QTextCursor.MoveAnchor)
+        cursor.setPosition(len(text), QtGui.QTextCursor.KeepAnchor)
+
+        # delete the invalid text
+        cursor.removeSelectedText()
+
+        # insert a highlighted version of the invalid text
+        cursor.setCharFormat(highlight)
+        cursor.insertText(invalid_text)
+
+        # reset the cursor position & style
+        cursor.setPosition(cursor_position)
+        cursor.setCharFormat(QtGui.QTextCharFormat())
+        self._line.setTextCursor(cursor)
+
+        ################# UPDATES ENABLED #################
+        self._line.blockSignals(False)
