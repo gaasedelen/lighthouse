@@ -48,17 +48,16 @@ class CoverageModel(QtCore.QAbstractItemModel):
     A Qt model interface to format coverage data for Qt views.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, director, parent=None):
         super(CoverageModel, self).__init__(parent)
         self._blank_coverage = FunctionCoverage(idaapi.BADADDR)
+
+        # the data source
+        self._director = director
 
         # mapping to correlate a given row in the table to its function coverage
         self._rows = 0
         self.row2func = {}
-
-        # internal references to the last known database metadata & coverage
-        self._metadata = None
-        self._coverage = None
 
         # internal mappings of the explicit data / coverage we render
         self._no_coverage = []
@@ -87,6 +86,8 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
         # used by the model to determine whether it should display 0% coverage entries
         self._hide_zero = False
+
+        # TODO: list for director updates
 
     #--------------------------------------------------------------------------
     # AbstractItemModel Overloads
@@ -327,17 +328,9 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
         # the hide state is changing, so we need to recompute the model
         self._hide_zero = hide
-        self._refresh()
+        self.refresh()
 
-    def update_model(self, metadata, coverage):
-        """
-        Replace the underlying data source and re-generate model mappings.
-        """
-        self._metadata = metadata
-        self._coverage = coverage
-        self._refresh()
-
-    def _refresh(self):
+    def refresh(self):
         """
         Internal refresh of the model.
         """
@@ -361,10 +354,14 @@ class CoverageModel(QtCore.QAbstractItemModel):
         Initialize the mapping to go from displayed row to function.
         """
         row = 0
+        self._rows = 0
         self.row2func = {}
         self._no_coverage = []
         self._visible_coverage = {}
         self._visible_metadata = {}
+
+        metadata = self._director.metadata
+        coverage = self._director.coverage
 
         #
         # it's time to rebuild the list of coverage items to make visible in
@@ -375,10 +372,10 @@ class CoverageModel(QtCore.QAbstractItemModel):
         #
 
         # loop through *all* the functions as defined in the active metadata
-        for function_address in self._metadata.functions.iterkeys():
+        for function_address in metadata.functions.iterkeys():
 
             # OPTION: ignore items with 0% coverage items
-            if self._hide_zero and not function_address in self._coverage.functions:
+            if self._hide_zero and not function_address in coverage.functions:
                 continue
 
             #
@@ -390,15 +387,15 @@ class CoverageModel(QtCore.QAbstractItemModel):
             #
 
             # store a reference to the listed function's metadata
-            self._visible_metadata[function_address] = self._metadata.functions[function_address]
+            self._visible_metadata[function_address] = metadata.functions[function_address]
 
             # store a reference to the listed function's coverage
             try:
-                self._visible_coverage[function_address] = self._coverage.functions[function_address]
+                self._visible_coverage[function_address] = coverage.functions[function_address]
 
             # reminder: coverage is *not* guaranteed :-)
             except KeyError as e:
-                self._no_coverage.append(self._metadata.functions[function_address])
+                self._no_coverage.append(metadata.functions[function_address])
 
             # map the function address to a visible row # for easy lookup
             self.row2func[row] = function_address
@@ -423,10 +420,7 @@ class CoverageOverview(idaapi.PluginForm):
         self._title = "Coverage Overview"
 
         self._director = director
-        self._model = CoverageModel()
-
-        # initialize UI elements
-        self._ui_init()
+        self._model = CoverageModel(director)
 
     #--------------------------------------------------------------------------
     # PluginForm Overloads
@@ -452,15 +446,17 @@ class CoverageOverview(idaapi.PluginForm):
         else:
             self.parent = self.FormToPySideWidget(form)
 
-        # set window icon to the coverage overview icon
-        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
+        # initialize the plugin UI
+        self._ui_init()
 
-        # layout the populated ui just before showing it
-        self._ui_layout()
+        # refresh the data UI such that it reflects the most recent data
+        self.refresh()
 
-        # register for cues from the director
-        self._director.coverage_switched(self._coverage_changed)
-        self._director.coverage_modified(self._coverage_changed)
+    def OnClose(self, Form):
+        """
+        Called when the view is being closed.
+        """
+        self.parent = None
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -471,6 +467,9 @@ class CoverageOverview(idaapi.PluginForm):
         Initialize UI elements.
         """
 
+        # set window icon to the coverage overview icon
+        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
+
         # initialize a monospace font for our ui elements to use
         self._font = MonospaceFont()
         self._font_metrics = QtGui.QFontMetricsF(self._font)
@@ -479,6 +478,9 @@ class CoverageOverview(idaapi.PluginForm):
         self._ui_init_table()
         self._ui_init_toolbar()
         self._ui_init_signals()
+
+        # layout the populated ui just before showing it
+        self._ui_layout()
 
     def _ui_init_table(self):
         """
@@ -618,6 +620,10 @@ class CoverageOverview(idaapi.PluginForm):
         # toggle 0% coverage checkbox
         self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
 
+        # register for cues from the director
+        self._director.coverage_switched(self._coverage_changed)
+        self._director.coverage_modified(self._coverage_changed)
+
     def _ui_layout(self):
         """
         Layout the major UI elements of the widget.
@@ -683,9 +689,12 @@ class CoverageOverview(idaapi.PluginForm):
 
     def refresh(self):
         """
-        TODO
+        Refresh the Coverage Overview.
         """
-        self._model.update_model(self._director.metadata, self._director.coverage)
+        assert self.parent
+
+        self._model.refresh()
+        self.shell.refresh()
         self._ui_refresh_coverage_combobox()
 
     def _ui_refresh_coverage_combobox(self):

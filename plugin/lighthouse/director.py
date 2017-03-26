@@ -55,14 +55,14 @@ class CoverageDirector(object):
         self._palette = palette
 
         # database metadata cache
-        self._database_metadata = None
+        self._database_metadata = DatabaseMetadata(False)
 
         #----------------------------------------------------------------------
         # Coverage
         #----------------------------------------------------------------------
 
         # active coverage name (eg filename)
-        self.coverage_name = None
+        self.coverage_name = NEW_COMPOSITION
 
         # loaded or composed database coverage mappings
         self._database_coverage = collections.OrderedDict()

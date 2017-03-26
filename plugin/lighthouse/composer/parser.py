@@ -55,6 +55,8 @@ COMMA   = r'(?P<COMMA>\,)'
 WS      = r'(?P<WS>\s+)'
 UNKNOWN = r'(?P<UNKNOWN>.)'
 
+TOKEN_DEFINITIONS = [OR, XOR, AND, MINUS, LPAREN, RPAREN, COMMA, WS, UNKNOWN]
+
 #------------------------------------------------------------------------------
 # AST Tokens
 #------------------------------------------------------------------------------
@@ -238,13 +240,18 @@ class CompositionParser(object):
 
         COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[%s])' % ''.join(coverage_tokens)
 
+        #
+        # if there were any coverage tokens defined, then we definitily need
+        # the constructed COVERAGE_TOKEN regex in our grammar list.
+        #
+
+        if coverage_tokens:
+            TOKEN_REGEXES = [COVERAGE_TOKEN] + TOKEN_DEFINITIONS
+        else:
+            TOKEN_REGEXES = TOKEN_DEFINITIONS
+
         # build our master tokenizer regex pattern to parse the text stream
-        master_pattern = re.compile(
-            '|'.join(
-                (COVERAGE_TOKEN, OR, XOR, AND, MINUS,
-                 LPAREN, RPAREN, COMMA, WS, UNKNOWN)
-            )
-        )
+        master_pattern = re.compile('|'.join(TOKEN_REGEXES))
 
         # reset the parser's runtime variables
         self._parsed_tokens = []

@@ -393,11 +393,6 @@ class Lighthouse(plugin_t):
         """
         Open the Coverage Overview dialog.
         """
-
-        # TODO: ensure the database coverage is installed in the coverage overview
-        self._ui_coverage_overview.refresh()
-
-        # make the coverage overview visible
         self._ui_coverage_overview.Show()
 
     def _select_code_coverage_files(self):

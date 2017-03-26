@@ -6,6 +6,7 @@ import collections
 from lighthouse.util import *
 from lighthouse.util import compute_color_on_gradiant
 from lighthouse.painting import *
+from lighthouse.metadata import DatabaseMetadata
 
 logger = logging.getLogger("Lighthouse.Coverage")
 
@@ -60,7 +61,7 @@ class DatabaseCoverage(object):
         self.unmapped_coverage.add(idaapi.BADADDR)
 
         # the metadata this coverage will be mapped to
-        self._metadata = None
+        self._metadata = DatabaseMetadata(False)
 
         # maps to the child coverage objects
         self.nodes     = {}
@@ -88,7 +89,10 @@ class DatabaseCoverage(object):
         """
         The coverage % by instructions executed.
         """
-        return sum(f.instruction_percent for f in self.functions.itervalues()) / len(self._metadata.functions)
+        try:
+            return sum(f.instruction_percent for f in self.functions.itervalues()) / len(self._metadata.functions)
+        except ZeroDivisionError:
+            return 0.0
 
     #--------------------------------------------------------------------------
     # Operator Overloads
