@@ -113,6 +113,8 @@ class DatabaseCoverage(object):
 
         #----------------------------------------------------------------------
 
+        # TODO / v0.4.0: this needs to be refactored
+
         # compute the union of the two coverage sets
         for address, hit_count in self.coverage_data.iteritems():
             composite_data[address]  = hit_count
@@ -139,6 +141,8 @@ class DatabaseCoverage(object):
 
         # compute the intersecting addresses of the two coverage sets
         intersected_addresses = self.coverage_data.viewkeys() & other.coverage_data.viewkeys()
+
+        # TODO / v0.4.0: this needs to be refactored
 
         # accumulate the hit counters for the intersecting coverage
         for address in intersected_addresses:
@@ -170,10 +174,40 @@ class DatabaseCoverage(object):
         #   I'm not convinced I should acumulate the subtractee's hit counts,
         #   and I don't think it makes sense to? so for now we don't.
         #
+        #   TODO / v0.4.0
+        #
 
         # build the new coverage data
         for address in difference_addresses:
+            composite_data[address] = self.coverage_data[address] - other.coverage_data[address]
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def hitmap_subtract(self, other):
+        """
+        Subtract hitmaps from each other.
+
+        TODO: dirty hack that will be removed in v0.4.0
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot SUB DatabaseCoverage hitmap against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # build the new coverage data
+        for address in self.coverage_data.viewkeys():
             composite_data[address] = self.coverage_data[address]
+        for address in other.coverage_data.viewkeys():
+            composite_data[address] -= other.coverage_data[address]
+            if not composite_data[address]:
+                del composite_data[address]
 
         # done
         return DatabaseCoverage(self._base, composite_data, self.palette)

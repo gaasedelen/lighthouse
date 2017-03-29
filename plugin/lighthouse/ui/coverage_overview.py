@@ -3,6 +3,7 @@ import logging
 from operator import itemgetter, attrgetter
 
 from lighthouse.util import *
+from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata
 from lighthouse.coverage import FunctionCoverage
@@ -10,7 +11,7 @@ from lighthouse.coverage import FunctionCoverage
 logger = logging.getLogger("Lighthouse.UI.Overview")
 
 #------------------------------------------------------------------------------
-# Coverage Data Proxy Model
+# Constants Defintion
 #------------------------------------------------------------------------------
 
 # declare named constants for coverage table column indexes
@@ -42,6 +43,269 @@ SAMPLE_CONTENTS = \
     " 100 / 100 ",
     " 1000 / 1000 ",
 ]
+
+#------------------------------------------------------------------------------
+# Coverage Overview
+#------------------------------------------------------------------------------
+
+class CoverageOverview(idaapi.PluginForm):
+    """
+    The Coverage Overview Widget.
+    """
+
+    def __init__(self, director):
+        super(CoverageOverview, self).__init__()
+        self._title = "Coverage Overview"
+
+        self._director = director
+        self._model = CoverageModel(director)
+
+    #--------------------------------------------------------------------------
+    # PluginForm Overloads
+    #--------------------------------------------------------------------------
+
+    def Show(self):
+        """
+        Show the dialog.
+        """
+        return super(CoverageOverview, self).Show(
+            self._title,
+            options=idaapi.PluginForm.FORM_PERSIST
+        )
+
+    def OnCreate(self, form):
+        """
+        Called when the view is created.
+        """
+
+        # NOTE/COMPAT
+        if using_pyqt5():
+            self.parent = self.FormToPyQtWidget(form)
+        else:
+            self.parent = self.FormToPySideWidget(form)
+
+        # initialize the plugin UI
+        self._ui_init()
+
+        # refresh the data UI such that it reflects the most recent data
+        self.refresh()
+
+    def OnClose(self, Form):
+        """
+        Called when the view is being closed.
+        """
+        self.parent = None
+
+    #--------------------------------------------------------------------------
+    # Initialization - UI
+    #--------------------------------------------------------------------------
+
+    def _ui_init(self):
+        """
+        Initialize UI elements.
+        """
+
+        # set window icon to the coverage overview icon
+        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
+
+        # initialize a monospace font to use with our widget(s)
+        self._font = MonospaceFont()
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
+
+        # initialize our ui elements
+        self._ui_init_table()
+        self._ui_init_toolbar()
+        self._ui_init_signals()
+
+        # layout the populated ui just before showing it
+        self._ui_layout()
+
+    def _ui_init_table(self):
+        """
+        Initialize the Coverage table UI elements.
+        """
+        self.table = QtWidgets.QTreeView()
+        self.table.setRootIsDecorated(False)
+        self.table.setUniformRowHeights(True)
+        self.table.setExpandsOnDoubleClick(False)
+
+        # set these properties so the user can arbitrarily shrink the table
+        self.table.setMinimumHeight(0)
+        self.table.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+
+        # allow sorting of the table, and initialize the sort indicator
+        self.table.setSortingEnabled(True)
+        self.table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
+
+        # install a drawing delegate to draw the grid lines on the table
+        self.table.setItemDelegate(GridDelegate(self.table))
+
+        # install the underlying data source for the table
+        self.table.setModel(self._model)
+
+        # set the initial column widths for the table
+        for i in xrange(len(SAMPLE_CONTENTS)):
+            rect = self._font_metrics.boundingRect(SAMPLE_CONTENTS[i])
+            self.table.setColumnWidth(i, rect.width())
+
+    def _ui_init_toolbar(self):
+        """
+        Initialize the Coverage toolbar UI elements.
+
+        TODO: clean this up
+        """
+
+        #
+        # initialize toolbar elements
+        #
+
+        # the composing shell
+        self.shell = ComposingShell(self._director)
+
+        # the coverage combobox
+        self._combobox = CoverageComboBox(self._director)
+
+        # checkbox to hide 0% coverage entries
+        self.hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
+        self.hide_zero_label.setFont(self._font)
+        self.hide_zero_checkbox = QtWidgets.QCheckBox()
+
+        #
+        # populate the toolbar
+        #
+
+        self.toolbar = QtWidgets.QToolBar()
+
+        #
+        # customize the style of the bottom toolbar specifically, we are
+        # interested in tweaking the seperator and item padding.
+        #
+
+        self.toolbar.setStyleSheet(
+        """
+        QToolBar::separator
+        {
+            background-color: #909090;
+            width: 2px;
+            margin: 0 0.5em 0 0.5em
+        }
+        """)
+
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.splitter.setStyleSheet(
+        """
+        QSplitter::handle
+        {
+            background-color: #909090;
+            width: 2px;
+            height: 2px;
+            margin: 0 0.5em 0 0.5em
+        }
+
+        QSplitter::handle:horizontal:hover
+        {
+            background-color: #3399FF;
+        }
+        """)
+        self.splitter.addWidget(self.shell)
+        self.splitter.addWidget(self._combobox)
+        self.splitter.handle(1).setAttribute(QtCore.Qt.WA_Hover)
+        self.splitter.setStretchFactor(0, 1)
+
+        # populate the toolbar with all our subordinates
+        self.toolbar.addWidget(self.splitter)
+        self.toolbar.addSeparator()
+        self.toolbar.addWidget(self.hide_zero_label)
+        self.toolbar.addWidget(self.hide_zero_checkbox)
+
+    def _ui_init_signals(self):
+        """
+        Connect UI signals.
+        """
+
+        # jump to disassembly on table row double click
+        self.table.doubleClicked.connect(self._ui_entry_double_click)
+
+        # right click popup menu
+        #self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        #self.table.customContextMenuRequested.connect(...)
+
+        # toggle 0% coverage checkbox
+        self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
+
+        # register for cues from the director
+        self._director.coverage_switched(self._coverage_changed) # TODO: too heavy
+        self._director.coverage_modified(self._coverage_changed)
+
+    def _ui_layout(self):
+        """
+        Layout the major UI elements of the widget.
+        """
+        assert self.parent
+
+        # layout the major elements of our widget
+        layout = QtWidgets.QGridLayout()
+        layout.addWidget(self.table)
+        layout.addWidget(self.toolbar)
+
+        # apply the widget layout
+        self.parent.setLayout(layout)
+
+    #--------------------------------------------------------------------------
+    # Signal Handlers
+    #--------------------------------------------------------------------------
+
+    def _ui_entry_double_click(self, index):
+        """
+        Handle double click event on the coverage table view.
+        """
+
+        #
+        # a double click on the coverage table view will jump the user to
+        # the corresponding function in the IDA disassembly view
+        #
+
+        idaapi.jumpto(self._model.row2func[index.row()])
+
+    def _ui_hide_zero_toggle(self, checked):
+        """
+        Handle state change of 'Hide 0% Coverage' checkbox.
+        """
+        self._model.hide_zero_coverage(checked)
+
+    def _coverage_changed(self):
+        """
+        Handle a coverage (switched | modified) event from the director.
+        """
+
+        #
+        # we only bother to act on an incoming director signal if the
+        # coverage overview is actually visible. return now if hidden
+        #
+
+        if not self.parent.isVisible():
+            return
+
+        # refresh the coverage overview
+        self.refresh()
+
+    #--------------------------------------------------------------------------
+    # Refresh
+    #--------------------------------------------------------------------------
+
+    def refresh(self):
+        """
+        Refresh the Coverage Overview.
+        """
+        assert self.parent
+
+        self._model.refresh()
+        self.shell.refresh()
+        self._combobox.refresh()
+
+#------------------------------------------------------------------------------
+# Coverage Table - TableModel
+#------------------------------------------------------------------------------
 
 class CoverageModel(QtCore.QAbstractItemModel):
     """
@@ -76,7 +340,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
         }
 
-        # initialize a monospace font to use with the table
+        # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
@@ -147,20 +411,14 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         Define how Qt should access the underlying model data.
         """
-
         if not index.isValid():
-            return None
-
-        # ensure the row requested exists
-        if not (0 <= index.row() < self._rows):
             return None
 
         # text alignment request
         if role == QtCore.Qt.TextAlignmentRole:
-
-            # center align all other columns
             return QtCore.Qt.AlignCenter
 
+        # font format request
         elif role == QtCore.Qt.FontRole:
             return self._font
 
@@ -383,7 +641,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             #
 
             #
-            # this entry has passed the overview filter, add it now
+            # ~ this entry has passed the overview filter, add it now ~
             #
 
             # store a reference to the listed function's metadata
@@ -405,325 +663,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         self._rows = len(self.row2func)
 
 #------------------------------------------------------------------------------
-# Coverage Overview
-#------------------------------------------------------------------------------
-
-class CoverageOverview(idaapi.PluginForm):
-    """
-    The Coverage Overview Qt Widget.
-
-    TODO
-    """
-
-    def __init__(self, director):
-        super(CoverageOverview, self).__init__()
-        self._title = "Coverage Overview"
-
-        self._director = director
-        self._model = CoverageModel(director)
-
-    #--------------------------------------------------------------------------
-    # PluginForm Overloads
-    #--------------------------------------------------------------------------
-
-    def Show(self):
-        """
-        Show the dialog.
-        """
-        return super(CoverageOverview, self).Show(
-            self._title,
-            options=idaapi.PluginForm.FORM_PERSIST
-        )
-
-    def OnCreate(self, form):
-        """
-        Called when the view is created.
-        """
-
-        # NOTE/COMPAT
-        if using_pyqt5():
-            self.parent = self.FormToPyQtWidget(form)
-        else:
-            self.parent = self.FormToPySideWidget(form)
-
-        # initialize the plugin UI
-        self._ui_init()
-
-        # refresh the data UI such that it reflects the most recent data
-        self.refresh()
-
-    def OnClose(self, Form):
-        """
-        Called when the view is being closed.
-        """
-        self.parent = None
-
-    #--------------------------------------------------------------------------
-    # Initialization - UI
-    #--------------------------------------------------------------------------
-
-    def _ui_init(self):
-        """
-        Initialize UI elements.
-        """
-
-        # set window icon to the coverage overview icon
-        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
-
-        # initialize a monospace font for our ui elements to use
-        self._font = MonospaceFont()
-        self._font_metrics = QtGui.QFontMetricsF(self._font)
-
-        # initialize our ui elements
-        self._ui_init_table()
-        self._ui_init_toolbar()
-        self._ui_init_signals()
-
-        # layout the populated ui just before showing it
-        self._ui_layout()
-
-    def _ui_init_table(self):
-        """
-        Initialize the Coverage table UI elements.
-        """
-        self.table = QtWidgets.QTreeView()
-        self.table.setRootIsDecorated(False)
-        self.table.setUniformRowHeights(True)
-        self.table.setExpandsOnDoubleClick(False)
-
-        # set these properties so that we can arbitrarily shrink the table
-        self.table.setMinimumHeight(0)
-        self.table.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
-
-        # enable sorting on the table, default to sort by func address
-        self.table.setSortingEnabled(True)
-        self.table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
-
-        # install a drawing delegate to draw the grid lines on the list view
-        delegate = GridDelegate(self.table)
-        self.table.setItemDelegate(delegate)
-
-        # install the data source for the list view
-        self.table.setModel(self._model)
-
-        # set initial column widths of the table
-        for i in xrange(len(SAMPLE_CONTENTS)):
-            rect = self._font_metrics.boundingRect(SAMPLE_CONTENTS[i])
-            self.table.setColumnWidth(i, rect.width())
-
-    def _ui_init_toolbar(self):
-        """
-        Initialize the Coverage toolbar UI elements.
-        """
-
-        #
-        # initialize toolbar elements
-        #
-
-        # the composing shell
-        self.shell = ComposingShell(self._director)
-
-        # the loaded coverage combobox
-        self.coverage_combobox = QtWidgets.QComboBox()
-        self.coverage_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
-        self.coverage_combobox.setFont(self._font)
-
-        # TODO
-        coverage_list = QtWidgets.QListView()
-        coverage_list.setItemDelegate(ComboBoxDelegate())
-
-        # TODO
-        self.coverage_combobox.setView(coverage_list)
-        self.coverage_combobox.setStyleSheet(
-        """
-        QComboBox
-        {
-            padding: 0 0.5em 0 0.5em;
-        }
-
-        QComboBox QAbstractItemView
-        {
-            outline: none;
-            padding: 0 0 2px 0;
-        }
-        """)
-        self.coverage_combobox.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
-
-        # checkbox to hide 0% coverage entries
-        self.hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
-        self.hide_zero_label.setFont(self._font)
-        self.hide_zero_checkbox = QtWidgets.QCheckBox()
-
-        #
-        # populate the toolbar
-        #
-
-        self.toolbar = QtWidgets.QToolBar()
-
-        #
-        # customize the style of the bottom toolbar specifically, we are
-        # interested in tweaking the seperator and item padding.
-        #
-
-        self.toolbar.setStyleSheet(
-        """
-        QToolBar::separator
-        {
-            background-color: #909090;
-            width: 2px;
-            margin: 0 0.5em 0 0.5em
-        }
-        """)
-
-        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        self.splitter.setStyleSheet(
-        """
-        QSplitter::handle
-        {
-            background-color: #909090;
-            width: 2px;
-            height: 2px;
-            margin: 0 0.5em 0 0.5em
-        }
-
-        QSplitter::handle:horizontal:hover
-        {
-            background-color: #3399FF;
-        }
-        """)
-        self.splitter.addWidget(self.shell)
-        self.splitter.addWidget(self.coverage_combobox)
-        self.splitter.handle(1).setAttribute(QtCore.Qt.WA_Hover)
-        self.splitter.setStretchFactor(0, 1)
-
-        # populate the toolbar with all our subordinates
-        self.toolbar.addWidget(self.splitter)
-        self.toolbar.addSeparator()
-        self.toolbar.addWidget(self.hide_zero_label)
-        self.toolbar.addWidget(self.hide_zero_checkbox)
-
-    def _ui_init_signals(self):
-        """
-        Connect UI signals.
-        """
-
-        # jump to disassembly on table row double click
-        self.table.doubleClicked.connect(self._ui_entry_double_click)
-
-        # right click popup menu
-        #self.table.setContextMenuPolicy(Qt.CustomContextMenu)
-        #self.table.customContextMenuRequested.connect(...)
-
-        # composer combobox selection was changed
-        self.coverage_combobox.activated[int].connect(self._ui_coverage_combobox_changed)
-
-        # toggle 0% coverage checkbox
-        self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
-
-        # register for cues from the director
-        self._director.coverage_switched(self._coverage_changed)
-        self._director.coverage_modified(self._coverage_changed)
-
-    def _ui_layout(self):
-        """
-        Layout the major UI elements of the widget.
-        """
-        assert self.parent
-
-        # layout the major elements of our widget
-        layout = QtWidgets.QGridLayout()
-        layout.addWidget(self.table)
-        layout.addWidget(self.toolbar)
-
-        # apply the widget layout
-        self.parent.setLayout(layout)
-
-    #--------------------------------------------------------------------------
-    # Signal Handlers
-    #--------------------------------------------------------------------------
-
-    def _ui_entry_double_click(self, index):
-        """
-        Handle double click event on the coverage table view.
-        """
-
-        #
-        # a double click on the coverage table view will jump the user to
-        # the corresponding function in the IDA disassembly view
-        #
-
-        idaapi.jumpto(self._model.row2func[index.row()])
-
-    def _ui_coverage_combobox_changed(self, index):
-        """
-        Handle selection change of active coverage combobox.
-        """
-        coverage_name = self.coverage_combobox.itemData(index)
-        self._director.select_coverage(coverage_name)
-
-    def _ui_hide_zero_toggle(self, checked):
-        """
-        Handle state change of 'Hide 0% Coverage' checkbox.
-        """
-        self._model.hide_zero_coverage(checked)
-
-    def _coverage_changed(self):
-        """
-        Handle a coverage (switched | modified) event from the director.
-        """
-
-        #
-        # we only bother to act on an incoming director signal if the
-        # coverage overview is actually visible. return now if hidden
-        #
-
-        if not self.parent.isVisible():
-            return
-
-        # refresh the coverage overview
-        self.refresh()
-
-    #--------------------------------------------------------------------------
-    # Refresh
-    #--------------------------------------------------------------------------
-
-    def refresh(self):
-        """
-        Refresh the Coverage Overview.
-        """
-        assert self.parent
-
-        self._model.refresh()
-        self.shell.refresh()
-        self._ui_refresh_coverage_combobox()
-
-    def _ui_refresh_coverage_combobox(self):
-        """
-        Refresh the active coverage combobox.
-        """
-
-        # clear the active coverage combobox
-        self.coverage_combobox.clear()
-
-        # add the special (eg 'Hot Shell', 'Aggregate') coverage names first
-        for name in self._director.special_names:
-            self.coverage_combobox.addItem(self._director.get_coverage_string(name), name)
-            self.coverage_combobox.setItemData(self.coverage_combobox.count()-1, self._font, QtCore.Qt.FontRole)
-
-        # add a seperator to distinguish the special versus normal coverage sets
-        self.coverage_combobox.insertSeparator(self.coverage_combobox.count())
-
-        # add the loaded/composed coverage names to the combobox
-        for name in self._director.coverage_names:
-            self.coverage_combobox.addItem(self._director.get_coverage_string(name), name)
-            self.coverage_combobox.setItemData(self.coverage_combobox.count()-1, self._font, QtCore.Qt.FontRole)
-
-        # finally, select the index matching the active coverage name
-        new_index = self.coverage_combobox.findData(self._director.coverage_name)
-        self.coverage_combobox.setCurrentIndex(new_index)
-
-#------------------------------------------------------------------------------
-# Painting
+# Coverage Table - Painting Delegate
 #------------------------------------------------------------------------------
 
 class GridDelegate(QtWidgets.QStyledItemDelegate):
@@ -737,34 +677,8 @@ class GridDelegate(QtWidgets.QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         super(GridDelegate, self).paint(painter, option, index)
+
         painter.save()
         painter.setPen(self.grid_color)
         painter.drawRect(option.rect)
         painter.restore()
-
-class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
-    """
-    Used solely to draw a seperator in the CoverageOverview combobox.
-    """
-
-    def __init__(self, parent=None):
-        super(ComboBoxDelegate, self).__init__(parent)
-        self.separator_color = QtGui.QColor(0x909090)
-        self.padding = 2
-
-    def sizeHint(self, option, index):
-        if index.data(QtCore.Qt.AccessibleDescriptionRole) == "separator":
-            return QtCore.QSize(1, 5)
-        return super(ComboBoxDelegate, self).sizeHint(option, index)
-
-    def paint(self, painter, option, index):
-
-        # perform custom painting for the separator
-        if index.data(QtCore.Qt.AccessibleDescriptionRole) == "separator":
-            painter.setPen(self.separator_color)
-            painter.drawLine(option.rect.left()+self.padding, option.rect.center().y(),
-                             option.rect.right()-self.padding, option.rect.center().y())
-
-        # perform standard painting for everything else
-        else:
-            super(ComboBoxDelegate, self).paint(painter, option, index)

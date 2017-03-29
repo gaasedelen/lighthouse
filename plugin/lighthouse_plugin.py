@@ -342,6 +342,9 @@ class Lighthouse(plugin_t):
         if not coverage_files:
             return
 
+        # TODO: move
+        self.palette.refresh_colors()
+
         #
         # I do not hold great confidence in this code yet, so let's wrap
         # this in a try/catch so the user doesn't get stuck with a wait

@@ -13,15 +13,19 @@ from lighthouse.composer.parser import TokenLogicOperator, TokenCoverageRange, T
 logger = logging.getLogger("Lighthouse.Director")
 
 #------------------------------------------------------------------------------
-# Constant Definitions
+# Constants Definitions
 #------------------------------------------------------------------------------
 
 HOT_SHELL       = "Hot Shell"
 NEW_COMPOSITION = "New Composition"
 AGGREGATE       = "Aggregate"
+SPECIAL_NAMES   = set([HOT_SHELL, AGGREGATE, NEW_COMPOSITION])
+
 AGGREGATE_ALIAS = '*'
-SHORTHAND_ALIASES = set(list(string.ascii_letters) + [AGGREGATE_ALIAS])
-RESERVED_NAMES = SHORTHAND_ALIASES | set([HOT_SHELL, AGGREGATE, NEW_COMPOSITION])
+ASCII_SHORTHAND = list(string.ascii_uppercase)
+SHORTHAND_ALIASES = set([AGGREGATE_ALIAS]) | set(ASCII_SHORTHAND)
+
+RESERVED_NAMES = SHORTHAND_ALIASES | SPECIAL_NAMES
 
 #------------------------------------------------------------------------------
 # The Coverage Director
@@ -109,6 +113,12 @@ class CoverageDirector(object):
         #
 
         self._name2alias = collections.defaultdict(set)
+
+        #
+        # TODO
+        #
+
+        self._shorthand = collections.deque(ASCII_SHORTHAND)
 
         #
         # default aliases
@@ -218,7 +228,7 @@ class CoverageDirector(object):
         """
         Subscribe a callback for coverage deletion events.
         """
-        self._coverage_deleted_callbacks.append(callback)
+        self._register_callback(self._coverage_deleted_callbacks, callback)
 
     def _notify_coverage_deleted(self):
         """
@@ -342,9 +352,29 @@ class CoverageDirector(object):
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
+    def _build_coverage(self, coverage_base, coverage_data):
+        """
+        TODO
+        """
+
+        # initialize a new database-wide coverage object for this data
+        new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
+
+        # map the coverage data using the database metadata
+        new_coverage.update_metadata(self.metadata)
+        new_coverage.refresh()
+
+        return new_coverage
+
     def add_coverage(self, coverage_name, coverage_base, coverage_data):
         """
-        Add or update coverage in the director.
+        Add or update coverage.
+        """
+        self.update_coverage(coverage_name, coverage_base, coverage_data)
+
+    def update_coverage(self, coverage_name, coverage_base, coverage_data):
+        """
+        TODO
         """
         assert not (coverage_name in RESERVED_NAMES)
         updating_coverage = coverage_name in self.coverage_names
@@ -354,28 +384,51 @@ class CoverageDirector(object):
         else:
             logger.debug("Adding coverage %s" % coverage_name)
 
-        # ensure the palette colors are up to date before use
-        self._palette.refresh_colors()
-
-        # initialize a new database-wide coverage object for this data
-        new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
-
-        # map the coverage data using the database metadata
-        new_coverage.update_metadata(self.metadata)
-        new_coverage.refresh()
+        # TODO
+        new_coverage = self._build_coverage(coverage_base, coverage_data)
 
         #
         # coverage creation & mapping complete, looks like we're good. add the
         # new coverage to the director's coverage table and surface it for use.
         #
 
+        self._update_coverage(coverage_name, new_coverage)
+
+        # assign a shorthand alias (if available) to new coverage additions
+        if not updating_coverage:
+            self._request_shorthand_alias(coverage_name)
+
+        # notify any listeners that we have added or updated coverage
+        if updating_coverage:
+            self._notify_coverage_modified()
+        else:
+            self._notify_coverage_created()
+
+    def _update_coverage(self, coverage_name, new_coverage):
+        """
+        TODO
+        """
+
+        #
+        # if coverage data already exists for this coverage name, remove the
+        # effects of the existing coverage set from the aggregate
+        #
+
+        if coverage_name in self.coverage_names:
+
+            # TODO: hack to be removed in v0.4.0
+            # recompute aggregate (this is not correct yet)
+            aggregate = self._special_coverage[AGGREGATE]
+            self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
+            self._special_coverage[AGGREGATE].update_metadata(self.metadata)
+            self._special_coverage[AGGREGATE].refresh()
+
+        #
+        # the critical pointer where we actually add/update/install/replace
+        # the built coverage in the director
+        #
+
         self._database_coverage[coverage_name] = new_coverage
-
-        #
-        # refresh the shorthand alias mapping given the recent addition
-        #
-
-        self._refresh_shorthand_aliases()
 
         #
         # TODO/PERF:
@@ -386,16 +439,42 @@ class CoverageDirector(object):
         #   batch load
         #
 
-        # add the newly loaded coverage to the aggregate set
-        self._special_coverage[AGGREGATE] |= self._database_coverage[coverage_name]
-        self._special_coverage[AGGREGATE].update_metadata(self.metadata)
+        # add the newly loaded/updated coverage to the aggregate set
+        self._special_coverage[AGGREGATE] |= new_coverage
+        self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?
         self._special_coverage[AGGREGATE].refresh()
 
-        # notify any listeners that we have added or updated coverage
-        if updating_coverage:
-            self._notify_coverage_modified()
-        else:
-            self._notify_coverage_created()
+    def delete_coverage(self, coverage_name):
+        """
+        Delete a database coverage object by name.
+        """
+        assert coverage_name in self.coverage_names
+
+        #
+        # if the delete request targets the currently active coverage, we want
+        # to switch into a safer coverage to try and avoid any ill effects.
+        #
+
+        if self.coverage_name == coverage_name:
+            self.select_coverage(NEW_COMPOSITION)
+
+        # release the shorthand alias held by this coverage
+        self._release_shorthand_alias(coverage_name)
+
+        # delete the database coverage object
+        coverage = self._database_coverage.pop(coverage_name)
+        # TODO: check if there's any references to the coverage object here...
+
+
+        # TODO: hack to be removed in v0.4.0
+        # recompute aggregate (this is not correct yet)
+        aggregate = self._special_coverage[AGGREGATE]
+        self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
+        self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?
+        self._special_coverage[AGGREGATE].refresh()
+
+        # notify any listeners that we have deleted coverage
+        self._notify_coverage_deleted()
 
     def get_coverage(self, name):
         """
@@ -410,11 +489,11 @@ class CoverageDirector(object):
         coverage_name = self._alias2name.get(name, name)
 
         # attempt to retrieve the coverage from loaded / computed coverages
-        if coverage_name in self._database_coverage:
+        if coverage_name in self.coverage_names:
             return self._database_coverage[coverage_name]
 
         # attempt to retrieve the coverage from the special directory coverages
-        if coverage_name in self._special_coverage:
+        if coverage_name in self.special_names:
             return self._special_coverage[coverage_name]
 
         raise ValueError("No coverage data found for %s" % coverage_name)
@@ -510,7 +589,7 @@ class CoverageDirector(object):
 
         # since we just touched the database coverage list, we should also refresh
         # the shorthand aliases
-        self._refresh_shorthand_aliases()
+        self._request_shorthand_alias(coverage_name)
 
         #
         # if we created a new set of coverage (versus replacing one), send
@@ -684,34 +763,45 @@ class CoverageDirector(object):
             coverage.update_metadata(self.metadata, delta)
             coverage.refresh()
 
-    def _refresh_shorthand_aliases(self):
+    def _request_shorthand_alias(self, coverage_name):
         """
-        Refresh the shorthand A-Z aliases.
+        Assign the next shorthand A-Z alias to the given coverage.
         """
-        logger.debug("Refreshing shorthand aliases")
+        logger.debug("Requesting shorthand alias for %s" % coverage_name)
+        assert coverage_name in self.coverage_names
 
-        # define our shorthand bounds
-        start = ord('A')
-        end   = ord('Z') + 1
+        # get the next symbol (A-Z) from the shorthand pool
+        try:
+            symbol = self._shorthand.popleft()
+        except IndexError:
+            return None
 
-        # starting from 'A', re-alias the loaded coverage
-        for coverage_name in self._database_coverage:
-            self._alias_coverage(coverage_name, chr(start))
-            start += 1
+        # alias the shorthand to the given coverage_name
+        self._alias_coverage(coverage_name, symbol)
 
-            # if we have moved past 'Z', stop aliasing
-            if start > end:
-                return
+        # return the alias symbol assigned
+        return symbol
 
-        # remove any old aliases that may exists from 'start' to end
-        #   eg: Q to Z
-        while start < end:
-            try:
-                name = self._alias2name[chr(start)]
-                self._name2alias[name].discard(chr(start))
-            except KeyError as e:
-                pass
-            start += 1
+    def _release_shorthand_alias(self, coverage_name):
+        """
+        Release the shorthand alias of the given coverage_name.
+        """
+        logger.debug("Releasing shorthand alias for %s" % coverage_name)
+        assert coverage_name in self.coverage_names
+
+        # get the shorthand symbol for the given coverage
+        symbol = self.get_shorthand(coverage_name)
+
+        # if there was no symbol assigned, there's nothing to do
+        if not symbol:
+            return
+
+        # delete the shorthand symbol from the alias maps
+        self._name2alias[coverage_name].remove(symbol)
+        self._alias2name.pop(symbol)
+
+        # add the symbol back to the end of the shorthand pool
+        self._shorthand.append(symbol)
 
     #----------------------------------------------------------------------
     # Painting / TODO: move/remove?
@@ -730,7 +820,7 @@ class CoverageDirector(object):
         logger.debug("Painting active coverage")
 
         # refresh the palette to ensure our colors appropriate for painting.
-        self._palette.refresh_colors()
+        #self._palette.refresh_colors()
 
         # color the database based on coverage
         paint_coverage(self.coverage, self._palette.ida_coverage)
