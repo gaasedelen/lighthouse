@@ -148,10 +148,17 @@ class CoverageComboBox(QtWidgets.QComboBox):
         # (it looks weird) so clear the table/dropdown selections now
         #
 
-        self.view().selectionModel().setCurrentIndex(
-            QtCore.QModelIndex(),
-            QtWidgets.QItemSelectionModel.ClearAndSelect
-        )
+        # NOTE/COMPAT
+        if using_pyqt5():
+            self.view().selectionModel().setCurrentIndex(
+                QtCore.QModelIndex(),
+                QtCore.QItemSelectionModel.ClearAndSelect
+            )
+        else:
+            self.view().selectionModel().setCurrentIndex(
+                QtCore.QModelIndex(),
+                QtGui.QItemSelectionModel.ClearAndSelect
+            )
 
     def _ui_selection_changed(self, _):
         """

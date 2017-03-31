@@ -3,6 +3,8 @@ import collections
 
 import idaapi
 
+from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
+
 logger = logging.getLogger("Lighthouse.Util.IDA")
 
 #------------------------------------------------------------------------------
