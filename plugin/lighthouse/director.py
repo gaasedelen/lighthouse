@@ -35,21 +35,9 @@ class CoverageDirector(object):
     """
     The Coverage Director manages loaded coverage.
 
-    NOTE/TODO:
-
-      The role of the director is critical in building the culminating
-      experience envisioned for Lighthouse. As of now (v0.2.0) its scope
-      and functionality is limited to simply hosting and switching between
-      the loaded coverage data sets.
-
-      There are more interesting things to come.
-
-    #--------------------------------------------------------------------------
-
-    --[ Composing
-
-    TODO: coming soon
-
+    The primary role of the director is to centralize the loaded coverage
+    and provide a platform for researchers to explore the relationship
+    between multiple coverage sets.
     """
 
     def __init__(self, palette):
@@ -115,13 +103,43 @@ class CoverageDirector(object):
         self._name2alias = collections.defaultdict(set)
 
         #
-        # TODO
+        # shorthand 'symbols' are aliases that the director automatically
+        # assigns to database coverage objects. these special aliases
+        # consist of a single capital letter, eg 'A'
+        #
+        # these auto-aliased shorthand symbols were intended to be a less
+        # cumbersome way to reference specific coverage sets while composing.
+        #
+        # Example -
+        #
+        #  given these shorthand aliases:
+        #
+        #   'A' --> 'drcov.boombox.exe.04936.0000.proc.log'
+        #   'B' --> 'drcov.boombox.exe.03297.0000.proc.log'
+        #   'C' --> 'drcov.boombox.exe.08438.0000.proc.log'
+        #   'D' --> 'drcov.boombox.exe.02349.0000.proc.log'
+        #   ...
+        #   'Z' --> 'drcov.boombox.exe.50946.0000.proc.log'
+        #   <eof>
+        #
+        #  one can more naturally compose interesting equations
+        #
+        #   ((A & B) | (D & (E - F))) | Z
+        #
+        # the existing limitation of shorthand symbols is that there is
+        # only 26 (A-Z) aliases that can be assigned to coverage sets. There
+        # is no immediate plans to further expand this range.
+        #
+        # the primary justification for this limitation is that I don't
+        # expect users to be building complex compositions with 26+ coverage
+        # sets loaded at once. At that point, shorthand aliases really
+        # aren't going to make things any less cumbersome.
         #
 
         self._shorthand = collections.deque(ASCII_SHORTHAND)
 
         #
-        # default aliases
+        # assign default aliases
         #
 
         # alias the aggregate set to '*'
@@ -352,29 +370,17 @@ class CoverageDirector(object):
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
-    def _build_coverage(self, coverage_base, coverage_data):
-        """
-        TODO
-        """
-
-        # initialize a new database-wide coverage object for this data
-        new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
-
-        # map the coverage data using the database metadata
-        new_coverage.update_metadata(self.metadata)
-        new_coverage.refresh()
-
-        return new_coverage
-
     def add_coverage(self, coverage_name, coverage_base, coverage_data):
         """
-        Add or update coverage.
+        Add new coverage to the director.
+
+        This is effectively an alias of self.update_coverage
         """
         self.update_coverage(coverage_name, coverage_base, coverage_data)
 
     def update_coverage(self, coverage_name, coverage_base, coverage_data):
         """
-        TODO
+        Add or update coverage maintained by the director.
         """
         assert not (coverage_name in RESERVED_NAMES)
         updating_coverage = coverage_name in self.coverage_names
@@ -384,14 +390,11 @@ class CoverageDirector(object):
         else:
             logger.debug("Adding coverage %s" % coverage_name)
 
-        # TODO
+        # create & map a new database coverage object using the given data
         new_coverage = self._build_coverage(coverage_base, coverage_data)
 
-        #
-        # coverage creation & mapping complete, looks like we're good. add the
-        # new coverage to the director's coverage table and surface it for use.
-        #
-
+        # coverage mapping complete, looks like we're good. add the new
+        # coverage to the director's coverage table and surface it for use.
         self._update_coverage(coverage_name, new_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
@@ -406,26 +409,30 @@ class CoverageDirector(object):
 
     def _update_coverage(self, coverage_name, new_coverage):
         """
-        TODO
+        Internal add/update of coverage.
+
+        This will automatically update the director's aggregate.
         """
 
         #
-        # if coverage data already exists for this coverage name, remove the
-        # effects of the existing coverage set from the aggregate
+        # if there exists coverage data under the coverage_name we are trying
+        # to add/update, we first must remove anything it has contributed to
+        # the aggregate before we dispose of its data
         #
 
         if coverage_name in self.coverage_names:
 
             # TODO: hack to be removed in v0.4.0
-            # recompute aggregate (this is not correct yet)
             aggregate = self._special_coverage[AGGREGATE]
+            coverage  = self._database_coverage[coverage_name]
+
             self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
             self._special_coverage[AGGREGATE].update_metadata(self.metadata)
             self._special_coverage[AGGREGATE].refresh()
 
         #
-        # the critical pointer where we actually add/update/install/replace
-        # the built coverage in the director
+        # this is the critical point where we actually integrate the newly
+        # built coverage into the director, replacing any existing entries
         #
 
         self._database_coverage[coverage_name] = new_coverage
@@ -439,10 +446,24 @@ class CoverageDirector(object):
         #   batch load
         #
 
-        # add the newly loaded/updated coverage to the aggregate set
+        # (re)-add the newly loaded/updated coverage to the aggregate set
         self._special_coverage[AGGREGATE] |= new_coverage
         self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?
         self._special_coverage[AGGREGATE].refresh()
+
+    def _build_coverage(self, coverage_base, coverage_data):
+        """
+        Build a new database coverage object from the given data.
+        """
+
+        # initialize a new database-wide coverage object for this data
+        new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
+
+        # map the coverage data using the database metadata
+        new_coverage.update_metadata(self.metadata)
+        new_coverage.refresh()
+
+        return new_coverage
 
     def delete_coverage(self, coverage_name):
         """
@@ -465,9 +486,7 @@ class CoverageDirector(object):
         coverage = self._database_coverage.pop(coverage_name)
         # TODO: check if there's any references to the coverage object here...
 
-
         # TODO: hack to be removed in v0.4.0
-        # recompute aggregate (this is not correct yet)
         aggregate = self._special_coverage[AGGREGATE]
         self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
         self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?

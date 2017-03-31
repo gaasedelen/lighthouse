@@ -122,66 +122,49 @@ class CoverageOverview(idaapi.PluginForm):
 
     def _ui_init_table(self):
         """
-        Initialize the Coverage table UI elements.
+        Initialize the coverage table.
         """
-        self.table = QtWidgets.QTreeView()
-        self.table.setRootIsDecorated(False)
-        self.table.setUniformRowHeights(True)
-        self.table.setExpandsOnDoubleClick(False)
+        self._table = QtWidgets.QTreeView()
+        self._table.setRootIsDecorated(False)
+        self._table.setUniformRowHeights(True)
+        self._table.setExpandsOnDoubleClick(False)
 
         # set these properties so the user can arbitrarily shrink the table
-        self.table.setMinimumHeight(0)
-        self.table.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        self._table.setMinimumHeight(0)
+        self._table.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
 
         # allow sorting of the table, and initialize the sort indicator
-        self.table.setSortingEnabled(True)
-        self.table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
+        self._table.setSortingEnabled(True)
+        self._table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
         # install a drawing delegate to draw the grid lines on the table
-        self.table.setItemDelegate(GridDelegate(self.table))
+        self._table.setItemDelegate(GridDelegate(self._table))
 
         # install the underlying data source for the table
-        self.table.setModel(self._model)
+        self._table.setModel(self._model)
 
         # set the initial column widths for the table
         for i in xrange(len(SAMPLE_CONTENTS)):
             rect = self._font_metrics.boundingRect(SAMPLE_CONTENTS[i])
-            self.table.setColumnWidth(i, rect.width())
+            self._table.setColumnWidth(i, rect.width())
 
     def _ui_init_toolbar(self):
         """
-        Initialize the Coverage toolbar UI elements.
-
-        TODO: clean this up
+        Initialize the coverage toolbar.
         """
 
-        #
         # initialize toolbar elements
-        #
+        self._ui_init_toolbar_elements()
 
-        # the composing shell
-        self.shell = ComposingShell(self._director)
-
-        # the coverage combobox
-        self._combobox = CoverageComboBox(self._director)
-
-        # checkbox to hide 0% coverage entries
-        self.hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
-        self.hide_zero_label.setFont(self._font)
-        self.hide_zero_checkbox = QtWidgets.QCheckBox()
-
-        #
         # populate the toolbar
-        #
-
-        self.toolbar = QtWidgets.QToolBar()
+        self._toolbar = QtWidgets.QToolBar()
 
         #
         # customize the style of the bottom toolbar specifically, we are
         # interested in tweaking the seperator and item padding.
         #
 
-        self.toolbar.setStyleSheet(
+        self._toolbar.setStyleSheet(
         """
         QToolBar::separator
         {
@@ -191,8 +174,31 @@ class CoverageOverview(idaapi.PluginForm):
         }
         """)
 
-        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        self.splitter.setStyleSheet(
+        # populate the toolbar with all our subordinates
+        self._toolbar.addWidget(self._splitter)
+        self._toolbar.addSeparator()
+        self._toolbar.addWidget(self._hide_zero_label)
+        self._toolbar.addWidget(self._hide_zero_checkbox)
+
+    def _ui_init_toolbar_elements(self):
+        """
+        Initialize the coverage toolbar UI elements.
+        """
+
+        # the composing shell
+        self._shell = ComposingShell(self._director)
+
+        # the coverage combobox
+        self._combobox = CoverageComboBox(self._director)
+
+        # the checkbox to hide 0% coverage entries
+        self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
+        self._hide_zero_label.setFont(self._font)
+        self._hide_zero_checkbox = QtWidgets.QCheckBox()
+
+        # the splitter to make the shell / combobox resizable
+        self._splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self._splitter.setStyleSheet(
         """
         QSplitter::handle
         {
@@ -207,16 +213,16 @@ class CoverageOverview(idaapi.PluginForm):
             background-color: #3399FF;
         }
         """)
-        self.splitter.addWidget(self.shell)
-        self.splitter.addWidget(self._combobox)
-        self.splitter.handle(1).setAttribute(QtCore.Qt.WA_Hover)
-        self.splitter.setStretchFactor(0, 1)
 
-        # populate the toolbar with all our subordinates
-        self.toolbar.addWidget(self.splitter)
-        self.toolbar.addSeparator()
-        self.toolbar.addWidget(self.hide_zero_label)
-        self.toolbar.addWidget(self.hide_zero_checkbox)
+        # add the child items we wish to put the 'splitter' between
+        self._splitter.addWidget(self._shell)
+        self._splitter.addWidget(self._combobox)
+
+        # this makes the splitter responsive to hover events
+        self._splitter.handle(1).setAttribute(QtCore.Qt.WA_Hover)
+
+        # give the shell expansion preference over the combobox
+        self._splitter.setStretchFactor(0, 1)
 
     def _ui_init_signals(self):
         """
@@ -224,14 +230,14 @@ class CoverageOverview(idaapi.PluginForm):
         """
 
         # jump to disassembly on table row double click
-        self.table.doubleClicked.connect(self._ui_entry_double_click)
+        self._table.doubleClicked.connect(self._ui_entry_double_click)
 
         # right click popup menu
-        #self.table.setContextMenuPolicy(Qt.CustomContextMenu)
-        #self.table.customContextMenuRequested.connect(...)
+        #self._table.setContextMenuPolicy(Qt.CustomContextMenu)
+        #self._table.customContextMenuRequested.connect(...)
 
         # toggle 0% coverage checkbox
-        self.hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
+        self._hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
 
         # register for cues from the director
         self._director.coverage_switched(self._coverage_changed) # TODO: too heavy
@@ -245,8 +251,8 @@ class CoverageOverview(idaapi.PluginForm):
 
         # layout the major elements of our widget
         layout = QtWidgets.QGridLayout()
-        layout.addWidget(self.table)
-        layout.addWidget(self.toolbar)
+        layout.addWidget(self._table)
+        layout.addWidget(self._toolbar)
 
         # apply the widget layout
         self.parent.setLayout(layout)
@@ -300,7 +306,7 @@ class CoverageOverview(idaapi.PluginForm):
         assert self.parent
 
         self._model.refresh()
-        self.shell.refresh()
+        self._shell.refresh()
         self._combobox.refresh()
 
 #------------------------------------------------------------------------------
@@ -374,19 +380,19 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
     def rowCount(self, index=QtCore.QModelIndex()):
         """
-        Return the number of rows in the model.
+        The number of table rows.
         """
         return self._rows
 
     def columnCount(self, index=QtCore.QModelIndex()):
         """
-        Return the number of columns in the model.
+        The number of table columns.
         """
         return len(self._column_headers)
 
     def headerData(self, column, orientation, role=QtCore.Qt.DisplayRole):
         """
-        Define the properties of how the table header should be displayed.
+        Define the properties of the the table rows & columns.
         """
 
         if orientation == QtCore.Qt.Horizontal:
@@ -411,16 +417,17 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         Define how Qt should access the underlying model data.
         """
+
         if not index.isValid():
             return None
 
-        # text alignment request
-        if role == QtCore.Qt.TextAlignmentRole:
-            return QtCore.Qt.AlignCenter
-
         # font format request
-        elif role == QtCore.Qt.FontRole:
+        if role == QtCore.Qt.FontRole:
             return self._font
+
+        # text alignment request
+        elif role == QtCore.Qt.TextAlignmentRole:
+            return QtCore.Qt.AlignCenter
 
         # data display request
         elif role == QtCore.Qt.DisplayRole:
@@ -479,6 +486,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         elif role == QtCore.Qt.ForegroundRole:
             return QtGui.QColor(QtCore.Qt.white)
 
+        # unhandeled request, nothing to do
         return None
 
     def sort(self, column, sort_order):
@@ -668,17 +676,21 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
 class GridDelegate(QtWidgets.QStyledItemDelegate):
     """
-    Used solely to draw a grid in the CoverageOverview.
+    Coverage Overview Painting Delegate
     """
 
     def __init__(self, parent=None):
         super(GridDelegate, self).__init__(parent)
-        self.grid_color = QtGui.QColor(QtCore.Qt.black)
+        self._grid_color = QtGui.QColor(QtCore.Qt.black)
 
     def paint(self, painter, option, index):
+        """
+        Augmented entry painting.
+        """
         super(GridDelegate, self).paint(painter, option, index)
 
+        # paint the cell walls of the entry (eg, the 'grid')
         painter.save()
-        painter.setPen(self.grid_color)
+        painter.setPen(self._grid_color)
         painter.drawRect(option.rect)
         painter.restore()

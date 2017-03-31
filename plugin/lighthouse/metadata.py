@@ -22,7 +22,7 @@ logger = logging.getLogger("Lighthouse.Metadata")
 #
 #    This opens up a realm of interesting possibilities. With this model,
 #    we can easily move any heavy director based compute to asynchrnous
-#    python-only threads without disrupting the user, or IDA.
+#    python-only threads without disrupting the user, or IDA. (v0.4.0)
 #
 #    However, there are two main caveats of this model -
 #
@@ -513,7 +513,7 @@ class MetadataDelta(object):
         self._dirty_functions = set()
 
     #--------------------------------------------------------------------------
-    # Informational / Debug
+    # Informational / Debug - TODO: REMOVE
     #--------------------------------------------------------------------------
 
     def dump_delta(self):

@@ -5,7 +5,7 @@ import idaapi
 
 from lighthouse.util.ida import *
 
-logger = logging.getLogger("Lighthouse.Paint")
+logger = logging.getLogger("Lighthouse.Painting")
 
 #------------------------------------------------------------------------------
 # Painting
@@ -27,8 +27,6 @@ def paint_coverage(coverage, color):
 def unpaint_coverage(coverage):
     """
     Unpaint the database using the given coverage.
-
-    TODO: this will be refactored in v0.3.0
     """
     unpaint_instruction_coverage(coverage)
     unpaint_node_coverage(coverage._metadata.nodes, coverage.nodes)

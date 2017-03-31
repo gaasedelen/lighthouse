@@ -4,12 +4,32 @@ from lighthouse.util import *
 logger = logging.getLogger("Lighthouse.UI.ComboBox")
 
 #------------------------------------------------------------------------------
+# Constants Definitions
+#------------------------------------------------------------------------------
+
+SEPARATOR = "seperator"
+SEPARATOR_HEIGHT = 5 # pixels
+
+ENTRY_USER    = "USER"
+ENTRY_SPECIAL = "SPECIAL"
+
+COLUMN_COVERAGE_STRING = 0
+COLUMN_DELETE          = 1
+
+#------------------------------------------------------------------------------
 # Coverage ComboBox
 #------------------------------------------------------------------------------
 
 class CoverageComboBox(QtWidgets.QComboBox):
     """
-    TODO
+    The Coverage ComboBox UI for switching between loaded coverage.
+
+    I had to write an unecessary amount of code to prototype the engaging
+    combobox experiences I was looking for.
+
+    But now that we have all the important combobox components subclassed
+    out (it was necessary, I promise), perhaps there are a few more
+    interesting and fun features we can add in the future.
     """
 
     def __init__(self, director, parent=None):
@@ -17,9 +37,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.setObjectName(self.__class__.__name__)
         self._director = director
 
-        self._deleted_coverage = False
-
-        # initialize UI elements
+        # configure the widget for use
         self._ui_init()
 
     #--------------------------------------------------------------------------
@@ -42,12 +60,24 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         #
         # the combobox will pick a size based on its contents when it is first
-        # made visible, but we also make it arbitrarily resizable for the user
-        # to change at their own leisure
+        # made visible, but we also make it is arbitrarily resizable for the
+        # user to change and play with at their own leisure
         #
 
         self.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+
+        #
+        # the purpose of this stylesheet is to pad the visible selection text
+        # in the combobox 'head' on first show. The reason being is that
+        # without this, the text for the selected coverage will lapse behind
+        # the combobox dropdown arrow (which is Qt by design???)
+        #
+        # I don't like the the tail of the text disappearing behind this silly
+        # dropdown arrow, therefore we pad the right side of the combobox.
+        #
+
+        self.setStyleSheet("QComboBox { padding: 0 2ex 0 2ex; }")
 
         # connect relevant signals
         self._ui_init_signals()
@@ -59,6 +89,8 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         # combobox selection was changed
         self.activated.connect(self._ui_selection_changed)
+
+        # the 'X' / delete icon was clicked on a dropdown entry
         self.view().clicked.connect(self._ui_clicked_delete)
 
         # register for cues from the director
@@ -71,26 +103,54 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
     def _ui_clicked_delete(self, index):
         """
-        Handle click on the 'X' deletion cell of a dropdown entry.
+        Handle a click on the 'X' delete icon (cell) on a dropdown entry.
         """
 
-        # using the table cell index, lookup the coverage name for this 'X'
-        coverage_name = self.model().data(index, QtCore.Qt.UserRole)
+        if not index.isValid():
+            return
 
-        # sanity check
-        assert (index.column() and coverage_name)
+        #
+        # the dropdown popup is actually a 2D table. column 0 is the detailed
+        # coverage string, where column '1' is actually the delete 'X' icon.
+        #
+        # this is a sanity check to ensure that the clicked index is actually
+        # the deletion column. It should not be possible for column 0 (the
+        # detail string) to pass through here, as that will be captured by
+        # the default combobox signal handlers.
+        #
+        # the reason the deletion column clicks can pass through is because
+        # the model has technically marked their cells as 'unselectable'
+        # through the flags() overload.
+        #
+
+        assert index.column() == COLUMN_DELETE, "Unexpected Column (%u)" % index.column()
+
+        #
+        # using the table cell index that was clicked, we want to lookup the
+        # coverage name that this 'X' icon/cell is associated with.
+        #
+        # we retrieve the associated coverage name from the 'UserRole' field
+        # of the model using the clicked index. The 'UserRole' is a Qt field
+        # we are free to store developer/misc data in
+        #
+
+        coverage_name = self.model().data(index, QtCore.Qt.UserRole)
+        assert coverage_name
 
         # pass the deletion request onto the director to delete said coverage
         self._director.delete_coverage(coverage_name)
 
-        # refresh the visible popup (removing the deleted entry from the list)
+        # refresh the dropdown (it will remove the deleted entry from the UI)
         self.showPopup()
 
+        #
         # I don't want there to be any entries highlighted after a deletion,
         # (it looks weird) so clear the table/dropdown selections now
+        #
+
         self.view().selectionModel().setCurrentIndex(
             QtCore.QModelIndex(),
-            QtGui.QItemSelectionModel.ClearAndSelect
+            QtWidgets.QItemSelectionModel.ClearAndSelect
         )
 
     def _ui_selection_changed(self, _):
@@ -99,7 +159,15 @@ class CoverageComboBox(QtWidgets.QComboBox):
         """
         assert len(self.view().selectedIndexes()) == 1
 
-        # get the selected 2D table index that presumably triggered this event
+        #
+        # we actually retrieve the selected 2D table index that we presume
+        # triggered this event from the table view itself.
+        #
+        # the reason for this is that the combobox only gives us the ROW
+        # number that triggered the selection, but we really want the 2d
+        # QModelIndex that we can use to lookup data in the model.
+        #
+
         index = self.view().selectedIndexes()[0]
 
         # using the true index, lookup the coverage name for this selection
@@ -114,7 +182,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
     def refresh(self):
         """
-        Refresh the coverage combonox.
+        Refresh the coverage combobox.
         """
 
         # refresh the comobobox internals
@@ -138,29 +206,22 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
 class CoverageComboBoxView(QtWidgets.QTableView):
     """
-    TODO
+    The (internal) table view used for the Coverage ComboBox dropdown.
     """
 
     def __init__(self, model, parent=None):
         super(CoverageComboBoxView, self).__init__(parent)
         self.setObjectName(self.__class__.__name__)
+
+        # install the given data model into the table view
         self.setModel(model)
 
         # initialize UI elements
         self._ui_init()
 
-    def leaveEvent(self, e):
-        """
-        Bro, don't ask.
-        """
-        event = QtGui.QHoverEvent(QtCore.QEvent.HoverLeave, QtCore.QPoint(-1,-1), QtCore.QPoint(-1,-1))
-        QtGui.QApplication.sendEvent(self.viewport(), event)
-
-    def refresh(self):
-        self.setSpan(0,0,1,self.model().columnCount())
-        self.setSpan(1,0,1,self.model().columnCount())
-        self.setSpan(2,0,1,self.model().columnCount())
-        self.setSpan(3,0,1,self.model().columnCount())
+    #--------------------------------------------------------------------------
+    # Initialization - UI
+    #--------------------------------------------------------------------------
 
     def _ui_init(self):
         """
@@ -172,13 +233,11 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
-        # TODO
-        icon_size = (self._font_metrics.height(), self._font_metrics.height())
-
         self.horizontalHeader().setVisible(False)
         self.verticalHeader().setVisible(False)
         self.setShowGrid(False)
-        self.resizeRowToContents(True)
+        #self.resizeRowToContents(True)
+        self.resizeColumnToContents(0)
 
         #
         # NOTE/COMPAT:
@@ -187,19 +246,78 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         #
 
         if using_pyqt5():
-            # TODO
-            pass
+            self.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+            self.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+            self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         else:
             self.horizontalHeader().setResizeMode(0, QtWidgets.QHeaderView.Stretch)
             self.horizontalHeader().setResizeMode(1, QtWidgets.QHeaderView.Fixed)
             self.verticalHeader().setResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-            self.verticalHeader().setMinimumSectionSize(0)
 
-        # set the 'X' icon column width to that of the icon
-        self.horizontalHeader().setDefaultSectionSize(icon_size[0])
-        self.model()._delete_icon = self.model()._delete_icon.scaled(icon_size[0]/2, icon_size[1]/2, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.verticalHeader().setMinimumSectionSize(0)
 
+        # get the column width hint from the model for the 'X' delete column
+        icon_column_width = self.model().headerData(
+            COLUMN_DELETE,
+            QtCore.Qt.Horizontal,
+            QtCore.Qt.SizeHintRole
+        )
+
+        # set the 'X' delete icon column width to a fixed size based on the hint
+        self.horizontalHeader().resizeSection(COLUMN_DELETE, icon_column_width)
+
+        # install a delegate to do some custom painting against the combobox
         self.setItemDelegate(ComboBoxDelegate())
+
+    #--------------------------------------------------------------------------
+    # Refresh
+    #--------------------------------------------------------------------------
+
+    def refresh(self):
+        """
+        Refresh the table layout.
+        """
+        model = self.model() # alias for readability
+
+        # merge the 'special' entries up until a seperator is found
+        for row in xrange(model.rowCount()):
+
+            #
+            # if this row is not a user defined entry, we want to merge ('span')
+            # its cells so there is no no 'X' delete button column shown for it.
+            #
+            # this should apply to special rows such as the 'Hot Shell',
+            # 'Aggregate', or the 'seperator' indexes
+            #
+
+            if model.data(model.index(row, 0), QtCore.Qt.AccessibleDescriptionRole) != ENTRY_USER:
+                self.setSpan(row, 0, 1, model.columnCount())
+
+            # this is a user entry, ensure there is no span present (clear it)
+            else:
+                self.setSpan(row, 0, 0, model.columnCount())
+
+    #--------------------------------------------------------------------------
+    # QTableView Overloads
+    #--------------------------------------------------------------------------
+
+    def leaveEvent(self, e):
+        """
+        Overload the mouse leave event.
+        """
+
+        #
+        # this code mitigates a bug (feature?) where the last hovered index
+        # of the table view was retaining its MouseOver flag internally. This
+        # was keeping my 'X' icons higlighted if the mouse cursor left the
+        # table while touching one of these cells last.
+        #
+        # we basically send a fake 'Hover Event' to the table viewport at an
+        # invalid position so table clears any remaining hover flags.
+        #
+
+        event = QtGui.QHoverEvent(QtCore.QEvent.HoverLeave, QtCore.QPoint(-1,-1), QtCore.QPoint(-1,-1))
+        QtWidgets.QApplication.sendEvent(self.viewport(), event)
 
 #------------------------------------------------------------------------------
 # Coverage ComboBox - TableModel
@@ -207,57 +325,103 @@ class CoverageComboBoxView(QtWidgets.QTableView):
 
 class CoverageComboBoxModel(QtCore.QAbstractTableModel):
     """
-    TODO
+    The (internal) table model used for the Coverage ComboBox dropdown.
     """
 
     def __init__(self, director, parent=None):
         super(CoverageComboBoxModel, self).__init__()
+        self.setObjectName(self.__class__.__name__)
         self._director = director
 
         # our internal model
-        self._strings = []
-        self._special = [0,1,2,3]
-
-        # TODO
-        self._delete_icon = QtGui.QPixmap(resource_file("icons/delete_coverage.png"))
+        self._entries = []
+        self._seperator_index = 0
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
         self._font_metrics = QtGui.QFontMetricsF(self._font)
-        self._row_height = self._font_metrics.height()
+
+        # load the raw 'X' delete icon from disk
+        delete_icon = QtGui.QPixmap(resource_file("icons/delete_coverage.png"))
+
+        # compute the appropriate size for the deletion icon
+        icon_height = self._font_metrics.height()/2
+        icon_width  = icon_height
+
+        # scale the icon as appropriate (very likely scaling it down)
+        self._delete_icon = delete_icon.scaled(
+            icon_width,
+            icon_height,
+            QtCore.Qt.KeepAspectRatio,
+            QtCore.Qt.SmoothTransformation
+        )
 
         # register for cues from the director
         self._director.coverage_created(self.refresh)
         self._director.coverage_deleted(self.refresh)
 
-    def remove_name(self, coverage_name):
-        self._strings.remove(coverage_name)
-        self.layoutChanged.emit()
-
-    def refresh(self):
-        self._strings  = []
-        self._strings += list(self._director.special_names)
-        self._strings += ["separator"]
-        self._strings += list(self._director.coverage_names)
-        self.layoutChanged.emit()
+    #--------------------------------------------------------------------------
+    # QAbstractTableModel Overloads
+    #--------------------------------------------------------------------------
 
     def rowCount(self, parent=QtCore.QModelIndex()):
-        return len(self._strings)
+        """
+        The number of dropdown rows.
+        """
+        return len(self._entries)
 
     def columnCount(self, parent=QtCore.QModelIndex()):
+        """
+        The nubmer of dropdown columns.
+
+        | column[0]                 | column[1]
+        +---------------------------+--------------------
+        | detailed coverage string1 | 'X' (delete icon)
+        | detailed coverage string2 | 'X' (delete icon)
+         ...
+
+        """
         return 2
 
-    def headerData(self, row, orientation, role=QtCore.Qt.DisplayRole):
+    def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):
         """
-        Define the properties of how the table header should be displayed.
+        Define the properties of the the table rows & columns.
         """
 
+        # table row property request
         if orientation == QtCore.Qt.Vertical:
+
+            # row height size hint request
             if role == QtCore.Qt.SizeHintRole:
-                if self._strings[row] == "seperator":
-                    return QtCore.QSize(5, 7)
+
+                # the seperator 'row' has a special, 'thinner' row size
+                if section == self._seperator_index:
+                    return SEPARATOR_HEIGHT
+
+                # all other rows should be at least as tall as their text
                 else:
-                    return self._row_height
+                    return self._font_metrics.height()
+
+        # table column property request
+        elif orientation == QtCore.Qt.Horizontal:
+
+            # column width size hint request
+            if role == QtCore.Qt.SizeHintRole:
+
+                #
+                # the column holding the 'X' delete icon should be small
+                # and fixed width, therefore we are explicit in specifying
+                # our own size hint for it.
+                #
+                # note that the icon size is used to hint the column width,
+                # but multiplied by two. this is because we want the 'X'
+                # icon to float and have some padding in its column.
+                #
+
+                if section == COLUMN_DELETE:
+                    return self._delete_icon.size().width() * 2
+
+        # unhandeled request, nothing to do
         return None
 
     def data(self, index, role=QtCore.Qt.DisplayRole):
@@ -265,10 +429,10 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         Define how Qt should access the underlying model data.
         """
 
-        if not index.isValid():
-            return None
-
-        if index.row() >= len(self._strings):
+        # sanity check the given index
+        if not index.isValid() or \
+           not (index.row()    < self.rowCount()) or \
+           not (index.column() < self.columnCount()):
             return None
 
         # font format request
@@ -281,31 +445,83 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
 
         # data display request
         elif role == QtCore.Qt.DisplayRole:
-            if index.column() == 0 and self._strings[index.row()] != "separator":
-                return self._director.get_coverage_string(self._strings[index.row()])
+            if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
+                return self._director.get_coverage_string(self._entries[index.row()])
 
         # 'X' icon data request
         elif role == QtCore.Qt.DecorationRole:
-            if index.column() == 1 and index.row() not in self._special:
+            if index.column() == COLUMN_DELETE and index.row() > self._seperator_index:
                 return self._delete_icon
 
+        # entry type request
         elif role == QtCore.Qt.AccessibleDescriptionRole:
-            return self._strings[index.row()]
 
+            #
+            # if the entry is ABOVE the seperator index, it's a 'special'
+            # entry, eg 'Hot Shell', 'New Composition', 'Aggregate'
+            #
+
+            if index.row() < self._seperator_index:
+                return ENTRY_SPECIAL
+
+            #
+            # the entry IS the seperator index
+            #
+
+            elif index.row() == self._seperator_index:
+                return SEPARATOR
+
+            #
+            # if the entry is BELOW the separator index, it's a 'user'
+            # entry, eg loaded coverage files, compositions, etc
+            #
+
+            else:
+                return ENTRY_USER
+
+        # entry coverage_name request
         elif role == QtCore.Qt.UserRole:
-            return self._strings[index.row()]
+            return self._entries[index.row()]
 
+        # unhandeled request, nothing to do
         return None
 
     def flags(self, index):
         """
-        TODO
+        Item flags for the given entry index.
         """
 
-        # make the 'X' column not technically selectable
-        if index.column() == 1:
+        # the 'X' column is ENABLED, but not technically selectable
+        if index.column() == COLUMN_DELETE:
             return QtCore.Qt.ItemIsEnabled
+
+        # the seperator should not be interactive in *any* way
+        if index.row() == self._seperator_index:
+            return QtCore.Qt.NoItemFlags
+
+        # unhandeled request, pass through
         return super(CoverageComboBoxModel, self).flags(index)
+
+    #--------------------------------------------------------------------------
+    # Refresh
+    #--------------------------------------------------------------------------
+
+    def refresh(self):
+        """
+        Refresh the model data.
+        """
+
+        # re-populate the model entries
+        self._entries  = []
+        self._entries += list(self._director.special_names)
+        self._entries += [SEPARATOR]
+        self._entries += list(self._director.coverage_names)
+
+        # save the index of the separator for easy reference
+        self._seperator_index = self._entries.index(SEPARATOR)
+
+        # notify any listeners that the model layout may have changed
+        self.layoutChanged.emit()
 
 #------------------------------------------------------------------------------
 # Coverage ComboBox - Painting Delegate
@@ -313,49 +529,75 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
 
 class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
     """
-    TODO
+    Coverage ComboBox Painting Delegate
+
+    Painting delegates can be used to augment the painting of a given
+    widget or its items. In this case, we use it to customize the
+    dropdown table in the Coverage ComboBox a bit more to our liking.
     """
 
     def __init__(self, parent=None):
         super(ComboBoxDelegate, self).__init__(parent)
-        self.grid_color = QtGui.QColor(0x505050)
-        self.separator_color = QtGui.QColor(0x909090)
-        self.padding = 3
+
+        # painting property definitions
+        self._grid_color = QtGui.QColor(0x505050)
+        self._separator_color = QtGui.QColor(0x909090)
 
     def sizeHint(self, option, index):
-        if index.data(QtCore.Qt.AccessibleDescriptionRole) == "separator":
-            return QtCore.QSize(1, 5)
+        """
+        Augmented entry sizeHint.
+        """
+        if index.data(QtCore.Qt.AccessibleDescriptionRole) == SEPARATOR:
+            return QtCore.QSize(1, SEPARATOR_HEIGHT)
         return super(ComboBoxDelegate, self).sizeHint(option, index)
 
     def paint(self, painter, option, index):
+        """
+        Augmented entry painting.
+        """
 
-        rect = option.rect
-
-        if index.row() > 3:
+        # custom paint the 'grid line' beneath each coverage entry
+        if index.data(QtCore.Qt.AccessibleDescriptionRole) == ENTRY_USER:
             painter.save()
-            painter.setPen(self.grid_color)
-            painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+            painter.setPen(self._grid_color)
+            painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
             painter.restore()
 
-        # perform custom painting for the separator
-        if index.data(QtCore.Qt.AccessibleDescriptionRole) == "separator":
+        # custom paint the seperator entry
+        if index.data(QtCore.Qt.AccessibleDescriptionRole) == SEPARATOR:
             painter.save()
-            painter.setPen(self.separator_color)
-            painter.drawLine(option.rect.left() +self.padding, option.rect.center().y(),
-                             option.rect.right()-self.padding, option.rect.center().y())
+            painter.setPen(self._separator_color)
+            painter.drawLine(option.rect.left(),  option.rect.center().y(),
+                             option.rect.right(), option.rect.center().y())
             painter.restore()
 
-        elif index.data(QtCore.Qt.DecorationRole):
+            # nothing else to paint for the seperator entry
+            return
+
+        # custom paint the 'X' icon where applicable
+        if index.data(QtCore.Qt.DecorationRole):
+
+            # get the icon data from the model
             pixmap = index.data(QtCore.Qt.DecorationRole)
-            p_rect = pixmap.rect()
-            p_rect.moveCenter(rect.center())
 
-            # draw disabled/enabled
-            if not (option.state & QtGui.QStyle.State_MouseOver):
-                pixmap = QtWidgets.QApplication.style().generatedIconPixmap(QtGui.QIcon.Disabled, pixmap, QtGui.QStyleOption())
+            # center the draw rect in the middle of the 'X' column cell
+            destination_rect = pixmap.rect()
+            destination_rect.moveCenter(option.rect.center())
 
-            painter.drawPixmap(p_rect, pixmap)
+            # augment the icon pixmap to be greyed out (disabled) or colored
+            # based on the mouse hover status of this index
+            if not (option.state & QtWidgets.QStyle.State_MouseOver):
+                pixmap = QtWidgets.QApplication.style().generatedIconPixmap(
+                    QtGui.QIcon.Disabled,
+                    pixmap,
+                    QtWidgets.QStyleOption()
+                )
 
-        # perform standard painting for everything else
-        else:
-            super(ComboBoxDelegate, self).paint(painter, option, index)
+            # draw the icon to the column
+            painter.drawPixmap(destination_rect, pixmap)
+
+            # nothing else to paint for the icon column entry
+            return
+
+        # pass through to the standard painting
+        super(ComboBoxDelegate, self).paint(painter, option, index)

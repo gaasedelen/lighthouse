@@ -342,13 +342,15 @@ class Lighthouse(plugin_t):
         if not coverage_files:
             return
 
-        # TODO: move
+        # TODO: this is okay here for now, but should probably be moved later
         self.palette.refresh_colors()
 
         #
-        # I do not hold great confidence in this code yet, so let's wrap
-        # this in a try/catch so the user doesn't get stuck with a wait
-        # box they can't close should things go poorly
+        # TODO:
+        #
+        #   I do not hold great confidence in this code yet, so let's wrap
+        #   this in a try/catch so the user doesn't get stuck with a wait
+        #   box they can't close should things go poorly ;P
         #
 
         try:
@@ -475,7 +477,7 @@ class LighthousePalette(object):
     """
     Color Palette for the Lighthouse plugin.
 
-    TODO: external customization
+    TODO: external theme customization, controls
     """
 
     def __init__(self):
@@ -497,7 +499,7 @@ class LighthousePalette(object):
         #
         # Coverage Overview
         #
-
+                              #        dark              -           light
         self._coverage_bad  = [QtGui.QColor(221, 0, 0),    QtGui.QColor(207, 31, 0)]
         self._coverage_good = [QtGui.QColor(51, 153, 255), QtGui.QColor(75, 209, 42)]
 
@@ -508,14 +510,14 @@ class LighthousePalette(object):
         #
         # IDA Views / HexRays
         #
-
+                             #  dark   -  light
         self._ida_coverage = [0x990000, 0xC8E696] # NOTE: IDA uses BBGGRR
 
         #
         # Composing Shell
         #
                                #  dark   -  light
-        self._logic_token    = [0xF02070, 0xFF0000] #TODO: light theme colors
+        self._logic_token    = [0xF02070, 0xFF0000]
         self._comma_token    = [0x00FF00, 0x0000FF]
         self._paren_token    = [0x40FF40, 0x0000FF]
         self._coverage_token = [0x80F0FF, 0x000000]
@@ -538,7 +540,6 @@ class LighthousePalette(object):
         Return the active Qt theme number.
         """
         return self._themes[self._qt_theme]
-
 
     def refresh_colors(self):
         """
