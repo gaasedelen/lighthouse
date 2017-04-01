@@ -44,7 +44,7 @@ class DrcovData(object):
 
         # locate the coverage that matches the given module_name
         for module in self.modules:
-            if module.filename == module_name:
+            if module.filename.lower() == module_name.lower():
                 mod_id = module.id
                 break
 
