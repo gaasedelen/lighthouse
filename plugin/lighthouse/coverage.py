@@ -109,7 +109,7 @@ class DatabaseCoverage(object):
 
         #----------------------------------------------------------------------
 
-        # TODO / v0.4.0: this needs to be refactored
+        # TODO / v0.4.0: this will be refactored as a 'coverage add/or'
 
         # compute the union of the two coverage sets
         for address, hit_count in self.coverage_data.iteritems():
@@ -138,7 +138,7 @@ class DatabaseCoverage(object):
         # compute the intersecting addresses of the two coverage sets
         intersected_addresses = self.coverage_data.viewkeys() & other.coverage_data.viewkeys()
 
-        # TODO / v0.4.0: this needs to be refactored
+        # TODO / v0.4.0: this will be refactored as a 'coverage and'
 
         # accumulate the hit counters for the intersecting coverage
         for address in intersected_addresses:
@@ -170,12 +170,12 @@ class DatabaseCoverage(object):
         #   I'm not convinced I should acumulate the subtractee's hit counts,
         #   and I don't think it makes sense to? so for now we don't.
         #
-        #   TODO / v0.4.0
+        # TODO / v0.4.0: this will be refactored as a 'coverage subtract'
         #
 
         # build the new coverage data
         for address in difference_addresses:
-            composite_data[address] = self.coverage_data[address] - other.coverage_data[address]
+            composite_data[address] = self.coverage_data[address] #- other.coverage_data[address]
 
         # done
         return DatabaseCoverage(self._base, composite_data, self.palette)

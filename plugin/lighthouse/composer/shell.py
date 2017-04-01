@@ -332,6 +332,9 @@ class ComposingShell(QtWidgets.QWidget):
 
         self._director.accept_composition(coverage_name)
 
+        # switch to the newly created composition
+        self._director.select_coverage(coverage_name)
+
     def _ui_shell_cursor_changed(self):
         """
         Cursor position changed in the shell.
@@ -353,7 +356,7 @@ class ComposingShell(QtWidgets.QWidget):
             self._parsed_tokens, ast = self._parser.parse(text, self._shorthand)
 
             # parse success, inform the director of the new composition
-            self._director.build_composition(ast)
+            self._director.cache_composition(ast)
 
         # parse failure
         except ParseError as e:

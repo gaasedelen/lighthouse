@@ -599,61 +599,61 @@ class CoverageDirector(object):
 
     def accept_composition(self, coverage_name):
         """
-        Save the hot/new composition to the specified name.
+        Save the last known composition to the specified name.
+
+        TODO:
+          this paradigm of 'last_ast' seems wonky, but it should make more
+          sense as things are moved async in v0.4.0
+
         """
+        assert not (coverage_name in RESERVED_NAMES)
         updating_coverage = coverage_name in self.coverage_names
+        logger.debug("Accepting composition %s" % coverage_name)
 
-        # save the cached (hot shell) coverage under the given name
-        self._database_coverage[coverage_name] = self._special_coverage[HOT_SHELL]
-
-        # since we just touched the database coverage list, we should also refresh
-        # the shorthand aliases
-        self._request_shorthand_alias(coverage_name)
-
-        #
-        # if we created a new set of coverage (versus replacing one), send
-        # out a notification of such creation
-        #
-
-        if not updating_coverage:
-            self._notify_coverage_created()
-
-        # TODO: remove?
-        # switch to the newly created composition
-        self.select_coverage(coverage_name)
-
-        #
-        # if we updated an existing coverage set, (the one we just switched to)
-        # we should send out a notification indicating that this coverage may
-        # have been modified.
-        #
-
-        if updating_coverage:
-            self._notify_coverage_modified()
-
-        #
-        # replace the Hot Shell & New Composition coverage entries with fresh
-        # NULL entries for the next use
-        #
-
-        self._special_coverage[HOT_SHELL]       = self._NULL_COVERAGE
-        self._special_coverage[NEW_COMPOSITION] = self._NULL_COVERAGE
-
-    def build_composition(self, ast):
-        """
-        Compute the given composition, and store it as applicable.
-        """
-        composite_coverage = self._evaluate_composition(ast)
+        # evaluate the last AST into a coverage set
+        composite_coverage = self._evaluate_composition(self._last_ast)
         composite_coverage.update_metadata(self.metadata)
         composite_coverage.refresh()
 
+        # save the evaluated coverage under the given name
+        self._update_coverage(coverage_name, composite_coverage)
+
+        # assign a shorthand alias (if available) to new coverage additions
+        if not updating_coverage:
+            self._request_shorthand_alias(coverage_name)
+
+        # notify any listeners that we have added or updated coverage
+        if updating_coverage:
+            self._notify_coverage_modified()
+        else:
+            self._notify_coverage_created()
+
+    def cache_composition(self, ast):
+        """
+        Cache the given composition.
+        """
+
+        # hot shell requests are evaluated immediately
         if self.coverage_name == HOT_SHELL:
+
+            composite_coverage = self._evaluate_composition(ast)
+            composite_coverage.update_metadata(self.metadata)
+            composite_coverage.refresh()
+
             self.unpaint_difference(self.coverage, composite_coverage)
             self._special_coverage[HOT_SHELL] = composite_coverage
             self.paint_coverage()
+
             self._notify_coverage_modified()
-        else:
-            self._special_coverage[HOT_SHELL] = composite_coverage
+
+        #
+        # TODO:
+        #   in v0.4.0 we will actually offload the AST to be evaluated
+        #   in an async thread and cache that
+        #
+
+        # cache this request as the last known user AST
+        self._last_ast = ast
 
     def _evaluate_composition(self, ast):
         """
