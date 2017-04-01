@@ -7,6 +7,15 @@ from ida import *
 from log import lmsg, logging_started, start_logging
 from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
 
+#
+# TODO: this file is a dumpster fire right now, clean it up
+#
+
+def MonospaceFont():
+    font = QtGui.QFont("Monospace")
+    font.setStyleHint(QtGui.QFont.TypeWriter)
+    return font
+
 #------------------------------------------------------------------------------
 # Profiling / Testing Helpers
 #------------------------------------------------------------------------------
@@ -64,36 +73,6 @@ except ImportError:
 def hex_list(items):
     return '[{}]'.format(', '.join('0x%08X' % x for x in items))
 
-def get_disas_bg_color():
-    """
-    Get the background color of the disas text area via pixel... YOLO
-
-    PS: please expose the get_graph_color(...) palette accessor, Ilfak ;_;
-    """
-
-    # find a form (eg, IDA view) to steal a pixel from
-    for i in xrange(5):
-        form = idaapi.find_tform("IDA View-%c" % chr(ord('A') + i))
-        if form:
-            break
-    else:
-        raise RuntimeError("Failed to find donor IDA View")
-
-    # lookup the Qt Widget for the given form and take 2px tall image
-    if using_pyqt5():
-        widget = idaapi.PluginForm.FormToPyQtWidget(form)
-        pixmap = widget.grab(QtCore.QRect(0, 0, widget.width(),2))
-    else:
-        widget = idaapi.PluginForm.FormToPySideWidget(form)
-        pixmap = QtGui.QPixmap.grabWidget(widget, QtCore.QRect(0, 0, widget.width(), 2))
-
-    # extract a pixel from the top center like a pleb (hopefully a background pixel :|)
-    img    = QtGui.QImage(pixmap.toImage())
-    color  = QtGui.QColor(img.pixel(img.width()/2,1))
-
-    # return the color of the pixel we extracted
-    return color
-
 def compute_color_on_gradiant(percent, color1, color2):
     """
     Compute the color specified by a percent between two colors.
@@ -112,6 +91,15 @@ def compute_color_on_gradiant(percent, color1, color2):
 
     # return the new color
     return QtGui.QColor(r,g,b)
+
+def test_color_brightness(color):
+    """
+    Test the brightness of a color.
+    """
+    if color.lightness() > 255.0/2:
+        return "Light"
+    else:
+        return "Dark"
 
 def resource_file(filename):
     """

@@ -1,6 +1,6 @@
 import idaapi
 
-from coverage_overview import *
+from .coverage_overview import *
 
 #------------------------------------------------------------------------------
 # IDA Action Handler Stub

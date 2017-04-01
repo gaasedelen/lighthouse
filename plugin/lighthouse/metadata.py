@@ -22,7 +22,7 @@ logger = logging.getLogger("Lighthouse.Metadata")
 #
 #    This opens up a realm of interesting possibilities. With this model,
 #    we can easily move any heavy director based compute to asynchrnous
-#    python-only threads without disrupting the user, or IDA.
+#    python-only threads without disrupting the user, or IDA. (v0.4.0)
 #
 #    However, there are two main caveats of this model -
 #
@@ -56,7 +56,7 @@ class DatabaseMetadata(object):
     Fast access database level metadata cache.
     """
 
-    def __init__(self):
+    def __init__(self, populate=True):
 
         # database defined nodes (basic blocks)
         self.nodes = {}
@@ -74,7 +74,8 @@ class DatabaseMetadata(object):
         #----------------------------------------------------------------------
 
         # collect metdata from the underlying database
-        self._build_metadata()
+        if populate:
+            self._build_metadata()
 
         #
         # now that we have collected all the node & function metadata available
@@ -135,7 +136,7 @@ class DatabaseMetadata(object):
             if address in node:
                 self._last_node = node
                 return node
-        except KeyError:
+        except (IndexError, KeyError):
             pass
 
         #
@@ -512,7 +513,7 @@ class MetadataDelta(object):
         self._dirty_functions = set()
 
     #--------------------------------------------------------------------------
-    # Informational / Debug
+    # Informational / Debug - TODO: REMOVE
     #--------------------------------------------------------------------------
 
     def dump_delta(self):

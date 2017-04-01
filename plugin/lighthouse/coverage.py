@@ -6,16 +6,13 @@ import collections
 from lighthouse.util import *
 from lighthouse.util import compute_color_on_gradiant
 from lighthouse.painting import *
+from lighthouse.metadata import DatabaseMetadata
 
 logger = logging.getLogger("Lighthouse.Coverage")
 
 #------------------------------------------------------------------------------
 # Coverage
 #------------------------------------------------------------------------------
-#
-#    The primary role of the director is to centralize the loaded coverage
-#    and provide a platform for researchers to explore the relationship
-#    between multiple coverage sets.
 #
 #    Raw coverage data passed into the director is stored internally in
 #    DatabaseCoverage objects. A DatabaseCoverage object can be roughly
@@ -60,7 +57,7 @@ class DatabaseCoverage(object):
         self.unmapped_coverage.add(idaapi.BADADDR)
 
         # the metadata this coverage will be mapped to
-        self._metadata = None
+        self._metadata = DatabaseMetadata(False)
 
         # maps to the child coverage objects
         self.nodes     = {}
@@ -83,6 +80,20 @@ class DatabaseCoverage(object):
     # Operator Overloads
     #--------------------------------------------------------------------------
 
+    @property
+    def instruction_percent(self):
+        """
+        The coverage % by instructions executed.
+        """
+        try:
+            return sum(f.instruction_percent for f in self.functions.itervalues()) / len(self._metadata.functions)
+        except ZeroDivisionError:
+            return 0.0
+
+    #--------------------------------------------------------------------------
+    # Operator Overloads
+    #--------------------------------------------------------------------------
+
     def __or__(self, other):
         """
         Overload of '|' (logical or) operator.
@@ -97,6 +108,8 @@ class DatabaseCoverage(object):
         composite_data = collections.defaultdict(int)
 
         #----------------------------------------------------------------------
+
+        # TODO / v0.4.0: this will be refactored as a 'coverage add/or'
 
         # compute the union of the two coverage sets
         for address, hit_count in self.coverage_data.iteritems():
@@ -124,6 +137,8 @@ class DatabaseCoverage(object):
 
         # compute the intersecting addresses of the two coverage sets
         intersected_addresses = self.coverage_data.viewkeys() & other.coverage_data.viewkeys()
+
+        # TODO / v0.4.0: this will be refactored as a 'coverage and'
 
         # accumulate the hit counters for the intersecting coverage
         for address in intersected_addresses:
@@ -155,10 +170,40 @@ class DatabaseCoverage(object):
         #   I'm not convinced I should acumulate the subtractee's hit counts,
         #   and I don't think it makes sense to? so for now we don't.
         #
+        # TODO / v0.4.0: this will be refactored as a 'coverage subtract'
+        #
 
         # build the new coverage data
         for address in difference_addresses:
+            composite_data[address] = self.coverage_data[address] #- other.coverage_data[address]
+
+        # done
+        return DatabaseCoverage(self._base, composite_data, self.palette)
+
+    def hitmap_subtract(self, other):
+        """
+        Subtract hitmaps from each other.
+
+        TODO: dirty hack that will be removed in v0.4.0
+        """
+
+        if other is None:
+            other = DatabaseCoverage(self._base, None, self.palette)
+        elif not isinstance(other, DatabaseCoverage):
+            raise NotImplementedError("Cannot SUB DatabaseCoverage hitmap against type '%s'" % type(other))
+
+        # initialize the object
+        composite_data = collections.defaultdict(int)
+
+        #----------------------------------------------------------------------
+
+        # build the new coverage data
+        for address in self.coverage_data.viewkeys():
             composite_data[address] = self.coverage_data[address]
+        for address in other.coverage_data.viewkeys():
+            composite_data[address] -= other.coverage_data[address]
+            if not composite_data[address]:
+                del composite_data[address]
 
         # done
         return DatabaseCoverage(self._base, composite_data, self.palette)
@@ -333,25 +378,49 @@ class DatabaseCoverage(object):
             node_end = node_metadata.address + node_metadata.size
 
             #
-            # TODO: explain this loop
+            # the loop below can be thought of almost as an inlined fast-path
+            # where we expect the next several addresses to belong to the same
+            # node (basic block).
+            #
+            # with the assumption of linear program execution, we can reduce
+            # the heavier overhead of all the lookup code above by simply
+            # checking if the next address in the queue (addresses_to_map)
+            # falls into the same / current node (basic block).
+            #
+            # we can simply re-use the current node and its coverage object
+            # until the next address to be processed falls outside our scope
             #
 
             while 1:
 
-                # map the coverage data for this address to this node
+                # map the coverage data for the current address to this node
                 node_coverage.executed_bytes.add(address)
 
+                #
                 # ownership has been transfered to node_coverage, so this
                 # address is no longer considered 'unmapped'
+                #
+
                 self.unmapped_coverage.discard(address)
 
                 # get the next address to attempt mapping on
                 address = addresses_to_map.popleft()
 
-                # if the address is not in this node, it's time to move on
+                #
+                # if the address is not in this node, it's time break out of
+                # this loop and sned it back through the full node lookup path
+                #
+
                 if not (node_metadata.address <= address < node_end):
                     addresses_to_map.appendleft(address)
                     break
+
+                #
+                # the next address to be mapped DOES fall within our current
+                # node, loop back around in the fast-path and map it
+                #
+
+                # ...
 
             # since we updated this node, ensure we're tracking it as dirty
             dirty_nodes[node_metadata.address] = node_coverage
@@ -367,12 +436,8 @@ class DatabaseCoverage(object):
 
         #
         # thanks to the _map_nodes function, we now have a repository of
-        # node coverage objects (self.nodes) that can be used to preciesly
-        # guide the generation of our function level coverage objects
-        #
-
-        #
-        # we loop through every node coverage object
+        # node coverage objects that are considered 'dirty' and can be used
+        # precisely guide the generation of our function level coverage
         #
 
         for node_coverage in dirty_nodes.itervalues():
@@ -380,7 +445,7 @@ class DatabaseCoverage(object):
             #
             # using the node_coverage object, we retrieve its underlying
             # metadata so that we can perform a reverse lookup of all the
-            # functions in the database that reference this node
+            # functions in the database that reference it
             #
 
             functions = self._metadata.nodes[node_coverage.address].functions
@@ -410,10 +475,7 @@ class DatabaseCoverage(object):
                     function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
                     self.functions[function_metadata.address] = function_coverage
 
-                #
-                # finally, we can taint this node in the function level mapping
-                #
-
+                # mark this node as executed in the function level mappping
                 function_coverage.mark_node(node_coverage)
                 dirty_functions[function_metadata.address] = function_coverage
 
@@ -480,7 +542,6 @@ class DatabaseCoverage(object):
         # delete function coverage objects for the allegedly deleted functions
         for function_address in delta.functions_removed:
             self.functions.pop(function_address, None)
-
 
 #------------------------------------------------------------------------------
 # Function Level Coverage
@@ -578,7 +639,7 @@ class NodeCoverage(object):
         self.executed_bytes = set()
 
     #--------------------------------------------------------------------------
-    # TODO
+    # Controls
     #--------------------------------------------------------------------------
 
     def finalize(self):
