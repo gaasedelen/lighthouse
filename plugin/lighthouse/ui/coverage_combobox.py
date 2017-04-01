@@ -144,8 +144,8 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.showPopup()
 
         #
-        # I don't want there to be any entries highlighted after a deletion,
-        # (it looks weird) so clear the table/dropdown selections now
+        # I don't want there to be any entries highlighted after a deletion
+        # event, (it looks weird) so clear the table/dropdown highlights now
         #
 
         # NOTE/COMPAT
@@ -160,22 +160,22 @@ class CoverageComboBox(QtWidgets.QComboBox):
                 QtGui.QItemSelectionModel.ClearAndSelect
             )
 
-    def _ui_selection_changed(self, _):
+
+        #
+        # the deletion of an entry will shift all the entries beneath it up
+        # by one. in this case, it is important we refresh the selection index
+        # to reflect the director so that it stays correct.
+        #
+
+        self._refresh_selection()
+
+    def _ui_selection_changed(self, row):
         """
         Handle selection change of coverage combobox.
         """
-        assert len(self.view().selectedIndexes()) == 1
 
-        #
-        # we actually retrieve the selected 2D table index that we presume
-        # triggered this event from the table view itself.
-        #
-        # the reason for this is that the combobox only gives us the ROW
-        # number that triggered the selection, but we really want the 2d
-        # QModelIndex that we can use to lookup data in the model.
-        #
-
-        index = self.view().selectedIndexes()[0]
+        # convert the combobox row index into a QModelIndex
+        index = self.model().index(row, 0)
 
         # using the true index, lookup the coverage name for this selection
         coverage_name = self.model().data(index, QtCore.Qt.UserRole)
@@ -200,6 +200,13 @@ class CoverageComboBox(QtWidgets.QComboBox):
         # now that the comobobox is fully up to date, select the item index
         # that matches the active coverage as per the director
         #
+
+        self._refresh_selection()
+
+    def _refresh_selection(self):
+        """
+        Refresh the coverage combobox selection.
+        """
 
         # NOTE: we block any index change signals to stop unecessary churn
         self.blockSignals(True)
