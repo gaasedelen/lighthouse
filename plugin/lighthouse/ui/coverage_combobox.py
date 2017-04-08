@@ -252,6 +252,8 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         self.setShowGrid(False)
         #self.resizeRowToContents(True)
         self.resizeColumnToContents(0)
+        self.setTextElideMode(QtCore.Qt.ElideRight)
+        self.setWordWrap(False)
 
         #
         # NOTE/COMPAT:
