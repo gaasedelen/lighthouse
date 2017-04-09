@@ -438,12 +438,12 @@ class Lighthouse(plugin_t):
         root_filename   = idaapi.get_root_filename()
         coverage_blocks = coverage_data.filter_by_module(root_filename)
 
-        # index the coverage for use
+        # rebase and flatten the basic blocks into individual addresses
         base = idaapi.get_imagebase()
-        indexed_data = index_coverage(base, coverage_blocks)
+        addresses = normalize_blocks(base, coverage_blocks)
 
-        # enlighten the coverage director to this new coverage data
-        self.director.add_coverage(basename, base, indexed_data)
+        # enlighten the coverage director to this new runtime data
+        self.director.add_coverage(basename, addresses)
 
     def _hexrays_callback(self, event, *args):
         """

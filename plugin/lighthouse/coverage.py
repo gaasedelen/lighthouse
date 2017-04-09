@@ -8,17 +8,18 @@ from lighthouse.util import compute_color_on_gradiant
 from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata
 
-logger = logging.getLogger("Lighthouse.Coverage")
+logger = logging.getLogger("Lighthouse.Mapping")
 
 #------------------------------------------------------------------------------
-# Coverage
+# Data Mapping
 #------------------------------------------------------------------------------
+# TODO: update this for mapping
 #
 #    Raw coverage data passed into the director is stored internally in
-#    DatabaseCoverage objects. A DatabaseCoverage object can be roughly
+#    DatabaseMapping objects. A DatabaseMapping object can be roughly
 #    equated to a loaded coverage file as it maps to the open database.
 #
-#    DatabaseCoverage objects simply map their raw coverage data to the
+#    DatabaseMapping objects simply map their raw coverage data to the
 #    database using the lifted metadata described in metadata.py. The
 #    coverage objects are effectively generated as a thin layer on top of
 #    cached metadata.
@@ -34,32 +35,27 @@ logger = logging.getLogger("Lighthouse.Coverage")
 #
 
 #------------------------------------------------------------------------------
-# Database Level Coverage
+# Database Data Mapping
 #------------------------------------------------------------------------------
 
-class DatabaseCoverage(object):
+class DatabaseMapping(object):
     """
-    Database level coverage mapping.
+    Database level runtime data mapping.
     """
 
-    def __init__(self, base, indexed_data, palette):
-
+    def __init__(self, data, palette):
 
         # the color palette used when painting this coverage
         self.palette = palette
 
-        if not indexed_data:
-            indexed_data = collections.defaultdict(int)
-
-        self._base = base
-        self.coverage_data = indexed_data
-        self.unmapped_coverage = set(indexed_data.keys())
-        self.unmapped_coverage.add(idaapi.BADADDR)
+        self._source_data = index_data(data)
+        self._unmapped_data = set(self._source_data.keys())
+        self._unmapped_data.add(idaapi.BADADDR)
 
         # the metadata this coverage will be mapped to
         self._metadata = DatabaseMetadata(False)
 
-        # maps to the child coverage objects
+        # maps to the child mapping objects
         self.nodes     = {}
         self.functions = {}
 
@@ -81,6 +77,20 @@ class DatabaseCoverage(object):
     #--------------------------------------------------------------------------
 
     @property
+    def data(self):
+        """
+        TODO
+        """
+        return self._source_data
+
+    @property
+    def coverage(self):
+        """
+        TODO
+        """
+        return self._source_data.viewkeys()
+
+    @property
     def instruction_percent(self):
         """
         The coverage % by instructions executed.
@@ -91,161 +101,65 @@ class DatabaseCoverage(object):
             return 0.0
 
     #--------------------------------------------------------------------------
-    # Operator Overloads
+    # Data Modifiers
     #--------------------------------------------------------------------------
 
-    def __or__(self, other):
+    def add_data(self, data):
         """
-        Overload of '|' (logical or) operator.
-        """
-
-        if other is None:
-            other = DatabaseCoverage(self._base, None, self.palette)
-        elif not isinstance(other, DatabaseCoverage):
-            raise NotImplementedError("Cannot OR DatabaseCoverage against type '%s'" % type(other))
-
-        # initialize
-        composite_data = collections.defaultdict(int)
-
-        #----------------------------------------------------------------------
-
-        # TODO / v0.4.0: this will be refactored as a 'coverage add/or'
-
-        # compute the union of the two coverage sets
-        for address, hit_count in self.coverage_data.iteritems():
-            composite_data[address]  = hit_count
-        for address, hit_count in other.coverage_data.iteritems():
-            composite_data[address] += hit_count
-
-        # done
-        return DatabaseCoverage(self._base, composite_data, self.palette)
-
-    def __and__(self, other):
-        """
-        Overload of '&' (logical and) operator.
+        Add runtime data to this mapping.
         """
 
-        if other is None:
-            other = DatabaseCoverage(self._base, None, self.palette)
-        elif not isinstance(other, DatabaseCoverage):
-            raise NotImplementedError("Cannot AND DatabaseCoverage against type '%s'" % type(other))
+        # add the given runtime data to our data source
+        for address, hit_count in data.iteritems():
+            self._source_data[address] += hit_count
 
-        # initialize the object
-        composite_data = collections.defaultdict(int)
+        # mark these touched addresses as dirty
+        self._unmapped_data |= data.viewkeys()
 
-        #----------------------------------------------------------------------
-
-        # compute the intersecting addresses of the two coverage sets
-        intersected_addresses = self.coverage_data.viewkeys() & other.coverage_data.viewkeys()
-
-        # TODO / v0.4.0: this will be refactored as a 'coverage and'
-
-        # accumulate the hit counters for the intersecting coverage
-        for address in intersected_addresses:
-            composite_data[address] = self.coverage_data[address] + other.coverage_data[address]
-
-        # done
-        return DatabaseCoverage(self._base, composite_data, self.palette)
-
-    def __sub__(self, other):
+    def subtract_data(self, data):
         """
-        Overload of '-' (subtract) operator.
+        Subtract runtime data from this mapping.
         """
 
-        if other is None:
-            other = DatabaseCoverage(self._base, None, self.palette)
-        elif not isinstance(other, DatabaseCoverage):
-            raise NotImplementedError("Cannot SUB DatabaseCoverage against type '%s'" % type(other))
+        # subtract the given runtime data from our data source
+        for address, hit_count in data.iteritems():
+            self._source_data[address] -= hit_count
 
-        # initialize the object
-        composite_data = collections.defaultdict(int)
+            #assert self._source_data[address] >= 0
 
-        #----------------------------------------------------------------------
+            #
+            # if there is no longer any hits for this address, delete its
+            # entry from the source_data dictonary. we don't want its entry to
+            # hang around because we use self._source_data.viewkeys() as a
+            # coverage bitmap.
+            #
 
-        # compute the difference addresses of the two coverage sets
-        difference_addresses = self.coverage_data.viewkeys() - other.coverage_data.viewkeys()
+            if not self._source_data[address]:
+                del self._source_data[address]
 
         #
-        # NOTE:
-        #   I'm not convinced I should acumulate the subtractee's hit counts,
-        #   and I don't think it makes sense to? so for now we don't.
-        #
-        # TODO / v0.4.0: this will be refactored as a 'coverage subtract'
+        # unmap everything because a complete re-mapping is easier with the
+        # current implementation of things
         #
 
-        # build the new coverage data
-        for address in difference_addresses:
-            composite_data[address] = self.coverage_data[address] #- other.coverage_data[address]
+        self._unmap_all()
 
-        # done
-        return DatabaseCoverage(self._base, composite_data, self.palette)
+    #--------------------------------------------------------------------------
+    # Coverage Operators
+    #--------------------------------------------------------------------------
 
-    def hitmap_subtract(self, other):
+    def mask_data(self, coverage_mask):
         """
-        Subtract hitmaps from each other.
-
-        TODO: dirty hack that will be removed in v0.4.0
+        TODO
         """
-
-        if other is None:
-            other = DatabaseCoverage(self._base, None, self.palette)
-        elif not isinstance(other, DatabaseCoverage):
-            raise NotImplementedError("Cannot SUB DatabaseCoverage hitmap against type '%s'" % type(other))
-
-        # initialize the object
         composite_data = collections.defaultdict(int)
 
-        #----------------------------------------------------------------------
+        # keep only data matching the coverage mask
+        for address in coverage_mask:
+            composite_data[address] = self._source_data[address]
 
-        # build the new coverage data
-        for address in self.coverage_data.viewkeys():
-            composite_data[address] = self.coverage_data[address]
-        for address in other.coverage_data.viewkeys():
-            composite_data[address] -= other.coverage_data[address]
-            if not composite_data[address]:
-                del composite_data[address]
-
-        # done
-        return DatabaseCoverage(self._base, composite_data, self.palette)
-
-    def __xor__(self, other):
-        """
-        Overload of '^' xor operator.
-        """
-
-        if other is None:
-            other = DatabaseCoverage(self._base, None, self.palette)
-        elif not isinstance(other, DatabaseCoverage):
-            raise NotImplementedError("Cannot XOR DatabaseCoverage against type '%s'" % type(other))
-
-        # initialize the object
-        composite_data = collections.defaultdict(int)
-
-        #----------------------------------------------------------------------
-
-        # compute the symmetric difference (xor) between two coverage sets
-        xor_addresses = self.coverage_data.viewkeys() ^ other.coverage_data.viewkeys()
-
-        # accumulate the hit counters for the xor'd coverage
-        for address in xor_addresses & self.coverage_data.viewkeys():
-            composite_data[address] = self.coverage_data[address]
-        for address in xor_addresses & other.coverage_data.viewkeys():
-            composite_data[address] = other.coverage_data[address]
-
-        # done
-        return DatabaseCoverage(self._base, composite_data, self.palette)
-
-    def __ror__(self, other):
-        return self.__or__(other)
-
-    def __rand__(self, other):
-        return self.__and__(other)
-
-    #def __rsub__(self, other):
-    #    return self.__sub__(other)
-
-    def __rxor__(self, other):
-        return self.__xor__(other)
+        # done, return a new DatabaseMapping masked with the given coverage
+        return DatabaseMapping(composite_data, self.palette)
 
     #--------------------------------------------------------------------------
     # Metadata Population
@@ -261,7 +175,7 @@ class DatabaseCoverage(object):
 
         # unmap all the coverage affected by the metadata delta
         if delta:
-            self._unmap_dirty(delta)
+            self._unmap_delta(delta)
 
     def refresh(self):
         """
@@ -322,16 +236,16 @@ class DatabaseCoverage(object):
 
     def _map_nodes(self):
         """
-        Map loaded coverage data to database defined nodes (basic blocks).
+        Map loaded runtime data to database defined nodes (basic blocks).
         """
         dirty_nodes = {}
-        addresses_to_map = collections.deque(sorted(self.unmapped_coverage))
+        addresses_to_map = collections.deque(sorted(self._unmapped_data))
 
         #
         # This while loop is the core of our coverage mapping process.
         #
-        # The 'unmapped_coverage' list is consumed by this loop, mapping
-        # any unmapped coverage data maintained by this DatabaseCoverage
+        # The '_unmapped_data' list is consumed by this loop, mapping
+        # any unmapped coverage data maintained by this DatabaseMapping
         # to the given database metadata.
         #
         # It should be noted that the rest of the database coverage
@@ -393,22 +307,22 @@ class DatabaseCoverage(object):
 
             while 1:
 
-                # map the coverage data for the current address to this node
-                node_coverage.executed_bytes.add(address)
+                # map the hitmap data for the current address to this node mapping
+                node_coverage.executed_bytes[address] = self._source_data[address]
 
                 #
                 # ownership has been transfered to node_coverage, so this
                 # address is no longer considered 'unmapped'
                 #
 
-                self.unmapped_coverage.discard(address)
+                self._unmapped_data.discard(address)
 
                 # get the next address to attempt mapping on
                 address = addresses_to_map.popleft()
 
                 #
                 # if the address is not in this node, it's time break out of
-                # this loop and sned it back through the full node lookup path
+                # this loop and send it back through the full node lookup path
                 #
 
                 if not (node_metadata.address <= address < node_end):
@@ -486,7 +400,16 @@ class DatabaseCoverage(object):
         # done
         return dirty_functions
 
-    def _unmap_dirty(self, delta):
+    def _unmap_all(self):
+        """
+        Unmap all mapped data.
+        """
+        self._unmapped_data = set(self._source_data.keys())
+        self._unmapped_data.add(idaapi.BADADDR)
+        self.nodes = {}
+        self.functions = {}
+
+    def _unmap_delta(self, delta):
         """
         Unmap node & function coverage affected by the metadata delta.
 
@@ -496,10 +419,13 @@ class DatabaseCoverage(object):
 
         This enables us to recompute only what is necessary upon refresh.
         """
+        self._unmap_nodes(itertools.chain(delta.nodes_removed, delta.nodes_modified))
+        self._unmap_functions(delta.functions_removed)
 
-        #
-        # Dirty Nodes
-        #
+    def _unmap_nodes(self, node_addresses):
+        """
+        Unmap any data associated with a given list of node addresses.
+        """
 
         #
         # using the metdata delta as a guide, we loop through all the nodes it
@@ -508,7 +434,7 @@ class DatabaseCoverage(object):
         # mapping so we can selectively regenerate their coverage later.
         #
 
-        for node_address in itertools.chain(delta.nodes_removed, delta.nodes_modified):
+        for node_address in node_addresses:
 
             #
             # if there's no coverage for this node, then we have nothing to do.
@@ -520,7 +446,7 @@ class DatabaseCoverage(object):
                 continue
 
             # the node was found, unmap any of its tracked coverage blocks
-            self.unmapped_coverage.update(node_coverage.executed_bytes)
+            self._unmapped_data.update(node_coverage.executed_bytes.viewkeys())
 
             #
             # NOTE:
@@ -535,12 +461,13 @@ class DatabaseCoverage(object):
             #   executed_nodes dictionaries are built using WeakValueDictionary.
             #
 
-        #
-        # Dirty Functions
-        #
+            # ...
 
-        # delete function coverage objects for the allegedly deleted functions
-        for function_address in delta.functions_removed:
+    def _unmap_functions(self, function_addresses):
+        """
+        Unmap any data associated with a given list of function addresses.
+        """
+        for function_address in function_addresses:
             self.functions.pop(function_address, None)
 
 #------------------------------------------------------------------------------
@@ -636,7 +563,7 @@ class NodeCoverage(object):
     def __init__(self, node_address, database=None):
         self._database = database
         self.address = node_address
-        self.executed_bytes = set()
+        self.executed_bytes = {}
 
     #--------------------------------------------------------------------------
     # Controls

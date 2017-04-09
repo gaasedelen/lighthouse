@@ -7,7 +7,7 @@ import collections
 from lighthouse.util import *
 from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata, MetadataDelta
-from lighthouse.coverage import DatabaseCoverage
+from lighthouse.coverage import DatabaseMapping
 from lighthouse.composer.parser import TokenLogicOperator, TokenCoverageRange, TokenCoverageSingle, TokenNull
 
 logger = logging.getLogger("Lighthouse.Director")
@@ -41,7 +41,7 @@ class CoverageDirector(object):
     """
 
     def __init__(self, palette):
-        self._NULL_COVERAGE = DatabaseCoverage(idaapi.BADADDR, None, palette)
+        self._NULL_COVERAGE = DatabaseMapping(None, palette)
 
         # color palette
         self._palette = palette
@@ -71,9 +71,9 @@ class CoverageDirector(object):
 
         self._special_coverage = collections.OrderedDict(
         [
-            (HOT_SHELL, self._NULL_COVERAGE),       # hot shell composition
-            (NEW_COMPOSITION, self._NULL_COVERAGE), # slow shell composition
-            (AGGREGATE, self._NULL_COVERAGE),       # aggregate composition
+            (HOT_SHELL,       DatabaseMapping(None, palette)), # hot shell composition
+            (NEW_COMPOSITION, DatabaseMapping(None, palette)), # slow shell composition
+            (AGGREGATE,       DatabaseMapping(None, palette)), # aggregate composition
         ])
 
         #----------------------------------------------------------------------
@@ -180,6 +180,13 @@ class CoverageDirector(object):
         The active database coverage.
         """
         return self.get_coverage(self.coverage_name)
+
+    @property
+    def aggregate(self):
+        """
+        The aggregate of loaded data.
+        """
+        return self._special_coverage[AGGREGATE]
 
     @property
     def coverage_names(self):
@@ -370,15 +377,15 @@ class CoverageDirector(object):
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
-    def add_coverage(self, coverage_name, coverage_base, coverage_data):
+    def add_coverage(self, coverage_name, coverage_data):
         """
         Add new coverage to the director.
 
         This is effectively an alias of self.update_coverage
         """
-        self.update_coverage(coverage_name, coverage_base, coverage_data)
+        self.update_coverage(coverage_name, coverage_data)
 
-    def update_coverage(self, coverage_name, coverage_base, coverage_data):
+    def update_coverage(self, coverage_name, coverage_data):
         """
         Add or update coverage maintained by the director.
         """
@@ -391,7 +398,7 @@ class CoverageDirector(object):
             logger.debug("Adding coverage %s" % coverage_name)
 
         # create & map a new database coverage object using the given data
-        new_coverage = self._build_coverage(coverage_base, coverage_data)
+        new_coverage = self._build_coverage(coverage_data)
 
         # coverage mapping complete, looks like we're good. add the new
         # coverage to the director's coverage table and surface it for use.
@@ -421,14 +428,10 @@ class CoverageDirector(object):
         #
 
         if coverage_name in self.coverage_names:
-
-            # TODO: hack to be removed in v0.4.0
-            aggregate = self._special_coverage[AGGREGATE]
-            coverage  = self._database_coverage[coverage_name]
-
-            self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
-            self._special_coverage[AGGREGATE].update_metadata(self.metadata)
-            self._special_coverage[AGGREGATE].refresh()
+            old_coverage = self._database_coverage[coverage_name]
+            self.aggregate.subtract_data(old_coverage.data)
+            self.aggregate.update_metadata(self.metadata)
+            self.aggregate.refresh()
 
         #
         # this is the critical point where we actually integrate the newly
@@ -447,22 +450,17 @@ class CoverageDirector(object):
         #
 
         # (re)-add the newly loaded/updated coverage to the aggregate set
-        self._special_coverage[AGGREGATE] |= new_coverage
-        self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?
-        self._special_coverage[AGGREGATE].refresh()
+        self.aggregate.add_data(new_coverage.data)
+        self.aggregate.update_metadata(self.metadata)
+        self.aggregate.refresh()
 
-    def _build_coverage(self, coverage_base, coverage_data):
+    def _build_coverage(self, coverage_data):
         """
         Build a new database coverage object from the given data.
         """
-
-        # initialize a new database-wide coverage object for this data
-        new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
-
-        # map the coverage data using the database metadata
+        new_coverage = DatabaseMapping(coverage_data, self._palette)
         new_coverage.update_metadata(self.metadata)
         new_coverage.refresh()
-
         return new_coverage
 
     def delete_coverage(self, coverage_name):
@@ -486,11 +484,9 @@ class CoverageDirector(object):
         coverage = self._database_coverage.pop(coverage_name)
         # TODO: check if there's any references to the coverage object here...
 
-        # TODO: hack to be removed in v0.4.0
-        aggregate = self._special_coverage[AGGREGATE]
-        self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
-        self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?
-        self._special_coverage[AGGREGATE].refresh()
+        self.aggregate.subtract_data(coverage.data)
+        self.aggregate.update_metadata(self.metadata)
+        self.aggregate.refresh()
 
         # notify any listeners that we have deleted coverage
         self._notify_coverage_deleted()
@@ -679,9 +675,31 @@ class CoverageDirector(object):
         #
 
         if isinstance(node, TokenLogicOperator):
+
+            #
+            # collect the left and right components of the logical operation
+            #   eg:
+            #       op1 = DatabaseMapping for 'A'
+            #       op2 = DatabaseMapping for 'B'
+            #
+
             op1 = self._evaluate_composition_recursive(node.op1)
             op2 = self._evaluate_composition_recursive(node.op2)
-            return node.operator(op1, op2)
+
+            #
+            # using the collected components of the logical operation, we
+            # compute the coverage mask defined by this TokenLogicOperator
+            #
+
+            coverage_mask = node.operator(op1.coverage, op2.coverage)
+
+            #
+            # now that we have computed the requested coverage mask (bitmap),
+            # apply the mask to the data held by the left operand (op1). we
+            # return a masked copy of said DatabaseMapping
+            #
+
+            return DatabaseMapping(coverage_mask, self._palette)
 
         #
         # if the current node is a coverage range, we need to evaluate the
@@ -694,7 +712,7 @@ class CoverageDirector(object):
 
         #
         # if the current node is a coverage token, we need simply need
-        # to return its associated DatabaseCoverage.
+        # to return its associated DatabaseMapping.
         #
 
         elif isinstance(node, TokenCoverageSingle):
@@ -713,7 +731,7 @@ class CoverageDirector(object):
         Returns an existing coverage set.
         """
         assert isinstance(coverage_token, TokenCoverageSingle)
-        return self.get_coverage(self._alias2name[coverage_token.symbol])
+        return self.get_coverage(self._alias2name[coverage_token.symbol]) # TODO: rename get_coverage?
 
     def _evaluate_coverage_range(self, range_token):
         """
@@ -724,14 +742,14 @@ class CoverageDirector(object):
         assert isinstance(range_token, TokenCoverageRange)
 
         # initialize output to a null coverage set
-        output = self._NULL_COVERAGE
+        output = DatabaseMapping(None, self._palette)
 
         # exapand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
         symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
 
         # build a coverage aggregate described by the range of shorthand symbols
         for symbol in symbols:
-            output = output | self.get_coverage(self._alias2name[symbol])
+            output.add_data(self.get_coverage(self._alias2name[symbol]).data)
 
         # return the computed coverage
         return output
@@ -844,14 +862,17 @@ class CoverageDirector(object):
         # color the database based on coverage
         paint_coverage(self.coverage, self._palette.ida_coverage)
 
-    def unpaint_difference(self, old_coverage, new_coverage):
+    def unpaint_difference(self, old_mapping, new_mapping):
         """
         Clear paint on the difference of two coverage sets.
         """
         logger.debug("Clearing paint difference between coverages")
 
-        # compute the difference in coverage between two sets of coverage
-        difference = old_coverage - new_coverage
+        # compute the difference in coverage between two sets of mappings
+        difference_mask = old_mapping.coverage - new_mapping.coverage
+
+        # build a mapping of the computed difference
+        difference = old_mapping.mask_data(difference_mask)
         difference.update_metadata(self.metadata)
         difference.refresh_nodes()
 
