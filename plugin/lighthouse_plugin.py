@@ -438,9 +438,12 @@ class Lighthouse(plugin_t):
         root_filename   = idaapi.get_root_filename()
         coverage_blocks = coverage_data.filter_by_module(root_filename)
 
-        # rebase and flatten the basic blocks into individual addresses
+        # rebase the basic blocks
         base = idaapi.get_imagebase()
-        addresses = normalize_blocks(base, coverage_blocks)
+        rebased_blocks = rebase_blocks(base, coverage_blocks)
+
+        # flatten the basic blocks into individual instructions or addresses
+        addresses = self.director.metadata.flatten_blocks(rebased_blocks)
 
         # enlighten the coverage director to this new runtime data
         self.director.add_coverage(basename, addresses)

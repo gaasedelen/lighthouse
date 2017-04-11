@@ -45,19 +45,22 @@ class DatabaseMapping(object):
 
     def __init__(self, data, palette):
 
-        # the color palette used when painting this coverage
+        # color palette for painting mapping data
         self.palette = palette
 
-        self._source_data = index_data(data)
-        self._unmapped_data = set(self._source_data.keys())
+        # metadata to build mappings on top of
+        self._metadata = DatabaseMetadata()
+
+        # hitmap that holds the source data of our mapping
+        self._hitmap = build_hitmap(data)
+
+        # maps of the child mapping objects
+        self.nodes        = {}
+        self.functions    = {}
+
+        # mark all data as unmapped
+        self._unmapped_data = set(self._hitmap.keys())
         self._unmapped_data.add(idaapi.BADADDR)
-
-        # the metadata this coverage will be mapped to
-        self._metadata = DatabaseMetadata(False)
-
-        # maps to the child mapping objects
-        self.nodes     = {}
-        self.functions = {}
 
         #
         # profiling revealed that letting every child (eg, FunctionCoverage
@@ -79,21 +82,21 @@ class DatabaseMapping(object):
     @property
     def data(self):
         """
-        TODO
+        The data (a hitmap) used by this mapping.
         """
-        return self._source_data
+        return self._hitmap
 
     @property
     def coverage(self):
         """
-        TODO
+        The instruction-level coverage mask of this mapping.
         """
-        return self._source_data.viewkeys()
+        return self._hitmap.viewkeys()
 
     @property
     def instruction_percent(self):
         """
-        The coverage % by instructions executed.
+        The database coverage % by instructions executed in all defined functions.
         """
         try:
             return sum(f.instruction_percent for f in self.functions.itervalues()) / len(self._metadata.functions)
@@ -111,7 +114,7 @@ class DatabaseMapping(object):
 
         # add the given runtime data to our data source
         for address, hit_count in data.iteritems():
-            self._source_data[address] += hit_count
+            self._hitmap[address] += hit_count
 
         # mark these touched addresses as dirty
         self._unmapped_data |= data.viewkeys()
@@ -123,19 +126,19 @@ class DatabaseMapping(object):
 
         # subtract the given runtime data from our data source
         for address, hit_count in data.iteritems():
-            self._source_data[address] -= hit_count
+            self._hitmap[address] -= hit_count
 
-            #assert self._source_data[address] >= 0
+            #assert self._hitmap[address] >= 0
 
             #
             # if there is no longer any hits for this address, delete its
             # entry from the source_data dictonary. we don't want its entry to
-            # hang around because we use self._source_data.viewkeys() as a
+            # hang around because we use self._hitmap.viewkeys() as a
             # coverage bitmap.
             #
 
-            if not self._source_data[address]:
-                del self._source_data[address]
+            if not self._hitmap[address]:
+                del self._hitmap[address]
 
         #
         # unmap everything because a complete re-mapping is easier with the
@@ -150,13 +153,13 @@ class DatabaseMapping(object):
 
     def mask_data(self, coverage_mask):
         """
-        TODO
+        Mask the hitmap against a given coverage mask, and return a new Mapping.
         """
         composite_data = collections.defaultdict(int)
 
-        # keep only data matching the coverage mask
+        # preserve only hitmap data that matches the coverage mask
         for address in coverage_mask:
-            composite_data[address] = self._source_data[address]
+            composite_data[address] = self._hitmap[address]
 
         # done, return a new DatabaseMapping masked with the given coverage
         return DatabaseMapping(composite_data, self.palette)
@@ -308,21 +311,15 @@ class DatabaseMapping(object):
             while 1:
 
                 # map the hitmap data for the current address to this node mapping
-                node_coverage.executed_bytes[address] = self._source_data[address]
-
-                #
-                # ownership has been transfered to node_coverage, so this
-                # address is no longer considered 'unmapped'
-                #
-
+                node_coverage.executed_instructions[address] = self._hitmap[address]
                 self._unmapped_data.discard(address)
 
                 # get the next address to attempt mapping on
                 address = addresses_to_map.popleft()
 
                 #
-                # if the address is not in this node, it's time break out of
-                # this loop and send it back through the full node lookup path
+                # if the next address is not in this node, it's time break out
+                # of this loop and send it through the full node lookup path
                 #
 
                 if not (node_metadata.address <= address < node_end):
@@ -404,10 +401,10 @@ class DatabaseMapping(object):
         """
         Unmap all mapped data.
         """
-        self._unmapped_data = set(self._source_data.keys())
+        self._unmapped_data = set(self._hitmap.keys())
         self._unmapped_data.add(idaapi.BADADDR)
-        self.nodes = {}
-        self.functions = {}
+        self.nodes        = {}
+        self.functions    = {}
 
     def _unmap_delta(self, delta):
         """
@@ -446,7 +443,7 @@ class DatabaseMapping(object):
                 continue
 
             # the node was found, unmap any of its tracked coverage blocks
-            self._unmapped_data.update(node_coverage.executed_bytes.viewkeys())
+            self._unmapped_data.update(node_coverage.executed_instructions.viewkeys())
 
             #
             # NOTE:
@@ -492,12 +489,32 @@ class FunctionCoverage(object):
 
         # compute the # of instructions executed by this function's coverage
         self.instruction_percent = 0.0
-        self.instructions_executed = 0
         self.node_percent = 0.0
-        self.nodes_executed = 0
 
-        self.coverage_color = QtGui.QColor(30, 30, 30)
-        self.profiling_color = 0
+    #--------------------------------------------------------------------------
+    # Properties
+    #--------------------------------------------------------------------------
+
+    @property
+    def hits(self):
+        """
+        The cumulative instruction executions in this function.
+        """
+        return sum(x.hits for x in self.executed_nodes.itervalues())
+
+    @property
+    def nodes_executed(self):
+        """
+        The number of nodes executed in this function.
+        """
+        return len(self.executed_nodes)
+
+    @property
+    def instructions_executed(self):
+        """
+        The number of unique instructions executed in this function.
+        """
+        return sum(x.instructions_executed for x in self.executed_nodes.itervalues())
 
     #--------------------------------------------------------------------------
     # Controls
@@ -516,19 +533,14 @@ class FunctionCoverage(object):
         palette = self._database.palette
         function_metadata = self._database._metadata.functions[self.address]
 
-        # compute the # of instructions executed by this function's coverage
-        self.instructions_executed = 0
-        for node_address in self.executed_nodes.iterkeys():
-            self.instructions_executed += function_metadata.nodes[node_address].instruction_count
+        # compute the % of nodes executed
+        self.node_percent = float(self.nodes_executed) / function_metadata.node_count
 
         # compute the % of instructions executed
         self.instruction_percent = float(self.instructions_executed) / function_metadata.instruction_count
 
-        # compute the number of nodes executed
-        self.nodes_executed = len(self.executed_nodes)
-
-        # compute the % of nodes executed
-        self.node_percent = float(self.nodes_executed) / function_metadata.node_count
+        # the estimated number of executions this function has experienced
+        self.executions = float(sum(x.executions for x in self.executed_nodes.itervalues())) / function_metadata.node_count
 
         # bake colors
         self.coverage_color = compute_color_on_gradiant(
@@ -563,7 +575,25 @@ class NodeCoverage(object):
     def __init__(self, node_address, database=None):
         self._database = database
         self.address = node_address
-        self.executed_bytes = {}
+        self.executed_instructions = {}
+
+    #--------------------------------------------------------------------------
+    # Properties
+    #--------------------------------------------------------------------------
+
+    @property
+    def hits(self):
+        """
+        The cumulative instruction executions in this node.
+        """
+        return sum(self.executed_instructions.itervalues())
+
+    @property
+    def instructions_executed(self):
+        """
+        The number of unique instructions executed in this node.
+        """
+        return len(self.executed_instructions)
 
     #--------------------------------------------------------------------------
     # Controls
@@ -574,7 +604,10 @@ class NodeCoverage(object):
         Finalize the coverage metrics for faster access.
         """
         palette = self._database.palette
-        #node_coverage = self._database._metadata.nodes[self.address]
+        node_metadata = self._database._metadata.nodes[self.address]
+
+        # the estimated number of executions this node has experienced.
+        self.executions = float(self.hits) / node_metadata.instruction_count
 
         # bake colors
         self.coverage_color = palette.ida_coverage

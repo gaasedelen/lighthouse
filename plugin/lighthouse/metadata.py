@@ -1,4 +1,5 @@
 import bisect
+import ctypes
 import logging
 
 import idaapi
@@ -47,6 +48,7 @@ logger = logging.getLogger("Lighthouse.Metadata")
 #    reasonably low cost refresh.
 #
 
+
 #------------------------------------------------------------------------------
 # Database Level Metadata
 #------------------------------------------------------------------------------
@@ -56,7 +58,10 @@ class DatabaseMetadata(object):
     Fast access database level metadata cache.
     """
 
-    def __init__(self, populate=True):
+    def __init__(self):
+
+        # database defined instructions
+        self.instructions = {}
 
         # database defined nodes (basic blocks)
         self.nodes = {}
@@ -70,25 +75,6 @@ class DatabaseMetadata(object):
         # TODO: database defined segments
         #self.segments = {}
         #self._segment_addresses = {}
-
-        #----------------------------------------------------------------------
-
-        # collect metdata from the underlying database
-        if populate:
-            self._build_metadata()
-
-        #
-        # now that we have collected all the node & function metadata available
-        # to us at this time, we create sorted lists of just their addresses so
-        # we can use them for fast, fuzzy address lookup (eg, bisect) later on.
-        #
-        #  c.f:
-        #   - get_node(ea)
-        #   - get_function(ea)
-        #
-
-        self._node_addresses     = sorted(self.nodes.keys())
-        self._function_addresses = sorted(self.functions.keys())
 
     #--------------------------------------------------------------------------
     # Providers
@@ -146,11 +132,44 @@ class DatabaseMetadata(object):
 
         raise ValueError("Given address does not fall within a known node")
 
+    def flatten_blocks(self, basic_blocks):
+        """
+        Flatten a list of basic blocks (address, size) to instruction addresses.
+
+        This function provides a way to convert a list of (address, size) basic
+        block entries into a list of individual instruction (or byte) addresses
+        based on the current metadata.
+
+        If no corresponding metadata instruction can be found for a given
+        address while walking the basic block ranges, the current address being
+        flattened is saved as a 'byte address' to the output list.
+
+        A byte address is basically an address that points to one 'undefined
+        byte', such as a byte in an 'undefined instruction'
+        """
+        output = []
+
+        # loop through every given basic block (input)
+        for address, size in basic_blocks:
+            end_address = address + size
+
+            # loop through the byte range defined by the basic block
+            while address < end_address:
+
+                # save the current address as an instruction address
+                output.append(address)
+
+                # move forward to the next instruction (or byte) address
+                address += self.instructions.get(address, 1)
+
+        # return the list of addresses
+        return output
+
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
 
-    def _build_metadata(self):
+    def build_metadata(self):
         """
         Collect metadata from the underlying database.
 
@@ -165,6 +184,19 @@ class DatabaseMetadata(object):
 
             # build function metadata, saving it to the database-wide function list
             self.functions[function_address] = FunctionMetadata(function_address, self)
+
+        #
+        # now that we have collected all the node & function metadata available
+        # to us at this time, we create sorted lists of just their addresses so
+        # we can use them for fast, fuzzy address lookup (eg, bisect) later on.
+        #
+        #  c.f:
+        #   - get_node(ea)
+        #   - get_function(ea)
+        #
+
+        self._node_addresses     = sorted(self.nodes.keys())
+        self._function_addresses = sorted(self.functions.keys())
 
 #------------------------------------------------------------------------------
 # Function Level Metadata
@@ -265,6 +297,7 @@ class FunctionMetadata(object):
 
             # finally, ensure the node exists in the database-wide node list
             database.nodes[node.startEA] = node_metadata
+            database.instructions.update(node_metadata.instructions)
 
     def _finalize(self):
         """
@@ -308,6 +341,9 @@ class NodeMetadata(object):
         # maps function_address --> function_metadata
         self.functions = {}
 
+        # maps instruction_address --> instruction_metadata
+        self.instructions = {}
+
         #----------------------------------------------------------------------
 
         # collect metdata from the underlying database
@@ -334,11 +370,18 @@ class NodeMetadata(object):
         current_address = self.address
         node_end = self.address + self.size
 
+        #
         # loop through the node's entire range and count its instructions
         #   NOTE: we are assuming that every defined 'head' is an instruction
-        while current_address != idaapi.BADADDR:
-            self.instruction_count += 1
-            current_address = idaapi.next_head(current_address, node_end)
+        #
+
+        while current_address < node_end:
+            instruction_size = idaapi.get_item_end(current_address) - current_address
+            self.instructions[current_address] = instruction_size
+            current_address += instruction_size
+
+        # save the number of instructions in this block
+        self.instruction_count = len(self.instructions)
 
     #--------------------------------------------------------------------------
     # Operator Overloads
@@ -359,15 +402,17 @@ class NodeMetadata(object):
 #------------------------------------------------------------------------------
 # Instruction Level Metadata
 #------------------------------------------------------------------------------
+# TODO: unused for now
 
-class InstructionMetadata(object):
+class InstructionMetadata(ctypes.Structure):
     """
     Fast access instruction level metadata cache.
-    TODO: this will be important when profiling is implemented
     """
-
-    def __init__(self, address):
-        pass
+    _fields_ = \
+    [
+        ("address", ctypes.c_ulonglong),
+        ("size",    ctypes.c_size_t)
+    ]
 
 #------------------------------------------------------------------------------
 # Metadata Helpers

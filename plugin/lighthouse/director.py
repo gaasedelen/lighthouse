@@ -47,7 +47,7 @@ class CoverageDirector(object):
         self._palette = palette
 
         # database metadata cache
-        self._database_metadata = DatabaseMetadata(False)
+        self._database_metadata = DatabaseMetadata()
 
         #----------------------------------------------------------------------
         # Coverage
@@ -779,6 +779,7 @@ class CoverageDirector(object):
         # compute the metadata for the current state of the database
         new_metadata = DatabaseMetadata()
 
+        new_metadata.build_metadata()
         # compute the delta between the old metadata, and latest
         delta = MetadataDelta(new_metadata, self.metadata)
 

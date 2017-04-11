@@ -167,25 +167,34 @@ def coalesce_blocks(blocks):
     # return the list of coalesced blocks
     return coalesced
 
-def normalize_blocks(base, basic_blocks):
+def rebase_blocks(base, basic_blocks):
     """
-    TODO
+    Rebase a list of basic blocks (address, size) to the given base.
     """
-    output = []
-    for address, size in basic_blocks:
-        end_address = address + size
-        while address < end_address:
-            output.append(base+address)
-            address += 1
-    return output
+    return map(lambda x: (base + x[0], x[1]), basic_blocks)
 
-def index_data(data):
+def build_hitmap(data):
     """
-    TODO
+    Build a hitmap from the given list of address.
+
+    A hitmap is a map of address --> number of executions.
+
+    The list of input addresses can be any sort of runtime trace, coverage,
+    or profiiling data that one would like to build a hitmap for.
     """
     output = collections.defaultdict(int)
+
+    # if there is no input data, simply return an empty hitmap
     if not data:
         return output
+
+    #
+    # walk through the given list of given addresses and build a
+    # corresponding hitmap for them
+    #
+
     for address in data:
         output[address] += 1
+
+    # return the hitmap
     return output
