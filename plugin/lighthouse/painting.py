@@ -11,56 +11,43 @@ logger = logging.getLogger("Lighthouse.Painting")
 # Painting
 #------------------------------------------------------------------------------
 
-def paint_coverage(coverage, color):
+def paint_coverage(database_coverage, color):
     """
-    Paint the database using the given coverage.
+    Paint coverage defined by the given database mapping.
     """
 
     # paint individual instructions
-    paint_instruction_coverage(coverage, color)
+    paint_instruction_coverage(database_coverage, color)
 
     # paint nodes in function graphs
-    paint_node_coverage(coverage._metadata.nodes, coverage.nodes)
+    paint_node_coverage(database_coverage._metadata.nodes, database_coverage.nodes)
 
     # NOTE: We paint hexrays on-request
 
-def unpaint_coverage(coverage):
+def unpaint_coverage(database_coverage):
     """
-    Unpaint the database using the given coverage.
+    Unpaint coverage defined by the given database mapping.
     """
-    unpaint_instruction_coverage(coverage)
-    unpaint_node_coverage(coverage._metadata.nodes, coverage.nodes)
+    unpaint_instruction_coverage(database_coverage)
+    unpaint_node_coverage(database_coverage._metadata.nodes, database_coverage.nodes)
 
 #------------------------------------------------------------------------------
 # Painting - Instructions / Items (Lines)
 #------------------------------------------------------------------------------
 
-def paint_instruction_coverage(coverage, color):
+def paint_instruction_coverage(database_coverage, color):
     """
-    Paint instructions using the given coverage blocks.
+    Paint instruction level coverage defined by the given database mapping.
     """
-
-    #
-    # loop through every byte in each block (base_address -> base_address+size)
-    # given, coloring each byte individually
-    #
-
-    for address in coverage.coverage:
+    for address in database_coverage.coverage:
         idaapi.set_item_color(address, color)
 
-def unpaint_instruction_coverage(coverage):
+def unpaint_instruction_coverage(database_coverage):
     """
-    Unpaint instructions using the given coverage blocks.
+    Unpaint instruction level coverage defined by the given database mapping.
     """
-    color = idc.DEFCOLOR
-
-    #
-    # loop through every byte in each block (base_address -> base_address+size)
-    # given, clearing each byte individually
-    #
-
-    for address in coverage.coverage:
-        idaapi.set_item_color(address, color)
+    for address in database_coverage.coverage:
+        idaapi.set_item_color(address, idc.DEFCOLOR)
 
 #------------------------------------------------------------------------------
 # Painting - Nodes (Basic Blocks)
@@ -68,7 +55,7 @@ def unpaint_instruction_coverage(coverage):
 
 def paint_node_coverage(nodes_metadata, nodes_coverage):
     """
-    Paint function graph nodes using the given node coverages.
+    Paint function graph node coverage defined by the given node mappings.
     """
 
     # create a node info object as our vehicle for setting the node color
@@ -103,7 +90,7 @@ def paint_node_coverage(nodes_metadata, nodes_coverage):
 
 def unpaint_node_coverage(nodes_metadata, nodes_coverage):
     """
-    Unpaint function graph nodes using the given node coverages.
+    Unpaint function graph node coverage defined by the given node mappings.
     """
 
     # create a node info object as our vehicle for resetting the node color
@@ -138,7 +125,7 @@ def unpaint_node_coverage(nodes_metadata, nodes_coverage):
 # Painting - HexRays (Decompilation / Source)
 #------------------------------------------------------------------------------
 
-def paint_hexrays(cfunc, metadata, coverage, color):
+def paint_hexrays(cfunc, database_metadata, database_coverage, color):
     """
     Paint decompilation text for the given HexRays Window.
     """
@@ -146,7 +133,7 @@ def paint_hexrays(cfunc, metadata, coverage, color):
 
     #
     # the objective here is to paint hexrays lines that are associated with
-    # our coverage data. unfortunately, there are very few API resources that
+    # our runtime data. unfortunately, there are very few API resources that
     # link decompilation line numbers to anything (eg, citems, nodes, ea, etc)
     #
     # this means that we must build our own data relationships to draw from
@@ -166,7 +153,7 @@ def paint_hexrays(cfunc, metadata, coverage, color):
     # relationship that ties graph nodes (basic blocks) to individual lines.
     #
 
-    line2node = map_line2node(cfunc, metadata, line2citem)
+    line2node = map_line2node(cfunc, database_metadata, line2citem)
 
     # great, now we have all the information we need to paint
 
@@ -176,8 +163,8 @@ def paint_hexrays(cfunc, metadata, coverage, color):
 
     lines_painted = 0
 
-    # extract the node addresses that have been hit by our function's coverage data
-    coverage_nodes = set(coverage.functions[cfunc.entry_ea].executed_nodes.iterkeys())
+    # extract the node addresses that have been hit by our function's mapping data
+    executed_nodes = set(database_coverage.functions[cfunc.entry_ea].executed_nodes.iterkeys())
 
     #
     # now we loop through every line_number of the decompiled text that claims
@@ -192,12 +179,12 @@ def paint_hexrays(cfunc, metadata, coverage, color):
         # data's set of executed nodes, we are inclined to color it
         #
 
-        if line_nodes & coverage_nodes:
+        if line_nodes & executed_nodes:
             decompilation_text[line_number].bgcolor = color
             lines_painted += 1
 
     #
-    # done painting from our coverage data
+    # done painting from our mapping data
     #
 
     # if there was nothing painted yet, there's no point in continuing...

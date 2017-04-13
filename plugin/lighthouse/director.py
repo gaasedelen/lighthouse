@@ -7,7 +7,7 @@ import collections
 from lighthouse.util import *
 from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata, MetadataDelta
-from lighthouse.coverage import DatabaseMapping
+from lighthouse.coverage import DatabaseCoverage
 from lighthouse.composer.parser import TokenLogicOperator, TokenCoverageRange, TokenCoverageSingle, TokenNull
 
 logger = logging.getLogger("Lighthouse.Director")
@@ -41,7 +41,7 @@ class CoverageDirector(object):
     """
 
     def __init__(self, palette):
-        self._NULL_COVERAGE = DatabaseMapping(None, palette)
+        self._NULL_COVERAGE = DatabaseCoverage(None, palette)
 
         # color palette
         self._palette = palette
@@ -71,9 +71,9 @@ class CoverageDirector(object):
 
         self._special_coverage = collections.OrderedDict(
         [
-            (HOT_SHELL,       DatabaseMapping(None, palette)), # hot shell composition
-            (NEW_COMPOSITION, DatabaseMapping(None, palette)), # slow shell composition
-            (AGGREGATE,       DatabaseMapping(None, palette)), # aggregate composition
+            (HOT_SHELL,       DatabaseCoverage(None, palette)), # hot shell composition
+            (NEW_COMPOSITION, DatabaseCoverage(None, palette)), # slow shell composition
+            (AGGREGATE,       DatabaseCoverage(None, palette)), # aggregate composition
         ])
 
         #----------------------------------------------------------------------
@@ -458,7 +458,7 @@ class CoverageDirector(object):
         """
         Build a new database coverage object from the given data.
         """
-        new_coverage = DatabaseMapping(coverage_data, self._palette)
+        new_coverage = DatabaseCoverage(coverage_data, self._palette)
         new_coverage.update_metadata(self.metadata)
         new_coverage.refresh()
         return new_coverage
@@ -679,8 +679,8 @@ class CoverageDirector(object):
             #
             # collect the left and right components of the logical operation
             #   eg:
-            #       op1 = DatabaseMapping for 'A'
-            #       op2 = DatabaseMapping for 'B'
+            #       op1 = DatabaseCoverage for 'A'
+            #       op2 = DatabaseCoverage for 'B'
             #
 
             op1 = self._evaluate_composition_recursive(node.op1)
@@ -696,10 +696,10 @@ class CoverageDirector(object):
             #
             # now that we have computed the requested coverage mask (bitmap),
             # apply the mask to the data held by the left operand (op1). we
-            # return a masked copy of said DatabaseMapping
+            # return a masked copy of said DatabaseCoverage
             #
 
-            return DatabaseMapping(coverage_mask, self._palette)
+            return DatabaseCoverage(coverage_mask, self._palette)
 
         #
         # if the current node is a coverage range, we need to evaluate the
@@ -712,7 +712,7 @@ class CoverageDirector(object):
 
         #
         # if the current node is a coverage token, we need simply need
-        # to return its associated DatabaseMapping.
+        # to return its associated DatabaseCoverage.
         #
 
         elif isinstance(node, TokenCoverageSingle):
@@ -742,7 +742,7 @@ class CoverageDirector(object):
         assert isinstance(range_token, TokenCoverageRange)
 
         # initialize output to a null coverage set
-        output = DatabaseMapping(None, self._palette)
+        output = DatabaseCoverage(None, self._palette)
 
         # exapand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
         symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
@@ -769,6 +769,7 @@ class CoverageDirector(object):
 
         # (re)map each set of loaded coverage data to the database
         self._refresh_database_coverage(delta)
+
 
     def _refresh_database_metadata(self):
         """

@@ -8,39 +8,38 @@ from lighthouse.util import compute_color_on_gradiant
 from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata
 
-logger = logging.getLogger("Lighthouse.Mapping")
+logger = logging.getLogger("Lighthouse.Coverage")
 
 #------------------------------------------------------------------------------
-# Data Mapping
+# Coverage / Data Mapping
 #------------------------------------------------------------------------------
-# TODO: update this for mapping
 #
-#    Raw coverage data passed into the director is stored internally in
-#    DatabaseMapping objects. A DatabaseMapping object can be roughly
-#    equated to a loaded coverage file as it maps to the open database.
+#    Raw runtime data (eg, coverage or trace) passed into the director is
+#    stored internally in DatabaseCoverage objects. A DatabaseCoverage
+#    object can be roughly equated to a single loaded runtime data file.
 #
-#    DatabaseMapping objects simply map their raw coverage data to the
+#    DatabaseCoverage objects simply map their raw runtime data to the
 #    database using the lifted metadata described in metadata.py. The
-#    coverage objects are effectively generated as a thin layer on top of
+#    mapping objects are effectively generated as a thin layer on top of
 #    cached metadata.
 #
-#    As coverage objects retain the raw coverage data internally, we are
-#    able to rebuild coverage mappings should the database/metadata get
-#    updated or refreshed by the user.
+#    As mapping objects retain the raw runtime data internally, we are
+#    able to rebuild mappings should the database/metadata get updated or
+#    refreshed by the user.
 #
 #    ----------------------------------------------------------------------
 #
-#    Note that this file / the coverage structures are still largely a
+#    Note that this file / the mapping structures are still largely a
 #    work in progress and likely to change in the near future.
 #
 
 #------------------------------------------------------------------------------
-# Database Data Mapping
+# Database Coverage / Data Mapping
 #------------------------------------------------------------------------------
 
-class DatabaseMapping(object):
+class DatabaseCoverage(object):
     """
-    Database level runtime data mapping.
+    Database level coverage mapping.
     """
 
     def __init__(self, data, palette):
@@ -68,7 +67,7 @@ class DatabaseMapping(object):
         # was actually adding a reasonable and unecessary overhead. There's
         # really no reason they need to do that anyway.
         #
-        # we instantiate a single weakref of ourself (the DatbaseCoverage
+        # we instantiate a single weakref of ourself (the DatbaseMapping
         # object) such that we can distribute it to the children we create
         # without having to repeatedly instantiate new ones.
         #
@@ -76,7 +75,7 @@ class DatabaseMapping(object):
         self._weak_self = weakref.proxy(self)
 
     #--------------------------------------------------------------------------
-    # Operator Overloads
+    # Properties
     #--------------------------------------------------------------------------
 
     @property
@@ -102,67 +101,6 @@ class DatabaseMapping(object):
             return sum(f.instruction_percent for f in self.functions.itervalues()) / len(self._metadata.functions)
         except ZeroDivisionError:
             return 0.0
-
-    #--------------------------------------------------------------------------
-    # Data Modifiers
-    #--------------------------------------------------------------------------
-
-    def add_data(self, data):
-        """
-        Add runtime data to this mapping.
-        """
-
-        # add the given runtime data to our data source
-        for address, hit_count in data.iteritems():
-            self._hitmap[address] += hit_count
-
-        # mark these touched addresses as dirty
-        self._unmapped_data |= data.viewkeys()
-
-    def subtract_data(self, data):
-        """
-        Subtract runtime data from this mapping.
-        """
-
-        # subtract the given runtime data from our data source
-        for address, hit_count in data.iteritems():
-            self._hitmap[address] -= hit_count
-
-            #assert self._hitmap[address] >= 0
-
-            #
-            # if there is no longer any hits for this address, delete its
-            # entry from the source_data dictonary. we don't want its entry to
-            # hang around because we use self._hitmap.viewkeys() as a
-            # coverage bitmap.
-            #
-
-            if not self._hitmap[address]:
-                del self._hitmap[address]
-
-        #
-        # unmap everything because a complete re-mapping is easier with the
-        # current implementation of things
-        #
-
-        self._unmap_all()
-
-    #--------------------------------------------------------------------------
-    # Coverage Operators
-    #--------------------------------------------------------------------------
-
-    def mask_data(self, coverage_mask):
-        """
-        Mask the hitmap against a given coverage mask, and return a new Mapping.
-        """
-        composite_data = collections.defaultdict(int)
-
-        # preserve only hitmap data that matches the coverage mask
-        for address in coverage_mask:
-            composite_data[address] = self._hitmap[address]
-
-        # done, return a new DatabaseMapping masked with the given coverage
-        return DatabaseMapping(composite_data, self.palette)
 
     #--------------------------------------------------------------------------
     # Metadata Population
@@ -220,6 +158,69 @@ class DatabaseMapping(object):
             function_coverage.finalize()
 
     #--------------------------------------------------------------------------
+    # Data Operations
+    #--------------------------------------------------------------------------
+
+    def add_data(self, data):
+        """
+        Add runtime data to this mapping.
+        """
+
+        # add the given runtime data to our data source
+        for address, hit_count in data.iteritems():
+            self._hitmap[address] += hit_count
+
+        # mark these touched addresses as dirty
+        self._unmapped_data |= data.viewkeys()
+
+    def subtract_data(self, data):
+        """
+        Subtract runtime data from this mapping.
+        """
+
+        # subtract the given runtime data from our data source
+        for address, hit_count in data.iteritems():
+            self._hitmap[address] -= hit_count
+
+            #assert self._hitmap[address] >= 0
+
+            #
+            # if there is no longer any hits for this address, delete its
+            # entry from the source_data dictonary. we don't want its entry to
+            # hang around because we use self._hitmap.viewkeys() as a
+            # coverage bitmap.
+            #
+
+            if not self._hitmap[address]:
+                del self._hitmap[address]
+
+        #
+        # unmap everything because a complete re-mapping is easier with the
+        # current implementation of things
+        #
+
+        self._unmap_all()
+
+    #--------------------------------------------------------------------------
+    # Coverage Operations
+    #--------------------------------------------------------------------------
+
+    def mask_data(self, coverage_mask):
+        """
+        Mask the hitmap data against a given coverage mask.
+
+        Returns a new DatabaseCoverage containing the masked hitmap.
+        """
+        composite_data = collections.defaultdict(int)
+
+        # preserve only hitmap data that matches the coverage mask
+        for address in coverage_mask:
+            composite_data[address] = self._hitmap[address]
+
+        # done, return a new DatabaseCoverage masked with the given coverage
+        return DatabaseCoverage(composite_data, self.palette)
+
+    #--------------------------------------------------------------------------
     # Coverage Mapping
     #--------------------------------------------------------------------------
 
@@ -248,12 +249,12 @@ class DatabaseMapping(object):
         # This while loop is the core of our coverage mapping process.
         #
         # The '_unmapped_data' list is consumed by this loop, mapping
-        # any unmapped coverage data maintained by this DatabaseMapping
+        # any unmapped runtime data maintained by this DatabaseCoverage
         # to the given database metadata.
         #
         # It should be noted that the rest of the database coverage
         # mapping (eg functions) gets built ontop of the mappings we build
-        # for nodes here using the more or less raw/recycled coverage data.
+        # for nodes here using the more or less raw/recycled runtime data.
         #
 
         while addresses_to_map:
@@ -275,7 +276,7 @@ class DatabaseMapping(object):
 
             #
             # we found applicable node metadata for this address, now try
-            # to find the coverage object for this node address
+            # to find the mapping object for this node address
             #
 
             if node_metadata.address in self.nodes:
@@ -557,19 +558,12 @@ class FunctionCoverage(object):
         #)
 
 #------------------------------------------------------------------------------
-# Node Level Coverage
+# Node Coverage / Data Mapping
 #------------------------------------------------------------------------------
 
 class NodeCoverage(object):
     """
     Node (basic block) level coverage mapping.
-
-    NOTE:
-
-      At the moment this class is pretty bare and arguably unecessary. But
-      I have faith that it will find its place as Lighthouse matures and
-      features such as profiling / hit tracing are explicitly added.
-
     """
 
     def __init__(self, node_address, database=None):
