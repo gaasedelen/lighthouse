@@ -356,42 +356,32 @@ class DatabaseCoverage(object):
 
             #
             # using the node_coverage object, we retrieve its underlying
-            # metadata so that we can perform a reverse lookup of all the
-            # functions in the database that reference it
+            # metadata so that we can perform a reverse lookup of the fun
             #
 
-            functions = self._metadata.nodes[node_coverage.address].functions
+            function_metadata = self._metadata.nodes[node_coverage.address].function
 
             #
-            # now we can loop through every function that references this
-            # node and initialize or add this node to its respective
+            # now we can add this node to its respective function level
             # coverage mapping
             #
 
-            for function_metadata in functions.itervalues():
+            try:
+                function_coverage = self.functions[function_metadata.address]
 
-                #
-                # retrieve the coverage object for this function address
-                #
+            #
+            # failed to locate a function coverage object, looks like this
+            # is the first time we have identiied coverage for this
+            # function. creaate a coverage function object and use it now.
+            #
 
-                try:
-                    function_coverage = self.functions[function_metadata.address]
+            except KeyError as e:
+                function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
+                self.functions[function_metadata.address] = function_coverage
 
-                #
-                # failed to locate a function coverage object, looks like this
-                # is the first time we have identiied coverage for this
-                # function. creaate a coverage function object and use it now.
-                #
-
-                except KeyError as e:
-                    function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
-                    self.functions[function_metadata.address] = function_coverage
-
-                # mark this node as executed in the function level mappping
-                function_coverage.mark_node(node_coverage)
-                dirty_functions[function_metadata.address] = function_coverage
-
-                # end of functions loop
+            # mark this node as executed in the function level mappping
+            function_coverage.mark_node(node_coverage)
+            dirty_functions[function_metadata.address] = function_coverage
 
             # end of nodes loop
 

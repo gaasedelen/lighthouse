@@ -761,6 +761,8 @@ class CoverageDirector(object):
     def refresh(self):
         """
         Complete refresh of the director and mapped coverage.
+
+        # TODO: Remove/update
         """
         logger.debug("Refreshing the CoverageDirector")
 
@@ -770,17 +772,18 @@ class CoverageDirector(object):
         # (re)map each set of loaded coverage data to the database
         self._refresh_database_coverage(delta)
 
-
     def _refresh_database_metadata(self):
         """
         Refresh the database metadata cache utilized by the director.
+
+        # TODO: Remove/update
         """
         logger.debug("Refreshing database metadata")
 
         # compute the metadata for the current state of the database
         new_metadata = DatabaseMetadata()
-
         new_metadata.build_metadata()
+
         # compute the delta between the old metadata, and latest
         delta = MetadataDelta(new_metadata, self.metadata)
 
@@ -793,6 +796,8 @@ class CoverageDirector(object):
     def _refresh_database_coverage(self, delta):
         """
         Refresh the database coverage mappings managed by the director.
+
+        # TODO: Remove/update
         """
         logger.debug("Refreshing database coverage mappings")
 

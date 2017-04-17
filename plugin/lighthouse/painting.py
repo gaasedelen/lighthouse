@@ -72,21 +72,13 @@ def paint_node_coverage(nodes_metadata, nodes_coverage):
         # assign the background color we would like to paint to this node
         node_info.bg_color = node_coverage.coverage_color
 
-        #
-        # remember, nodes may technically be 'shared' between functions,
-        # so we need to paint the node in every function flowchart that
-        # has a reference to it.
-        #
-
-        for function_address, node_id in node_metadata.ids.iteritems():
-
-            # do the *actual* painting of a single node instance
-            idaapi.set_node_info2(
-                function_address,
-                node_id,
-                node_info,
-                idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
-            )
+        # do the *actual* painting of a single node instance
+        idaapi.set_node_info2(
+            node_metadata.function.address,
+            node_metadata.id,
+            node_info,
+            idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
+        )
 
 def unpaint_node_coverage(nodes_metadata, nodes_coverage):
     """
@@ -105,21 +97,13 @@ def unpaint_node_coverage(nodes_metadata, nodes_coverage):
     for node_coverage in nodes_coverage.itervalues():
         node_metadata = nodes_metadata[node_coverage.address]
 
-        #
-        # remember, nodes may technically be 'shared' between functions,
-        # so we need to clear the node's paint in every function flowchart
-        # that has a reference to it.
-        #
-
-        for function_address, node_id in node_metadata.ids.iteritems():
-
-            # do the *actual* painting of a single node instance
-            idaapi.set_node_info2(
-                function_address,
-                node_id,
-                node_info,
-                idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
-            )
+        # do the *actual* painting of a single node instance
+        idaapi.set_node_info2(
+            node_metadata.function.address,
+            node_metadata.id,
+            node_info,
+            idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
+        )
 
 #------------------------------------------------------------------------------
 # Painting - HexRays (Decompilation / Source)
