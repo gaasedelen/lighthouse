@@ -5,7 +5,6 @@ import weakref
 import collections
 
 from lighthouse.util import *
-from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata, MetadataDelta
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.composer.parser import TokenLogicOperator, TokenCoverageRange, TokenCoverageSingle, TokenNull
@@ -354,25 +353,11 @@ class CoverageDirector(object):
             return
 
         #
-        # before switching to the new coverage, we want to un-paint
-        # whatever will NOT be painted over by the new coverage data.
-        #
-
-        self.unpaint_difference(self.coverage, self.get_coverage(coverage_name))
-
-        #
         # switch out the active coverage name with the new coverage name.
         # this pivots the director
         #
 
         self.coverage_name = coverage_name
-
-        #
-        # now we paint using the active coverage. any paint that was left over
-        # from the last coverage set will get painted over here (and more)
-        #
-
-        self.paint_coverage()
 
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
@@ -636,9 +621,7 @@ class CoverageDirector(object):
             composite_coverage.update_metadata(self.metadata)
             composite_coverage.refresh()
 
-            self.unpaint_difference(self.coverage, composite_coverage)
             self._special_coverage[HOT_SHELL] = composite_coverage
-            self.paint_coverage()
 
             self._notify_coverage_modified()
 
@@ -846,42 +829,3 @@ class CoverageDirector(object):
 
         # add the symbol back to the end of the shorthand pool
         self._shorthand.append(symbol)
-
-    #----------------------------------------------------------------------
-    # Painting / TODO: move/remove?
-    #----------------------------------------------------------------------
-
-    def paint_coverage(self):
-        """
-        Paint the active coverage to the database.
-
-        NOTE/TODO:
-
-          I am not convinced the director should have any of the
-          painting code. this may be refactored out.
-
-        """
-        logger.debug("Painting active coverage")
-
-        # refresh the palette to ensure our colors appropriate for painting.
-        #self._palette.refresh_colors()
-
-        # color the database based on coverage
-        paint_coverage(self.coverage, self._palette.ida_coverage)
-
-    def unpaint_difference(self, old_mapping, new_mapping):
-        """
-        Clear paint on the difference of two coverage sets.
-        """
-        logger.debug("Clearing paint difference between coverages")
-
-        # compute the difference in coverage between two sets of mappings
-        difference_mask = old_mapping.coverage - new_mapping.coverage
-
-        # build a mapping of the computed difference
-        difference = old_mapping.mask_data(difference_mask)
-        difference.update_metadata(self.metadata)
-        difference.refresh_nodes()
-
-        # clear the paint on the computed difference
-        unpaint_coverage(difference)
