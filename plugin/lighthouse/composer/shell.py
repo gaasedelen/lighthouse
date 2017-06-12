@@ -547,16 +547,10 @@ class ComposingShell(QtWidgets.QWidget):
             cursor.setPosition(token_start, QtGui.QTextCursor.MoveAnchor)
             cursor.setPosition(token_end,   QtGui.QTextCursor.KeepAnchor)
 
-            # delete the selected (existing) token text
-            cursor.removeSelectedText()
-
             # configure the colors/style for this explicit token
             #highlight.setBackground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
             highlight.setForeground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
             cursor.setCharFormat(highlight)
-
-            # write the colored/highlighted version of the token text
-            cursor.insertText(token.value)
 
         #
         # we are done painting all the parsed tokens. let's restore the user
@@ -610,12 +604,8 @@ class ComposingShell(QtWidgets.QWidget):
         cursor.setPosition(invalid_start, QtGui.QTextCursor.MoveAnchor)
         cursor.setPosition(len(text), QtGui.QTextCursor.KeepAnchor)
 
-        # delete the invalid text
-        cursor.removeSelectedText()
-
         # insert a highlighted version of the invalid text
         cursor.setCharFormat(highlight)
-        cursor.insertText(invalid_text)
 
         # reset the cursor position & style
         cursor.setPosition(cursor_position)
