@@ -82,6 +82,10 @@ class DatabaseMetadata(object):
         self._node_addresses = []
         self._function_addresses = []
 
+        # asynchrnous metadata collection thread
+        self._refresh_worker = None
+        self._stop_threads = False
+
     #--------------------------------------------------------------------------
     # Providers
     #--------------------------------------------------------------------------
@@ -200,6 +204,7 @@ class DatabaseMetadata(object):
         """
         Refresh the entire database metadata (asynchronously)
         """
+        assert self._refresh_worker == None, 'Refresh already running'
         result_queue = Queue.Queue()
 
         #
@@ -226,14 +231,21 @@ class DatabaseMetadata(object):
                 self._stale_lookup = True
 
         #
+        # reset the async abort/stop flag that can be used used to cancel the
+        # ongoing refresh task
+        #
+
+        self._stop_threads = False
+
+        #
         # kick off an asynchronous metadata collection task
         #
 
-        worker = threading.Thread(
+        self._refresh_worker = threading.Thread(
             target=self._async_refresh,
             args=(result_queue, function_addresses, progress_callback,)
         )
-        worker.start()
+        self._refresh_worker.start()
 
         #
         # immediately return a queue to the user that will shepard the future
@@ -242,19 +254,58 @@ class DatabaseMetadata(object):
 
         return result_queue
 
+    def abort_refresh(self):
+        """
+        Abort a running refresh.
+
+        To guarantee the refresh has been aborted, the caller can wait for
+        result_queue (as recieved from the call to self.refresh()) to
+        return an item.
+
+        A 'None' item returned from the refresh() future (result_queue)
+        indicates an aborted refresh. In theory, the state of metadata
+        should be partially refreshed and still usable.
+        """
+
+        #
+        # the refresh worker (if it exists) can be ripped away at any time.
+        # take a local reference to avoid a double fetch problems
+        #
+
+        worker = self._refresh_worker
+
+        #
+        # if there is no worker present or running (cleaning up?) there is
+        # nothing for us to abort. Simply reset the abort flag (just in case)
+        # and return immediately
+        #
+
+        if not (worker and worker.is_alive()):
+            self._stop_threads = False
+            return
+
+        # signal the worker thread to stop
+        self._stop_threads = True
+
     def _async_refresh(self, result_queue, function_addresses, progress_callback):
         """
         Internal asynchronous metadata collection worker.
         """
 
         # collect metadata
-        self._async_collect_metadata(function_addresses, progress_callback)
+        completed = self._async_collect_metadata(function_addresses, progress_callback)
 
-        # perform the deffered refresh of the lookup list (if necessary)
+        # refresh the lookup lists
         self._refresh_lookup()
 
-        # indicate that we are done
-        result_queue.put(self)
+        # send the refresh result (good/bad) incase anyone is still listening
+        if completed:
+            result_queue.put(self)
+        else:
+            result_queue.put(None)
+
+        # clean up our thread's reference as it is basically done/dead
+        self._refresh_worker = None
 
         # thread exit...
         return
@@ -306,7 +357,8 @@ class DatabaseMetadata(object):
         # loop through every defined function (address) in the database
         for addresses_chunk in chunks(function_addresses, CHUNK_SIZE):
 
-            # synchronize and read (collect) function metadata from the database
+            # synchronize and read (collect) function metadata from the
+            # database in controlled chunks (faster in chunks than one by one)
             fresh_metadata = collect_function_metadata(addresses_chunk)
 
             # update the database metadata with the collected metadata
@@ -319,10 +371,16 @@ class DatabaseMetadata(object):
                 completed += len(addresses_chunk)
                 progress_callback(completed, len(function_addresses))
 
+            # if an abort was requested, bail immediately
+            if self._stop_threads:
+                print "Bailing from metadata collection"
+                return False
+
             # sleep some so we don't choke the main IDA thread
             time.sleep(.0015)
 
-        # done
+        # completed normally
+        return True
 
     def _update_functions(self, fresh_metadata):
         """
