@@ -151,7 +151,6 @@ class CoverageDirector(object):
 
         self._ast_queue = Queue.Queue()
         self._composition_cache = CompositionCache()
-        self._last_ast = None
 
         self._composition_worker = threading.Thread(
             target=self._async_evaluate_ast,
@@ -594,30 +593,25 @@ class CoverageDirector(object):
     # Composing
     #----------------------------------------------------------------------
 
-    def accept_composition(self, coverage_name):
+    def add_composition(self, composite_name, ast):
         """
-        Save the last known composition to the specified name.
-
-        TODO:
-          this paradigm of 'last_ast' seems wonky, but it should make more
-          sense as things are moved async in v0.4.0
-
+        Evaluate and add a new composition to the director.
         """
-        assert not (coverage_name in RESERVED_NAMES)
-        updating_coverage = coverage_name in self.coverage_names
-        logger.debug("Accepting composition %s" % coverage_name)
+        assert not (composite_name in RESERVED_NAMES)
+        updating_coverage = composite_name in self.coverage_names
+        logger.debug("Adding composition %s" % composite_name)
 
         # evaluate the last AST into a coverage set
-        composite_coverage = self._evaluate_composition(self._last_ast)
+        composite_coverage = self._evaluate_composition(ast)
         composite_coverage.update_metadata(self.metadata)
         composite_coverage.refresh() # TODO: hash refresh?
 
         # save the evaluated coverage under the given name
-        self._update_coverage(coverage_name, composite_coverage)
+        self._update_coverage(composite_name, composite_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
         if not updating_coverage:
-            self._request_shorthand_alias(coverage_name)
+            self._request_shorthand_alias(composite_name)
 
         # notify any listeners that we have added or updated coverage
         if updating_coverage:
@@ -625,21 +619,18 @@ class CoverageDirector(object):
         else:
             self._notify_coverage_created()
 
-    def cache_composition(self, ast):
+    def cache_composition(self, ast, force=False):
         """
         Cache the given composition.
         """
 
-        # fast path ignore
-        if ast_equal(self._last_ast, ast):
-            return
+        #
+        # normally, we only pro-actively evaluate/cache if the hotshell is
+        # active, but we can also allow the caller to force a cache to occur
+        #
 
-        # hot shell requests are evaluated immediately
-        if self.coverage_name == HOT_SHELL:
+        if self.coverage_name == HOT_SHELL or force:
             self._ast_queue.put(ast)
-
-        # cache this request as the last known user AST
-        self._last_ast = ast
 
     def _async_evaluate_ast(self):
         """
