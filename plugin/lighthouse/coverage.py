@@ -53,6 +53,10 @@ class DatabaseCoverage(object):
         # hitmap that holds the source data of our mapping
         self._hitmap = build_hitmap(data)
 
+        # a simple hash of the coverage mask (aka self._hitmap.keys())
+        self.coverage_hash = 0
+        self._update_coverage_hash()
+
         # maps of the child mapping objects
         self.nodes        = {}
         self.functions    = {}
@@ -170,6 +174,9 @@ class DatabaseCoverage(object):
         for address, hit_count in data.iteritems():
             self._hitmap[address] += hit_count
 
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
+
         # mark these touched addresses as dirty
         self._unmapped_data |= data.viewkeys()
 
@@ -193,6 +200,9 @@ class DatabaseCoverage(object):
 
             if not self._hitmap[address]:
                 del self._hitmap[address]
+
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
 
         #
         # unmap everything because a complete re-mapping is easier with the
@@ -219,6 +229,15 @@ class DatabaseCoverage(object):
 
         # done, return a new DatabaseCoverage masked with the given coverage
         return DatabaseCoverage(composite_data, self.palette)
+
+    def _update_coverage_hash(self):
+        """
+        Update the hash of the coverage mask.
+        """
+        if self._hitmap:
+            self.coverage_hash = hash(frozenset(self._hitmap.viewkeys()))
+        else:
+            self.coverage_hash = 0
 
     #--------------------------------------------------------------------------
     # Coverage Mapping
