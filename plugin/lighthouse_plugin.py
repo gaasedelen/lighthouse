@@ -6,8 +6,8 @@ from idaapi import plugin_t
 from lighthouse.ui import *
 from lighthouse.util import *
 from lighthouse.parsers import *
+from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
-from lighthouse.painting import paint_hexrays
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 
 # start the global logger *once*
@@ -44,6 +44,8 @@ class Lighthouse(plugin_t):
         # plugin color palette
         self.palette = LighthousePalette()
 
+        # the coverage painter
+        self.painter = CoveragePainter(self.palette)
 
         # the database coverage data conglomerate
         self.director = CoverageDirector(self.palette)
@@ -508,12 +510,7 @@ class Lighthouse(plugin_t):
                 return 0
 
             # paint the decompilation text for this function
-            paint_hexrays(
-                cfunc,
-                self.director.metadata,
-                self.director.coverage,
-                self.palette.ida_coverage
-            )
+            self.painter.paint_hexrays(cfunc, self.director.coverage)
 
         return 0
 
