@@ -44,7 +44,6 @@ class Lighthouse(plugin_t):
         # plugin color palette
         self.palette = LighthousePalette()
 
-        #----------------------------------------------------------------------
 
         # the database coverage data conglomerate
         self.director = CoverageDirector(self.palette)
@@ -372,17 +371,8 @@ class Lighthouse(plugin_t):
         # showing the user a waitbox dialog (or flickering one).
         #
 
-        try:
-            future.get_nowait()
-
-        #
-        # if the async metadata collection has not yet finished, wait for it,
-        # and show the realtime metadata collection progress dialog
-        #
-
-        except Queue.Empty:
-            idaapi.show_wait_box("Building database metadata...")
-            await_future(future)
+        idaapi.show_wait_box("Building database metadata...")
+        await_future(future)
 
         #----------------------------------------------------------------------
 
@@ -402,7 +392,7 @@ class Lighthouse(plugin_t):
         #   box they can't close should things go poorly ;P
         #
 
-        idaapi.show_wait_box("Normalizing and mapping coverage data...")
+        idaapi.replace_wait_box("Normalizing and mapping coverage data...")
 
         try:
 
