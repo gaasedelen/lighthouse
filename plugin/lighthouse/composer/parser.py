@@ -147,6 +147,78 @@ class TokenCoverageSingle(AstToken):
         self.symbol = coverage_single.value
 
 #------------------------------------------------------------------------------
+# AST Operations
+#------------------------------------------------------------------------------
+
+def ast_equal(first, second):
+    """
+    A fail-safe equality of the structure and contents of two AST.
+
+    This is not a true (logical) equality check. Two AST's may evaluate to
+    the same logical result, but have a slightly different structure which
+    will trigger this check to return False.
+
+    This is primarily used to check if a user specified AST has changed, and
+    if we should probably re-evaluate the tree (composition).
+    """
+
+    # both trees are 'NULL' / empty AST
+    if isinstance(second, TokenNull) and isinstance(second, TokenNull):
+        return True
+
+    # recursively evaluate the AST's
+    return _ast_equal_recursive(first, second)
+
+def _ast_equal_recursive(first, second):
+    """
+    The internal (recursive) AST evaluation routine.
+    """
+
+    #
+    # if the left and right types are not identical at every step, the tree
+    # is obviously different somehow
+    #
+
+    if type(first) != type(second):
+        return False
+
+    #
+    # if the current node is a logic operator, we need to evaluate the
+    # expressions that make up its input.
+    #
+
+    if isinstance(first, TokenLogicOperator):
+        if not _ast_equal_recursive(first.op1, second.op1):
+            return False
+        if not _ast_equal_recursive(first.op2, second.op2):
+            return False
+        return first.operator == second.operator
+
+    #
+    # if the current node is a coverage range, we need to evaluate the
+    # range expression. this will produce an aggregate coverage set
+    # described by the start/end of the range (Eg, 'A,D')
+    #
+
+    elif isinstance(first, TokenCoverageRange):
+        return first.symbol_start == second.symbol_start and \
+               first.symbol_end   == second.symbol_end
+
+    #
+    # if the current node is a coverage token, we need simply need
+    # to compare its symbol.
+    #
+
+    elif isinstance(first, TokenCoverageSingle):
+        return first.symbol == second.symbol
+
+    #
+    # unknown token? (this should never happen)
+    #
+
+    raise False
+
+#------------------------------------------------------------------------------
 # Parsing
 #------------------------------------------------------------------------------
 

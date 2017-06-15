@@ -2,12 +2,13 @@ import time
 import string
 import logging
 import weakref
+import threading
 import collections
 
 from lighthouse.util import *
 from lighthouse.metadata import DatabaseMetadata, MetadataDelta
 from lighthouse.coverage import DatabaseCoverage
-from lighthouse.composer.parser import TokenLogicOperator, TokenCoverageRange, TokenCoverageSingle, TokenNull
+from lighthouse.composer.parser import *
 
 logger = logging.getLogger("Lighthouse.Director")
 
@@ -143,6 +144,21 @@ class CoverageDirector(object):
 
         # alias the aggregate set to '*'
         self._alias_coverage(AGGREGATE, AGGREGATE_ALIAS)
+
+        #----------------------------------------------------------------------
+        # Async
+        #----------------------------------------------------------------------
+
+        self._ast_queue = Queue.Queue()
+        self._composition_cache = CompositionCache()
+        self._last_ast = None
+
+        self._composition_worker = threading.Thread(
+            target=self._async_evaluate_ast,
+            name="EvaluateAST"
+        )
+        self._composition_worker.daemon = True
+        self._composition_worker.start()
 
         #----------------------------------------------------------------------
         # Callbacks
@@ -594,7 +610,7 @@ class CoverageDirector(object):
         # evaluate the last AST into a coverage set
         composite_coverage = self._evaluate_composition(self._last_ast)
         composite_coverage.update_metadata(self.metadata)
-        composite_coverage.refresh()
+        composite_coverage.refresh() # TODO: hash refresh?
 
         # save the evaluated coverage under the given name
         self._update_coverage(coverage_name, composite_coverage)
@@ -614,25 +630,51 @@ class CoverageDirector(object):
         Cache the given composition.
         """
 
+        # fast path ignore
+        if ast_equal(self._last_ast, ast):
+            return
+
         # hot shell requests are evaluated immediately
         if self.coverage_name == HOT_SHELL:
-
-            composite_coverage = self._evaluate_composition(ast)
-            composite_coverage.update_metadata(self.metadata)
-            composite_coverage.refresh()
-
-            self._special_coverage[HOT_SHELL] = composite_coverage
-
-            self._notify_coverage_modified()
-
-        #
-        # TODO:
-        #   in v0.4.0 we will actually offload the AST to be evaluated
-        #   in an async thread and cache that
-        #
+            self._ast_queue.put(ast)
 
         # cache this request as the last known user AST
         self._last_ast = ast
+
+    def _async_evaluate_ast(self):
+        """
+        Asynchronous composition evaluation worker loop.
+        """
+        logger.debug("Starting EvaluateAST thread...")
+
+        while True:
+
+            # get the next AST to evaluate
+            ast = self._ast_queue.get()
+
+            # signal to stop
+            if ast == None:
+                break
+
+            # produce a single composite coverage object as described by the AST
+            composite_coverage = self._evaluate_composition(ast)
+
+            # map the composited coverage data to the database metadata
+            composite_coverage.update_metadata(self.metadata)
+            composite_coverage.refresh()
+
+            # we always save the most recent composite to the hotshell entry
+            self._special_coverage[HOT_SHELL] = composite_coverage
+
+            # if the hotshell entry is the active coverage selection, notify
+            # listeners of its update
+            if self.coverage_name == HOT_SHELL:
+                self._notify_coverage_modified()
+
+            # loop and wait for the next AST to evaluate
+
+        # thread exit
+        logger.debug("Exiting EvaluateAST thread...")
 
     def _evaluate_composition(self, ast):
         """
@@ -670,6 +712,74 @@ class CoverageDirector(object):
             op2 = self._evaluate_composition_recursive(node.op2)
 
             #
+            # Before computing a new composition, we actually compute a hash
+            # actually compute a 'hash' of the operation that would normally
+            # generate the composition.
+            #
+            # This 'hash' can be used to index into an LRU based cache that
+            # holds compositions created by the AST evaluation process.
+            #
+            # The 'hash' is actually computed as a product of the operator
+            # that would normally combine the two coverage sets.
+            #
+            # For example, when computing compositions the logical operators
+            # (eg |, &, ^), it does not matter which side of the equation the
+            # coverage components fall on.
+            #  eg:
+            #      (A | B) == (B | A)
+            #
+            # while arithmetic operations (-) will produce different results
+            #
+            #      (A - B) != (B - A)
+            #
+            # So if we are being asked to compute a composition of (A | B),
+            # we first compute:
+            #
+            #      composition_hash = hash(A) | hash(B)
+            #
+            # And use composition_hash to check an LRU cache for the complete
+            # evaluation/composition of (A | B).
+            #
+            # The possibility of collisions are generally higher with this
+            # form of 'hash', but I still expect them to be extremely rare.
+            #
+
+            composition_hash = node.operator(op1.coverage_hash, op2.coverage_hash)
+
+            #
+            # Evaluating an AST produces lots of 'transient' compositions. To
+            # mitigate unecessary re-computation, we maintain a small LRU cache
+            # of these compositions to draw from during evaluation.
+            #
+            #   eg:
+            #       evaluating the input
+            #
+            #         (A | B) - (C | D)
+            #
+            #       produces
+            #
+            #         COMP_1 = (A | B)
+            #         COMP_2 = (C | D)
+            #         COMP_3 = COMP_1 - COMP_2
+            #
+            # In the example above, COMP_3 is the final evaluated result, and
+            # COMP_1/COMP_2 would normally be discarded. Instead, we cache all
+            # of these compositions (1, 2, 3) as they may be useful to us in
+            # the subsequent evaluations.
+            #
+            # If the user then choses to evaluate (A | B) - (Z | D), our cache
+            # can retrieve the fully computed (A | B) composition assuming it
+            # has not been evicted.
+            #
+
+            # check the cache to see if this composition was recently computed
+            cached_coverage = self._composition_cache[composition_hash]
+
+            # if the composition was found in the cache, return that for speed
+            if cached_coverage:
+                return cached_coverage
+
+            #
             # using the collected components of the logical operation, we
             # compute the coverage mask defined by this TokenLogicOperator
             #
@@ -682,7 +792,11 @@ class CoverageDirector(object):
             # return a masked copy of said DatabaseCoverage
             #
 
-            return DatabaseCoverage(coverage_mask, self._palette)
+            new_composition = DatabaseCoverage(coverage_mask, self._palette)
+
+            # cache & return the newly computed composition
+            self._composition_cache[composition_hash] = new_composition
+            return new_composition
 
         #
         # if the current node is a coverage range, we need to evaluate the
