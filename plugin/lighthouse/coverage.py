@@ -465,7 +465,7 @@ class DatabaseCoverage(object):
             #   what is cool about this is that its corresponding entry for
             #   this node_coverage object in any FunctionCoverage objects that
             #   reference this node will also dissapear. This is because the
-            #   executed_nodes dictionaries are built using WeakValueDictionary.
+            #   nodes dictionaries are built using WeakValueDictionary.
             #
 
             # ...
@@ -491,7 +491,7 @@ class FunctionCoverage(object):
         self.address = function_address
 
         # addresses of nodes executed
-        self.executed_nodes = weakref.WeakValueDictionary()
+        self.nodes = weakref.WeakValueDictionary()
 
         # baked colors
         self.coverage_color  = 0
@@ -510,21 +510,21 @@ class FunctionCoverage(object):
         """
         The cumulative instruction executions in this function.
         """
-        return sum(x.hits for x in self.executed_nodes.itervalues())
+        return sum(x.hits for x in self.nodes.itervalues())
 
     @property
     def nodes_executed(self):
         """
         The number of nodes executed in this function.
         """
-        return len(self.executed_nodes)
+        return len(self.nodes)
 
     @property
     def instructions_executed(self):
         """
         The number of unique instructions executed in this function.
         """
-        return sum(x.instructions_executed for x in self.executed_nodes.itervalues())
+        return sum(x.instructions_executed for x in self.nodes.itervalues())
 
     #--------------------------------------------------------------------------
     # Controls
@@ -534,7 +534,7 @@ class FunctionCoverage(object):
         """
         Mark the given node address as executed.
         """
-        self.executed_nodes[node_coverage.address] = node_coverage
+        self.nodes[node_coverage.address] = node_coverage
 
     def finalize(self):
         """
@@ -550,7 +550,7 @@ class FunctionCoverage(object):
         self.instruction_percent = float(self.instructions_executed) / function_metadata.instruction_count
 
         # the estimated number of executions this function has experienced
-        self.executions = float(sum(x.executions for x in self.executed_nodes.itervalues())) / function_metadata.node_count
+        self.executions = float(sum(x.executions for x in self.nodes.itervalues())) / function_metadata.node_count
 
         # bake colors
         self.coverage_color = compute_color_on_gradiant(

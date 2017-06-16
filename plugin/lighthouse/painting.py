@@ -158,7 +158,7 @@ class CoveragePainter(object):
         lines_painted = 0
 
         # extract the node addresses that have been hit by our function's mapping data
-        executed_nodes = set(database_coverage.functions[cfunc.entry_ea].executed_nodes.iterkeys())
+        executed_nodes = set(database_coverage.functions[cfunc.entry_ea].nodes.iterkeys())
 
         #
         # now we loop through every line_number of the decompiled text that claims
