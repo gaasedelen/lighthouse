@@ -480,6 +480,17 @@ class FunctionMetadata(object):
         self._build_metadata()
 
     #--------------------------------------------------------------------------
+    # Properties
+    #--------------------------------------------------------------------------
+
+    @property
+    def instructions(self):
+        """
+        The instruction addresses in this function.
+        """
+        return set([ea for node in self.nodes.itervalues() for ea in node.instructions.keys()])
+
+    #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
 

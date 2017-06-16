@@ -526,6 +526,13 @@ class FunctionCoverage(object):
         """
         return sum(x.instructions_executed for x in self.nodes.itervalues())
 
+    @property
+    def instructions(self):
+        """
+        The instruction addresses in this function.
+        """
+        return set([ea for node in self.nodes.itervalues() for ea in node.executed_instructions.keys()])
+
     #--------------------------------------------------------------------------
     # Controls
     #--------------------------------------------------------------------------
