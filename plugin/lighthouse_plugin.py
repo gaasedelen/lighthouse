@@ -44,11 +44,11 @@ class Lighthouse(plugin_t):
         # plugin color palette
         self.palette = LighthousePalette()
 
-        # the coverage painter
-        self.painter = CoveragePainter(self.palette)
-
         # the database coverage data conglomerate
         self.director = CoverageDirector(self.palette)
+
+        # the coverage painter
+        self.painter = CoveragePainter(self.director, self.palette)
 
         # hexrays hooks
         self._hxe_events = None
