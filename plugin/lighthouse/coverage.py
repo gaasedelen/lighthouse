@@ -453,22 +453,10 @@ class DatabaseCoverage(object):
                 continue
 
             # the node was found, unmap any of its tracked coverage blocks
-            self._unmapped_data.update(node_coverage.executed_instructions.viewkeys())
+            self._unmapped_data.update(
+                node_coverage.executed_instructions.viewkeys()
+            )
 
-            #
-            # NOTE:
-            #
-            #   since we pop'd node_coverage from the database-wide self.nodes
-            #   list, this loop iteration owns the last remaining 'hard' ref to
-            #   the object. once the loop rolls over, it will be released.
-            #
-            #   what is cool about this is that its corresponding entry for
-            #   this node_coverage object in any FunctionCoverage objects that
-            #   reference this node will also dissapear. This is because the
-            #   nodes dictionaries are built using WeakValueDictionary.
-            #
-
-            # ...
 
     def _unmap_functions(self, function_addresses):
         """
@@ -491,7 +479,7 @@ class FunctionCoverage(object):
         self.address = function_address
 
         # addresses of nodes executed
-        self.nodes = weakref.WeakValueDictionary()
+        self.nodes = {}
 
         # baked colors
         self.coverage_color  = 0
