@@ -1,7 +1,9 @@
+import time
 import logging
 
 import idc
 import idaapi
+import idautils
 
 from lighthouse.util.ida import *
 
@@ -16,7 +18,7 @@ class CoveragePainter(object):
     def __init__(self, director, palette):
         self.palette = palette
         self._director = director
-        self._painted_nodes = {}
+        self._painted_nodes = set()
         self._painted_instructions = set()
 
         # register for cues from the director
@@ -81,7 +83,7 @@ class CoveragePainter(object):
         # in the IDA graph view as applicable.
         #
 
-        for node_coverage in nodes_coverage.itervalues():
+        for node_coverage in nodes_coverage:
             node_metadata = node_coverage._database._metadata.nodes[node_coverage.address]
 
             # assign the background color we would like to paint to this node
@@ -95,7 +97,7 @@ class CoveragePainter(object):
                 idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
             )
 
-            self._painted_nodes[node_metadata.function.address] = node_metadata.id
+            self._painted_nodes.add(node_metadata.address)
 
     def clear_nodes(self, nodes_metadata):
         """
@@ -111,7 +113,7 @@ class CoveragePainter(object):
         # their paint (color) in the IDA graph view as applicable.
         #
 
-        for node_metadata in nodes_metadata.itervalues():
+        for node_metadata in nodes_metadata:
 
             # do the *actual* painting of a single node instance
             idaapi.set_node_info2(
@@ -121,7 +123,7 @@ class CoveragePainter(object):
                 idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
             )
 
-            self._painted_nodes.pop(node_metadata.function.address, None)
+            self._painted_nodes.discard(node_metadata.address)
 
     #------------------------------------------------------------------------------
     # Painting - HexRays (Decompilation / Source)
@@ -254,13 +256,13 @@ class CoveragePainter(object):
         # ~ priority instruction painting ~
         #
 
-        # the number of instructions before and after the cursor to paint
-        INSTRUCTION_BUFFER = 500
+        # the number of instruction bytes before and after the cursor to paint
+        INSTRUCTION_BUFFER = 200
 
         # determine range of instructions to repaint
         inst_start = cursor_address - INSTRUCTION_BUFFER
         inst_end   = cursor_address + INSTRUCTION_BUFFER
-        instructions = set(range(inst_start, inst_end))
+        instructions = set(idautils.Heads(inst_start, inst_end))
 
         # remove any instructions painted by the function paints
         instructions -= function_instructions
@@ -286,19 +288,52 @@ class CoveragePainter(object):
         coverage = self._director.coverage
 
         # collect function information
-        function_metadata = metadata.functions.get(function.startEA, None)
+        function_metadata = metadata.functions[function.startEA]
         function_coverage = coverage.functions.get(function.startEA, None)
 
-        # clear the function's instruction & node paint
-        if function_metadata:
-            self.clear_instructions(function_metadata.instructions)
-            self.clear_nodes(function_metadata.nodes)
-
-        # paint the function's latest instruction & node coverage
+        # function coverage exists, so let's do a cleaner paint
         if function_coverage:
-            self.paint_instructions(function_coverage.instructions)
-            self.paint_nodes(function_coverage.nodes)
 
+            #
+            # ~ instructions ~
+            #
+
+            # compute the painted instructions within this function
+            painted = self._painted_instructions & function_metadata.instructions
+
+            # compute the painted instructions that will not get painted over
+            stale_instructions = painted - function_coverage.instructions
+
+            #
+            # ~ nodes ~
+            #
+
+            # compute the painted nodes within this function
+            painted = self._painted_nodes & function_metadata.nodes.viewkeys()
+
+            # compute the painted nodes that will not get painted over
+            stale_nodes_ea = painted - function_coverage.nodes.viewkeys()
+            stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
+
+            #
+            # ~ painting ~
+            #
+
+            # clear the instructions that will not get painted over
+            self.clear_instructions(stale_instructions)
+            self.paint_instructions(function_coverage.instructions)
+
+            # clear the nodes that will not get painted over
+            self.clear_nodes(stale_nodes)
+            self.paint_nodes(function_coverage.nodes.itervalues())
+
+        # no coverage, just clear the function's instruction & nodes
+        else:
+            self.clear_instructions(function_metadata.instructions)
+            self.clear_nodes(function_metadata.nodes.itervalues())
+
+        # done
+        return
 
 #----------------------------------------------------------------------
 # Painting / TODO: move/remove?
