@@ -299,6 +299,7 @@ class CoverageOverview(idaapi.PluginForm):
     # Refresh
     #--------------------------------------------------------------------------
 
+    @idawrite
     def refresh(self):
         """
         Refresh the Coverage Overview.
@@ -600,6 +601,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         """
         Internal refresh of the model.
         """
+        assert idaapi.is_main_thread()
 
         # initialize a new row2func map as the coverage data has changed
         self._refresh_row2func_map()
