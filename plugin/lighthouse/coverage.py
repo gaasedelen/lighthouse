@@ -481,13 +481,15 @@ class FunctionCoverage(object):
         # addresses of nodes executed
         self.nodes = {}
 
-        # baked colors
-        self.coverage_color  = 0
-        self.profiling_color = 0
-
         # compute the # of instructions executed by this function's coverage
         self.instruction_percent = 0.0
         self.node_percent = 0.0
+
+        # baked colors
+        if function_address == idaapi.BADADDR:
+            self.coverage_color = QtGui.QColor(30, 30, 30)
+        else:
+            self.coverage_color = 0
 
     #--------------------------------------------------------------------------
     # Properties
@@ -554,13 +556,6 @@ class FunctionCoverage(object):
             palette.coverage_good
         )
 
-        # TODO
-        #self.profiling_color = compute_color_on_gradiant(
-        #    self.insn_percent,
-        #    palette.profiling_cold,
-        #    palette.profiling_hot
-        #)
-
 #------------------------------------------------------------------------------
 # Node Coverage / Data Mapping
 #------------------------------------------------------------------------------
@@ -609,5 +604,4 @@ class NodeCoverage(object):
 
         # bake colors
         self.coverage_color = palette.ida_coverage
-        #self.profiling_color = 0 # TODO
 
