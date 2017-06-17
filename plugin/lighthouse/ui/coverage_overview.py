@@ -342,7 +342,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
             FUNC_NAME:    "Function Name",
             FUNC_ADDR:    "Address",
             BLOCKS_HIT:   "Blocks Hit",
-            INST_HIT:     "Insttructions Hit",
+            INST_HIT:     "Instructions Hit",
             FUNC_SIZE:    "Function Size",
             FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
         }
