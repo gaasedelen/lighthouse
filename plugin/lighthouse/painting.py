@@ -1,10 +1,12 @@
 import time
 import logging
+import threading
 
 import idc
 import idaapi
 import idautils
 
+from lighthouse.util import chunks
 from lighthouse.util.ida import *
 
 logger = logging.getLogger("Lighthouse.Painting")
@@ -18,8 +20,31 @@ class CoveragePainter(object):
     def __init__(self, director, palette):
         self.palette = palette
         self._director = director
+
+        #----------------------------------------------------------------------
+        # Painted State
+        #----------------------------------------------------------------------
+
         self._painted_nodes = set()
         self._painted_instructions = set()
+
+        #----------------------------------------------------------------------
+        # Async
+        #----------------------------------------------------------------------
+
+        self._repaint_queue = Queue.Queue()
+        self._repaint_requested = False
+
+        self._painting_worker = threading.Thread(
+            target=self._async_database_painter,
+            name="DatabasePainter"
+        )
+        self._painting_worker.daemon = True
+        self._painting_worker.start()
+
+        #----------------------------------------------------------------------
+        # Callbacks
+        #----------------------------------------------------------------------
 
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
@@ -34,6 +59,8 @@ class CoveragePainter(object):
         Paint coverage defined by the current database mappings
         """
         self._priority_paint()
+        self._repaint_requested = True
+        self._repaint_queue.put(True)
 
     #------------------------------------------------------------------------------
     # Painting - Instructions / Items (Lines)
@@ -47,6 +74,35 @@ class CoveragePainter(object):
             idaapi.set_item_color(address, self.palette.ida_coverage)
             self._painted_instructions.add(address)
 
+    @idawrite
+    def _paint_instructions(self, instructions):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        self.paint_instructions(instructions)
+
+    def _async_paint_instructions(self, instructions):
+        """
+        Internal routine for asynchrnous instruction painting.
+        """
+        CHUNK_SIZE = 150 # TODO: tune
+
+        # split the given instruction addresses into multiple paints
+        for addresses_chunk in chunks(list(instructions), CHUNK_SIZE):
+
+            # paint a chunk of instructions
+            self._paint_instructions(addresses_chunk)
+
+            # the operation has been interrupted by a repaint request
+            if self._repaint_requested:
+                return False
+
+            # sleep some so we don't choke the main IDA thread
+            time.sleep(.0015) # TODO: tune
+
+        # operation completed successfully
+        return True
+
     def clear_instructions(self, instructions):
         """
         Clear paint from the given instructions.
@@ -54,6 +110,35 @@ class CoveragePainter(object):
         for address in instructions:
             idaapi.set_item_color(address, idc.DEFCOLOR)
             self._painted_instructions.discard(address)
+
+    @idawrite
+    def _clear_instructions(self, instructions):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        self.clear_instructions(instructions)
+
+    def _async_clear_instructions(self, instructions):
+        """
+        Internal routine for asynchrnous instruction clearing.
+        """
+        CHUNK_SIZE = 150 # TODO: tune
+
+        # split the given instruction addresses into multiple paints
+        for addresses_chunk in chunks(list(instructions), CHUNK_SIZE):
+
+            # paint a chunk of instructions
+            self._clear_instructions(addresses_chunk)
+
+            # the operation has been interrupted by a repaint request
+            if self._repaint_requested:
+                return False
+
+            # sleep some so we don't choke the main IDA thread
+            time.sleep(.0015) # TODO: tune
+
+        # operation completed successfully
+        return True
 
     #------------------------------------------------------------------------------
     # Painting - Nodes (Basic Blocks)
@@ -344,22 +429,50 @@ class CoveragePainter(object):
         # return the instruction addresses painted
         return instructions_coverage
 
-#----------------------------------------------------------------------
-# Painting / TODO: move/remove?
-#----------------------------------------------------------------------
+    #------------------------------------------------------------------------------
+    # Asynchronous Painting
+    #------------------------------------------------------------------------------
 
-def unpaint_difference(self, old_mapping, new_mapping):
-    return
-    logger.debug("Clearing paint difference between coverages")
+    def _async_database_painter(self):
+        """
+        Asynchronous database painting worker loop.
+        """
+        logger.debug("Starting DatabasePainter thread...")
 
-    # compute the difference in coverage between two sets of mappings
-    difference_mask = old_mapping.coverage - new_mapping.coverage
+        #
+        # Asynchronous Database Painting Loop
+        #
 
-    # build a mapping of the computed difference
-    difference = old_mapping.mask_data(difference_mask)
-    difference.update_metadata(self.metadata)
-    difference.refresh_nodes()
+        # block until a paint has been requested
+        while self._repaint_queue.get():
+            database_coverage = self._director.coverage
+            print "Got repaint"
 
-    # clear the paint on the computed difference
-    unpaint_coverage(difference)
+            # clear the repaint flag
+            self._repaint_requested = False
 
+            # compute the painted instructions that will not get painted over
+            stale_instructions = self._painted_instructions - database_coverage.coverage
+
+            # compute the painted nodes that will not get painted over
+            #stale_nodes_ea = self._painted_nodes - database_coverage.nodes.viewkeys()
+            #stale_nodes = [database_coverage.nodes[ea] for ea in stale_nodes_ea]
+
+            # clear instructions
+            if not self._async_clear_instructions(stale_instructions):
+                continue # a repaint was requested
+
+            # clear nodes
+            #if not self._async_clear_nodes(stale_nodes):
+            #    continue # a repaint was requested
+
+            # paint instructions
+            if not self._async_paint_instructions(database_coverage.coverage):
+                continue # a repaint was requested
+
+            ## paint nodes
+            #if not self._async_paint_nodes(database_coverage.nodes):
+            #    continue # a repaint was requested
+
+        # thread exit
+        logger.debug("Exiting DatabasePainter thread...")
