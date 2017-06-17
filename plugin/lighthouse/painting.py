@@ -11,7 +11,6 @@ from lighthouse.util.ida import *
 
 logger = logging.getLogger("Lighthouse.Painting")
 
-
 class CoveragePainter(object):
     """
     TODO
@@ -81,28 +80,6 @@ class CoveragePainter(object):
         """
         self.paint_instructions(instructions)
 
-    def _async_paint_instructions(self, instructions):
-        """
-        Internal routine for asynchrnous instruction painting.
-        """
-        CHUNK_SIZE = 150 # TODO: tune
-
-        # split the given instruction addresses into multiple paints
-        for addresses_chunk in chunks(list(instructions), CHUNK_SIZE):
-
-            # paint a chunk of instructions
-            self._paint_instructions(addresses_chunk)
-
-            # the operation has been interrupted by a repaint request
-            if self._repaint_requested:
-                return False
-
-            # sleep some so we don't choke the main IDA thread
-            time.sleep(.0015) # TODO: tune
-
-        # operation completed successfully
-        return True
-
     def clear_instructions(self, instructions):
         """
         Clear paint from the given instructions.
@@ -117,28 +94,6 @@ class CoveragePainter(object):
         Internal routine to force called action to the main thread.
         """
         self.clear_instructions(instructions)
-
-    def _async_clear_instructions(self, instructions):
-        """
-        Internal routine for asynchrnous instruction clearing.
-        """
-        CHUNK_SIZE = 150 # TODO: tune
-
-        # split the given instruction addresses into multiple paints
-        for addresses_chunk in chunks(list(instructions), CHUNK_SIZE):
-
-            # paint a chunk of instructions
-            self._clear_instructions(addresses_chunk)
-
-            # the operation has been interrupted by a repaint request
-            if self._repaint_requested:
-                return False
-
-            # sleep some so we don't choke the main IDA thread
-            time.sleep(.0015) # TODO: tune
-
-        # operation completed successfully
-        return True
 
     #------------------------------------------------------------------------------
     # Painting - Nodes (Basic Blocks)
@@ -173,6 +128,13 @@ class CoveragePainter(object):
 
             self._painted_nodes.add(node_metadata.address)
 
+    @idawrite
+    def _paint_nodes(self, nodes_coverage):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        self.paint_nodes(nodes_coverage)
+
     def clear_nodes(self, nodes_metadata):
         """
         Clear paint from the given graph nodes.
@@ -198,6 +160,13 @@ class CoveragePainter(object):
             )
 
             self._painted_nodes.discard(node_metadata.address)
+
+    @idawrite
+    def _clear_nodes(self, nodes_metadata):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        self.clear_nodes(nodes_metadata)
 
     #------------------------------------------------------------------------------
     # Painting - Functions
@@ -446,33 +415,66 @@ class CoveragePainter(object):
         # block until a paint has been requested
         while self._repaint_queue.get():
             database_coverage = self._director.coverage
-            print "Got repaint"
+            database_metadata = self._director.metadata
 
             # clear the repaint flag
             self._repaint_requested = False
+
+            start = time.time()
+            #------------------------------------------------------------------
 
             # compute the painted instructions that will not get painted over
             stale_instructions = self._painted_instructions - database_coverage.coverage
 
             # compute the painted nodes that will not get painted over
-            #stale_nodes_ea = self._painted_nodes - database_coverage.nodes.viewkeys()
-            #stale_nodes = [database_coverage.nodes[ea] for ea in stale_nodes_ea]
+            stale_nodes_ea = self._painted_nodes - database_coverage.nodes.viewkeys()
+            stale_nodes = [database_metadata.nodes[ea] for ea in stale_nodes_ea]
 
             # clear instructions
-            if not self._async_clear_instructions(stale_instructions):
+            if not self._async_action(self._clear_instructions, stale_instructions):
                 continue # a repaint was requested
 
             # clear nodes
-            #if not self._async_clear_nodes(stale_nodes):
-            #    continue # a repaint was requested
-
-            # paint instructions
-            if not self._async_paint_instructions(database_coverage.coverage):
+            if not self._async_action(self._clear_nodes, stale_nodes):
                 continue # a repaint was requested
 
-            ## paint nodes
-            #if not self._async_paint_nodes(database_coverage.nodes):
-            #    continue # a repaint was requested
+            # paint instructions
+            if not self._async_action(self._paint_instructions, database_coverage.coverage):
+                continue # a repaint was requested
+
+            # paint nodes
+            if not self._async_action(self._paint_nodes, database_coverage.nodes.itervalues()):
+                continue # a repaint was requested
+
+            #------------------------------------------------------------------
+            end = time.time()
+            logger.debug("Paint took %s seconds" % (end - start))
 
         # thread exit
         logger.debug("Exiting DatabasePainter thread...")
+
+    def _async_action(self, paint_action, work_iterable):
+        """
+        Internal routine for asynchrnous painting.
+        """
+        CHUNK_SIZE = 800 # somewhat arbitrary
+
+        # split the given nodes into multiple paints
+        for work_chunk in chunks(list(work_iterable), CHUNK_SIZE):
+
+            #
+            # paint/clear a chunk of 'work' (nodes, or instructions) with
+            # the given work action (eg, paint_nodes, clear_instructions)
+            #
+
+            paint_action(work_chunk)
+
+            # the operation has been interrupted by a repaint request
+            if self._repaint_requested:
+                return False
+
+            # sleep some so we don't choke the main IDA thread
+            time.sleep(.001)
+
+        # operation completed successfully
+        return True
