@@ -50,9 +50,6 @@ class Lighthouse(plugin_t):
         # the coverage painter
         self.painter = CoveragePainter(self.director, self.palette)
 
-        # hexrays hooks
-        self._hxe_events = None
-
         # plugin qt elements
         self._ui_coverage_overview = CoverageOverview(self.director)
 
@@ -120,33 +117,6 @@ class Lighthouse(plugin_t):
         Initialize & integrate the plugin into IDA.
         """
         self._install_ui()
-
-        # NOTE: let's delay these till coverage load instead
-        #self._install_hexrays_hooks()
-
-    def _install_hexrays_hooks(self):
-        """
-        Install Hexrays hook listeners.
-        """
-
-        # event hooks appear to already be installed for hexrays
-        if self._hxe_events:
-            return
-
-        # ensure hexrays is loaded & ready for use
-        if not idaapi.init_hexrays_plugin():
-            raise RuntimeError("HexRays not available for hooking")
-
-        #
-        # map our callback function to an actual member since we can't properly
-        # remove bindings from IDA callback registrations otherwise. it also
-        # makes installation tracking/status easier.
-        #
-
-        self._hxe_events = self._hexrays_callback
-
-        # install the callback handler
-        assert idaapi.install_hexrays_callback(self._hxe_events)
 
     def print_banner(self):
         """
@@ -260,19 +230,6 @@ class Lighthouse(plugin_t):
         Cleanup & uninstall the plugin from IDA.
         """
         self._uninstall_ui()
-        self._uninstall_hexrays_hooks()
-
-    def _uninstall_hexrays_hooks(self):
-        """
-        Cleanup & uninstall Hexrays hook listeners.
-        """
-        if not self._hxe_events:
-            return
-
-        # remove the callbacks
-        #    NOTE: w/e IDA removes this anyway.....
-        #idaapi.remove_hexrays_callback(self._hxe_events)
-        self._hxe_events = None
 
     #--------------------------------------------------------------------------
     # Termination - UI
@@ -420,12 +377,6 @@ class Lighthouse(plugin_t):
             logger.exception(e)
             return
 
-        # install hexrays hooks if they are available for this arch & license
-        try:
-            self._install_hexrays_hooks()
-        except RuntimeError:
-            pass
-
         # show the coverage overview
         self.open_coverage_overview()
 
@@ -494,25 +445,6 @@ class Lighthouse(plugin_t):
 
         # flatten the basic blocks into individual instructions or addresses
         return metadata.flatten_blocks(rebased_blocks)
-
-    def _hexrays_callback(self, event, *args):
-        """
-        HexRays callback event handler.
-        """
-
-        # decompilation text generation is complete and it is about to be shown
-        if event == idaapi.hxe_text_ready:
-            vdui = args[0]
-            cfunc = vdui.cfunc
-
-            # if there's no coverage data for this function, there's nothing to do
-            if not cfunc.entry_ea in self.director.coverage.functions:
-                return 0
-
-            # paint the decompilation text for this function
-            self.painter.paint_hexrays(cfunc, self.director.coverage)
-
-        return 0
 
 #------------------------------------------------------------------------------
 # IDA Plugin Palette

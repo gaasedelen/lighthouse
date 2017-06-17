@@ -45,9 +45,28 @@ class CoveragePainter(object):
         # Callbacks
         #----------------------------------------------------------------------
 
+        # hook hexrays on startup
+        self._hooks = PainterHooks()
+        self._hooks.ready_to_run = self._init_hexrays_hooks
+        self._hooks.hook()
+
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
         self._director.coverage_modified(self.repaint)
+
+    #--------------------------------------------------------------------------
+    # Initialization
+    #--------------------------------------------------------------------------
+
+    def _init_hexrays_hooks(self):
+        """
+        Install Hex-Rrays hooks (when available).
+
+        NOTE: This is called when the ui_ready_to_run event fires.
+        """
+        if idaapi.init_hexrays_plugin():
+            idaapi.install_hexrays_callback(self._hxe_callback)
+        self._hooks.unhook()
 
     #------------------------------------------------------------------------------
     # Painting
@@ -314,6 +333,25 @@ class CoveragePainter(object):
         # finally, refresh the view
         idaapi.refresh_idaview_anyway()
 
+    def _hxe_callback(self, event, *args):
+        """
+        HexRays callback event handler.
+        """
+
+        # decompilation text generation is complete and it is about to be shown
+        if event == idaapi.hxe_text_ready:
+            vdui = args[0]
+            cfunc = vdui.cfunc
+
+            # if there's no coverage data for this function, there's nothing to do
+            if not cfunc.entry_ea in self._director.coverage.functions:
+                return 0
+
+            # paint the decompilation text for this function
+            self.paint_hexrays(cfunc, self._director.coverage)
+
+        return 0
+
     #------------------------------------------------------------------------------
     # Priority Painting
     #------------------------------------------------------------------------------
@@ -478,3 +516,14 @@ class CoveragePainter(object):
 
         # operation completed successfully
         return True
+
+#------------------------------------------------------------------------------
+# Painter Hooks
+#------------------------------------------------------------------------------
+
+class PainterHooks(idaapi.UI_Hooks):
+    """
+    This is a concrete stub of IDA's UI_Hooks.
+    """
+    pass
+
