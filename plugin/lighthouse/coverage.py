@@ -53,6 +53,10 @@ class DatabaseCoverage(object):
         # hitmap that holds the source data of our mapping
         self._hitmap = build_hitmap(data)
 
+        # a simple hash of the coverage mask (aka self._hitmap.keys())
+        self.coverage_hash = 0
+        self._update_coverage_hash()
+
         # maps of the child mapping objects
         self.nodes        = {}
         self.functions    = {}
@@ -170,6 +174,9 @@ class DatabaseCoverage(object):
         for address, hit_count in data.iteritems():
             self._hitmap[address] += hit_count
 
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
+
         # mark these touched addresses as dirty
         self._unmapped_data |= data.viewkeys()
 
@@ -193,6 +200,9 @@ class DatabaseCoverage(object):
 
             if not self._hitmap[address]:
                 del self._hitmap[address]
+
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
 
         #
         # unmap everything because a complete re-mapping is easier with the
@@ -219,6 +229,15 @@ class DatabaseCoverage(object):
 
         # done, return a new DatabaseCoverage masked with the given coverage
         return DatabaseCoverage(composite_data, self.palette)
+
+    def _update_coverage_hash(self):
+        """
+        Update the hash of the coverage mask.
+        """
+        if self._hitmap:
+            self.coverage_hash = hash(frozenset(self._hitmap.viewkeys()))
+        else:
+            self.coverage_hash = 0
 
     #--------------------------------------------------------------------------
     # Coverage Mapping
@@ -356,42 +375,32 @@ class DatabaseCoverage(object):
 
             #
             # using the node_coverage object, we retrieve its underlying
-            # metadata so that we can perform a reverse lookup of all the
-            # functions in the database that reference it
+            # metadata so that we can perform a reverse lookup of the fun
             #
 
-            functions = self._metadata.nodes[node_coverage.address].functions
+            function_metadata = self._metadata.nodes[node_coverage.address].function
 
             #
-            # now we can loop through every function that references this
-            # node and initialize or add this node to its respective
+            # now we can add this node to its respective function level
             # coverage mapping
             #
 
-            for function_metadata in functions.itervalues():
+            try:
+                function_coverage = self.functions[function_metadata.address]
 
-                #
-                # retrieve the coverage object for this function address
-                #
+            #
+            # failed to locate a function coverage object, looks like this
+            # is the first time we have identiied coverage for this
+            # function. creaate a coverage function object and use it now.
+            #
 
-                try:
-                    function_coverage = self.functions[function_metadata.address]
+            except KeyError as e:
+                function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
+                self.functions[function_metadata.address] = function_coverage
 
-                #
-                # failed to locate a function coverage object, looks like this
-                # is the first time we have identiied coverage for this
-                # function. creaate a coverage function object and use it now.
-                #
-
-                except KeyError as e:
-                    function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
-                    self.functions[function_metadata.address] = function_coverage
-
-                # mark this node as executed in the function level mappping
-                function_coverage.mark_node(node_coverage)
-                dirty_functions[function_metadata.address] = function_coverage
-
-                # end of functions loop
+            # mark this node as executed in the function level mappping
+            function_coverage.mark_node(node_coverage)
+            dirty_functions[function_metadata.address] = function_coverage
 
             # end of nodes loop
 
@@ -444,22 +453,10 @@ class DatabaseCoverage(object):
                 continue
 
             # the node was found, unmap any of its tracked coverage blocks
-            self._unmapped_data.update(node_coverage.executed_instructions.viewkeys())
+            self._unmapped_data.update(
+                node_coverage.executed_instructions.viewkeys()
+            )
 
-            #
-            # NOTE:
-            #
-            #   since we pop'd node_coverage from the database-wide self.nodes
-            #   list, this loop iteration owns the last remaining 'hard' ref to
-            #   the object. once the loop rolls over, it will be released.
-            #
-            #   what is cool about this is that its corresponding entry for
-            #   this node_coverage object in any FunctionCoverage objects that
-            #   reference this node will also dissapear. This is because the
-            #   executed_nodes dictionaries are built using WeakValueDictionary.
-            #
-
-            # ...
 
     def _unmap_functions(self, function_addresses):
         """
@@ -482,15 +479,17 @@ class FunctionCoverage(object):
         self.address = function_address
 
         # addresses of nodes executed
-        self.executed_nodes = weakref.WeakValueDictionary()
-
-        # baked colors
-        self.coverage_color  = 0
-        self.profiling_color = 0
+        self.nodes = {}
 
         # compute the # of instructions executed by this function's coverage
         self.instruction_percent = 0.0
         self.node_percent = 0.0
+
+        # baked colors
+        if function_address == idaapi.BADADDR:
+            self.coverage_color = QtGui.QColor(30, 30, 30)
+        else:
+            self.coverage_color = 0
 
     #--------------------------------------------------------------------------
     # Properties
@@ -501,21 +500,28 @@ class FunctionCoverage(object):
         """
         The cumulative instruction executions in this function.
         """
-        return sum(x.hits for x in self.executed_nodes.itervalues())
+        return sum(x.hits for x in self.nodes.itervalues())
 
     @property
     def nodes_executed(self):
         """
         The number of nodes executed in this function.
         """
-        return len(self.executed_nodes)
+        return len(self.nodes)
 
     @property
     def instructions_executed(self):
         """
         The number of unique instructions executed in this function.
         """
-        return sum(x.instructions_executed for x in self.executed_nodes.itervalues())
+        return sum(x.instructions_executed for x in self.nodes.itervalues())
+
+    @property
+    def instructions(self):
+        """
+        The instruction addresses in this function.
+        """
+        return set([ea for node in self.nodes.itervalues() for ea in node.executed_instructions.keys()])
 
     #--------------------------------------------------------------------------
     # Controls
@@ -525,7 +531,7 @@ class FunctionCoverage(object):
         """
         Mark the given node address as executed.
         """
-        self.executed_nodes[node_coverage.address] = node_coverage
+        self.nodes[node_coverage.address] = node_coverage
 
     def finalize(self):
         """
@@ -541,7 +547,7 @@ class FunctionCoverage(object):
         self.instruction_percent = float(self.instructions_executed) / function_metadata.instruction_count
 
         # the estimated number of executions this function has experienced
-        self.executions = float(sum(x.executions for x in self.executed_nodes.itervalues())) / function_metadata.node_count
+        self.executions = float(sum(x.executions for x in self.nodes.itervalues())) / function_metadata.node_count
 
         # bake colors
         self.coverage_color = compute_color_on_gradiant(
@@ -549,13 +555,6 @@ class FunctionCoverage(object):
             palette.coverage_bad,
             palette.coverage_good
         )
-
-        # TODO
-        #self.profiling_color = compute_color_on_gradiant(
-        #    self.insn_percent,
-        #    palette.profiling_cold,
-        #    palette.profiling_hot
-        #)
 
 #------------------------------------------------------------------------------
 # Node Coverage / Data Mapping
@@ -605,5 +604,4 @@ class NodeCoverage(object):
 
         # bake colors
         self.coverage_color = palette.ida_coverage
-        #self.profiling_color = 0 # TODO
 

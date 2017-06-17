@@ -16,6 +16,9 @@ class DrcovData(object):
     """
     def __init__(self, filepath=None):
 
+        # original filepath
+        self.filepath = filepath
+
         # drcov header attributes
         self.version = 0
         self.flavor  = None

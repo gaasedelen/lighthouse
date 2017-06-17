@@ -118,6 +118,9 @@ class ComposingShell(QtWidgets.QWidget):
         self.setObjectName(self.__class__.__name__)
         self._director = director
 
+        # the last known user AST
+        self._last_ast = None
+
         # parser related members
         self._parser = CompositionParser()
         self._parser_error = None
@@ -310,7 +313,18 @@ class ComposingShell(QtWidgets.QWidget):
         if len(self._line.toPlainText()) == 0:
             return
 
-        # TODO/UX: disallow if not on 'New Composition' ?
+        #
+        # TODO/UX: disallow save/create if not on the 'New Composition' option?
+        #
+
+        assert self._last_ast
+
+        #
+        # While the user is picking a name for the new composite, we might as well
+        # try and cache it asynchronously :-)
+        #
+
+        self._director.cache_composition(self._last_ast, force=True)
 
         #
         # the user has entered a valid composition that we have parsed. we
@@ -319,18 +333,22 @@ class ComposingShell(QtWidgets.QWidget):
         #
 
         # pop a simple dialog prompting the user for a composition name
-        coverage_name = idaapi.askstr(0, str(("COMP_%s" % self._line.toPlainText())), "Save composition as...")
+        coverage_name = idaapi.askstr(
+            0,
+            str("COMP_%s" % self._line.toPlainText()),
+            "Save composition as..."
+        )
 
         # the user did not enter a coverage name or hit cancel - abort the save
         if not coverage_name:
             return
 
         #
-        # all good, ask the director to save ('accept') the last / cached
+        # all good, ask the director to save the last composition
         # composition under the given coverage name
         #
 
-        self._director.accept_composition(coverage_name)
+        self._director.add_composition(coverage_name, self._last_ast)
 
         # switch to the newly created composition
         self._director.select_coverage(coverage_name)
@@ -355,8 +373,12 @@ class ComposingShell(QtWidgets.QWidget):
             # attempt to parse the user input against the composition grammar
             self._parsed_tokens, ast = self._parser.parse(text, self._shorthand)
 
-            # parse success, inform the director of the new composition
-            self._director.cache_composition(ast)
+            # if the AST changed since the last parse, inform the director
+            if not ast_equal(self._last_ast, ast):
+                self._director.cache_composition(ast)
+
+            # save the newly parsed ast
+            self._last_ast = ast
 
         # parse failure
         except ParseError as e:
@@ -547,16 +569,10 @@ class ComposingShell(QtWidgets.QWidget):
             cursor.setPosition(token_start, QtGui.QTextCursor.MoveAnchor)
             cursor.setPosition(token_end,   QtGui.QTextCursor.KeepAnchor)
 
-            # delete the selected (existing) token text
-            cursor.removeSelectedText()
-
             # configure the colors/style for this explicit token
             #highlight.setBackground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
             highlight.setForeground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
             cursor.setCharFormat(highlight)
-
-            # write the colored/highlighted version of the token text
-            cursor.insertText(token.value)
 
         #
         # we are done painting all the parsed tokens. let's restore the user
@@ -610,12 +626,8 @@ class ComposingShell(QtWidgets.QWidget):
         cursor.setPosition(invalid_start, QtGui.QTextCursor.MoveAnchor)
         cursor.setPosition(len(text), QtGui.QTextCursor.KeepAnchor)
 
-        # delete the invalid text
-        cursor.removeSelectedText()
-
         # insert a highlighted version of the invalid text
         cursor.setCharFormat(highlight)
-        cursor.insertText(invalid_text)
 
         # reset the cursor position & style
         cursor.setPosition(cursor_position)

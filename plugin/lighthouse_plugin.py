@@ -1,12 +1,14 @@
 import os
+import Queue
 
 from idaapi import plugin_t
 
 from lighthouse.ui import *
 from lighthouse.util import *
 from lighthouse.parsers import *
+from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
-from lighthouse.painting import paint_hexrays
+from lighthouse.metadata import DatabaseMetadata, metadata_progress
 
 # start the global logger *once*
 if not logging_started():
@@ -42,10 +44,11 @@ class Lighthouse(plugin_t):
         # plugin color palette
         self.palette = LighthousePalette()
 
-        #----------------------------------------------------------------------
-
         # the database coverage data conglomerate
         self.director = CoverageDirector(self.palette)
+
+        # the coverage painter
+        self.painter = CoveragePainter(self.director, self.palette)
 
         # hexrays hooks
         self._hxe_events = None
@@ -189,7 +192,7 @@ class Lighthouse(plugin_t):
         action_desc = idaapi.action_desc_t(
             self._action_name_load,                   # The action name.
             "~C~ode Coverage File(s)...",             # The action text.
-            IDACtxEntry(self.load_code_coverage),     # The action handler.
+            IDACtxEntry(self.load_coverage),          # The action handler.
             None,                                     # Optional: action shortcut
             "Load a code coverage file for this IDB", # Optional: tooltip
             self._icon_id_load                        # Optional: the action icon
@@ -332,46 +335,81 @@ class Lighthouse(plugin_t):
     # UI - Actions
     #--------------------------------------------------------------------------
 
-    def load_code_coverage(self):
+    def load_coverage(self):
         """
         Interactive file dialog based loading of Code Coverage.
         """
 
-        # prompt the user with a QtFileDialog to select coverage files
-        coverage_files = self._select_code_coverage_files()
-        if not coverage_files:
+        #
+        # kick off an asynchronous metadata refresh. this collects underlying
+        # database metadata while the user is busy selecting coverage files.
+        #
+        # our metadata enables the director to process, map, and manipulate
+        # coverage data in a performant, asynchronous manner.
+        #
+
+        future = self.director.metadata.refresh(progress_callback=metadata_progress)
+
+        #
+        # prompt the user with a QtFileDialog so that they can select any
+        # number of coverage files to load at once.
+        #
+        # if not files are selected, we abort the coverage loading process.
+        #
+
+        filenames = self._select_coverage_files()
+        if not filenames:
             return
 
-        # TODO: this is okay here for now, but should probably be moved later
+        #
+        # load the raw coverage data from disk
+        #
+
+        coverage_data = self._load_coverage_files(filenames)
+
+        #
+        # touch the async metadata collection result to see if it has finished.
+        # if the collection is finished, we can just move on without ever
+        # showing the user a waitbox dialog (or flickering one).
+        #
+
+        idaapi.show_wait_box("Building database metadata...")
+        await_future(future)
+
+        #----------------------------------------------------------------------
+
+        #
+        # at this point, the metadata caching is complete and all the raw
+        # coverage data has been parsed and is ready for use.
+        #
+
+        # TODO: everything below this is a bit of a jumbled mess for now...
+
         self.palette.refresh_colors()
 
         #
         # TODO:
-        #
         #   I do not hold great confidence in this code yet, so let's wrap
         #   this in a try/catch so the user doesn't get stuck with a wait
         #   box they can't close should things go poorly ;P
         #
 
+        idaapi.replace_wait_box("Normalizing and mapping coverage data...")
+
         try:
 
-            #
-            # collect underlying database metadata so that the plugin core can
-            # process, map, and manipulate coverage data in a performant manner.
-            #
-            # TODO: do this asynchronously as the user is selecting files
-            #
+            for data in coverage_data:
 
-            idaapi.show_wait_box("Building database metadata...")
-            self.director.refresh()
+                # normalize coverage data to the database
+                name = os.path.basename(data.filepath)
+                addresses = self._normalize_coverage(data, self.director.metadata)
 
-            #
-            # load the selected code coverage files into the plugin core
-            #
+                # enlighten the coverage director to this new runtime data
+                self.director.add_coverage(name, addresses)
 
-            idaapi.replace_wait_box("Loading coverage files from disk...")
-            for filename in coverage_files:
-                self.load_code_coverage_file(filename)
+            # select the 'first' coverage file loaded
+            self.director.select_coverage(self.director.coverage_names[0])
+
             idaapi.hide_wait_box()
 
         # 'something happened :('
@@ -382,10 +420,7 @@ class Lighthouse(plugin_t):
             logger.exception(e)
             return
 
-        # select the 'first' coverage file loaded
-        self.director.select_coverage(os.path.basename(coverage_files[0]))
-
-        # install hexrays hooks if available for this arch/install
+        # install hexrays hooks if they are available for this arch & license
         try:
             self._install_hexrays_hooks()
         except RuntimeError:
@@ -400,7 +435,7 @@ class Lighthouse(plugin_t):
         """
         self._ui_coverage_overview.Show()
 
-    def _select_code_coverage_files(self):
+    def _select_coverage_files(self):
         """
         Open the 'Load Code Coverage' dialog and capture file selections.
         """
@@ -423,16 +458,31 @@ class Lighthouse(plugin_t):
     # Misc
     #--------------------------------------------------------------------------
 
-    def load_code_coverage_file(self, filename):
+    def _load_coverage_files(self, filenames):
         """
-        Load code coverage file by filename.
-
-        NOTE: At this time only binary drcov logs are supported.
+        Load multiple code coverage files from disk.
         """
-        basename = os.path.basename(filename)
+        return [self._load_coverage_file(filename) for filename in filenames]
 
-        # load coverage data from file
-        coverage_data = DrcovData(filename)
+    def _load_coverage_file(self, filename):
+        """
+        Load code coverage file from disk.
+
+        TODO: Add other formats. Only drcov logs supported for now.
+        """
+        return DrcovData(filename)
+
+    def _normalize_coverage(self, coverage_data, metadata):
+        """
+        Normalize loaded coverage data to the database metadata.
+
+        TODO:
+          This will probably be moved out and turn into a layer for each unique
+          lighthouse coverage parser/loader to implement.
+
+          for example, this effectively translate the DrcovData log to a more
+          general / universal format for the director.
+        """
 
         # extract the coverage relevant to this IDB (well, the root binary)
         root_filename   = idaapi.get_root_filename()
@@ -443,10 +493,7 @@ class Lighthouse(plugin_t):
         rebased_blocks = rebase_blocks(base, coverage_blocks)
 
         # flatten the basic blocks into individual instructions or addresses
-        addresses = self.director.metadata.flatten_blocks(rebased_blocks)
-
-        # enlighten the coverage director to this new runtime data
-        self.director.add_coverage(basename, addresses)
+        return metadata.flatten_blocks(rebased_blocks)
 
     def _hexrays_callback(self, event, *args):
         """
@@ -463,12 +510,7 @@ class Lighthouse(plugin_t):
                 return 0
 
             # paint the decompilation text for this function
-            paint_hexrays(
-                cfunc,
-                self.director.metadata,
-                self.director.coverage,
-                self.palette.ida_coverage
-            )
+            self.painter.paint_hexrays(cfunc, self.director.coverage)
 
         return 0
 

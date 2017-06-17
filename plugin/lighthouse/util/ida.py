@@ -1,7 +1,11 @@
+import time
+import Queue
 import logging
+import functools
 import collections
 
 import idaapi
+import idautils
 
 from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
 
@@ -203,3 +207,226 @@ def get_disas_bg_color():
 
     # return the color of the pixel we extracted
     return color
+
+#------------------------------------------------------------------------------
+# IDA execute_sync decorators
+#------------------------------------------------------------------------------
+# from: Will Ballenthin
+# http://www.williballenthin.com/blog/2015/09/04/idapython-synchronization-decorator
+#
+
+def idafast(f):
+    """
+    decorator for marking a function as fast / UI event
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        if idaapi.is_main_thread():
+            return ff()
+        else:
+            return idaapi.execute_sync(ff, idaapi.MFF_FAST)
+    return wrapper
+
+def idanowait(f):
+    """
+    decorator for marking a function as completely async.
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT)
+    return wrapper
+
+def idawrite(f):
+    """
+    decorator for marking a function as modifying the IDB.
+    schedules a request to be made in the main IDA loop to avoid IDB corruption.
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
+    return wrapper
+
+def idaread(f):
+    """
+    decorator for marking a function as reading from the IDB.
+    schedules a request to be made in the main IDA loop to avoid
+      inconsistent results.
+    MFF_READ constant via: http://www.openrce.org/forums/posts/1827
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        return idaapi.execute_sync(ff, idaapi.MFF_READ)
+    return wrapper
+
+def mainthread(f):
+    """
+    A decorator to indicate that a function should always be
+    called in the context of the main thread.
+    """
+    def wrapper(*args, **kwargs):
+        assert idaapi.is_main_thread()
+        return f(*args, **kwargs)
+    return wrapper
+
+#------------------------------------------------------------------------------
+# IDA Async Magic
+#------------------------------------------------------------------------------
+# TODO: these will be important to explain
+
+@mainthread
+def flush_ida_sync_requests():
+    """
+    Flush all execute_sync requests.
+
+    NOTE: This MUST be called from the IDA Mainthread to be effective.
+    """
+    if not idaapi.is_main_thread():
+        return False
+
+    # this will trigger/flush the IDA UI loop
+    qta = QtCore.QCoreApplication.instance()
+    qta.processEvents()
+
+    # done
+    return True
+
+@mainthread
+def await_future(future, block=True, timeout=1.0):
+    """
+    TODO
+    """
+
+    elapsed  = 0       # total time elapsed processing this future object
+    interval = 0.02    # the interval which we wait for a response
+    end_time = time.time() + timeout
+
+    # run until the the future completes or the timeout elapses
+    while block or (time.time() < end_time):
+
+        # block for a brief period to see if the future completes
+        try:
+            return future.get(timeout=interval)
+
+        #
+        # the future timed out, so perhaps it is blocked on a request
+        # to the mainthread. flush the requests now and try again
+        #
+
+        except Queue.Empty as e:
+            logger.debug("Flushing execute_sync requests")
+            flush_ida_sync_requests()
+
+def execute_sync(sync_flags=idaapi.MFF_FAST):
+    """
+    TODO
+    """
+    def real_decorator(function):
+        @functools.wraps(function)
+        def wrapper(*args, **kwargs):
+
+            # create the communication queue we will recieve messages on
+            mainthread_msg_queue = Queue.Queue()
+
+            # wrap the target function with our queue communication additions
+            kwargs["mainthread_func"] = function
+            kwargs["mainthread_msg_queue"] = mainthread_msg_queue
+            ff = functools.partial(wrapped_request, *args, **kwargs)
+
+            # schedule execution of the modified function of interest
+            idaapi.execute_sync(ff, sync_flags)
+
+            # wait for the response from the main thread
+            success, return_data = mainthread_msg_queue.get()
+
+            # if execution of said function failed, re-raise the exception
+            if not success:
+                raise return_data
+
+            # execution in main thread succeeded
+            return return_data
+        return wrapper
+    return real_decorator
+
+def wrapped_request(*args, **kwargs):
+    """
+    TODO
+    """
+    mainthread_func      = kwargs.pop("mainthread_func")
+    mainthread_msg_queue = kwargs.pop("mainthread_msg_queue")
+
+    # attempt to execute our function
+    try:
+        result = (True, mainthread_func(*args, **kwargs))
+
+    # execution of our function failed
+    except Exception as e:
+        logger.debug("Exception occured during mainthread request")
+        logger.debug(e)
+        result = (False, e)
+
+    # return the result of execution in the main thread
+    mainthread_msg_queue.put(result)
+
+#------------------------------------------------------------------------------
+# Threaded Defs
+#------------------------------------------------------------------------------
+
+@idafast
+def thread_print(message):
+    """
+    Print to the IDA output window.
+    """
+    print message
+
+@idafast
+def thread_warning(message):
+    """
+    Show the IDA warning dialog.
+    """
+    idaapi.warning(message)
+
+@idafast
+def thread_msgbox(message):
+    """
+    Show the IDA info dialog.
+    """
+    idaapi.info(message)
+
+@idafast
+def thread_askyn_c(message, defval=0):
+    """
+    Show the IDA Yes/No dialog.
+    """
+    return idaapi.askyn_c(defval, message)
+
+@idanowait
+def thread_quit_ida():
+    """
+    Quit IDA.
+    """
+    idaapi.qexit(0)
+
+@idawrite
+def thread_set_color(ea, color):
+    """
+    Set item color in the IDB.
+    """
+    idaapi.set_item_color(ea, color)
+
+@idaread
+def thread_get_color(ea):
+    """
+    Read an item color from the IDB.
+    """
+    idaapi.get_item_color(ea)
+
+@execute_sync(idaapi.MFF_READ)
+def get_all_functions():
+    """
+    Get all defined function addresses for the IDB.
+    """
+    return list(idautils.Functions())
