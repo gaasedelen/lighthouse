@@ -124,21 +124,21 @@ class CoverageOverview(idaapi.PluginForm):
         """
         Initialize the coverage table.
         """
-        self._table = QtWidgets.QTreeView()
-        self._table.setRootIsDecorated(False)
-        self._table.setUniformRowHeights(True)
-        self._table.setExpandsOnDoubleClick(False)
+        self._table = QtWidgets.QTableView()
 
         # set these properties so the user can arbitrarily shrink the table
         self._table.setMinimumHeight(0)
-        self._table.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        self._table.setSizePolicy(
+            QtWidgets.QSizePolicy.Ignored,
+            QtWidgets.QSizePolicy.Ignored
+        )
 
         # allow sorting of the table, and initialize the sort indicator
         self._table.setSortingEnabled(True)
-        self._table.header().setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
-
-        # install a drawing delegate to draw the grid lines on the table
-        self._table.setItemDelegate(GridDelegate(self._table))
+        self._table.horizontalHeader().setSortIndicator(
+            FUNC_ADDR,
+            QtCore.Qt.AscendingOrder
+        )
 
         # install the underlying data source for the table
         self._table.setModel(self._model)
@@ -147,6 +147,25 @@ class CoverageOverview(idaapi.PluginForm):
         for i in xrange(len(SAMPLE_CONTENTS)):
             rect = self._font_metrics.boundingRect(SAMPLE_CONTENTS[i])
             self._table.setColumnWidth(i, rect.width())
+
+        # table selection should be by row, not by cell
+        self._table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+
+        # more code-friendly, readable aliases
+        vh = self._table.verticalHeader()
+        hh = self._table.horizontalHeader()
+
+        # NOTE/COMPAT: set the row heights as fixed
+        if using_pyqt5():
+            vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        else:
+            vh.setResizeMode(QtWidgets.QHeaderView.Fixed)
+
+        # specify the fixed row height in pixels
+        vh.setDefaultSectionSize(int(self._font_metrics.height()))
+
+        # stretch the last column (which is blank)
+        hh.setStretchLastSection(True)
 
     def _ui_init_toolbar(self):
         """
@@ -314,7 +333,7 @@ class CoverageOverview(idaapi.PluginForm):
 # Coverage Table - TableModel
 #------------------------------------------------------------------------------
 
-class CoverageModel(QtCore.QAbstractItemModel):
+class CoverageModel(QtCore.QAbstractTableModel):
     """
     A Qt model interface to format coverage data for Qt views.
     """
@@ -366,18 +385,6 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
     def flags(self, index):
         return QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable
-
-    def parent(self, index=QtCore.QModelIndex):
-        return QtCore.QModelIndex()
-
-    def index(self, row, column, parent=QtCore.QModelIndex()):
-        try:
-            return self.createIndex(row, column, row)
-        except KeyError as e:
-            return QtCore.QModelIndex()
-
-    def canFetchMore(self, index):
-        return True
 
     def rowCount(self, index=QtCore.QModelIndex()):
         """
@@ -574,6 +581,7 @@ class CoverageModel(QtCore.QAbstractItemModel):
         self._last_sort = column
         self._last_sort_order = sort_order
 
+        # done
         return True
 
     #--------------------------------------------------------------------------
@@ -671,28 +679,3 @@ class CoverageModel(QtCore.QAbstractItemModel):
 
         # bake the final number of rows into the model
         self._rows = len(self.row2func)
-
-#------------------------------------------------------------------------------
-# Coverage Table - Painting Delegate
-#------------------------------------------------------------------------------
-
-class GridDelegate(QtWidgets.QStyledItemDelegate):
-    """
-    Coverage Overview Painting Delegate
-    """
-
-    def __init__(self, parent=None):
-        super(GridDelegate, self).__init__(parent)
-        self._grid_color = QtGui.QColor(QtCore.Qt.black)
-
-    def paint(self, painter, option, index):
-        """
-        Augmented entry painting.
-        """
-        super(GridDelegate, self).paint(painter, option, index)
-
-        # paint the cell walls of the entry (eg, the 'grid')
-        painter.save()
-        painter.setPen(self._grid_color)
-        painter.drawRect(option.rect)
-        painter.restore()
