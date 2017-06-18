@@ -13,16 +13,23 @@ logger = logging.getLogger("Lighthouse.Painting")
 
 class CoveragePainter(object):
     """
-    TODO
+    Asynchronous database painter.
     """
 
     def __init__(self, director, palette):
+
+        # color palette
         self.palette = palette
         self._director = director
 
         #----------------------------------------------------------------------
         # Painted State
         #----------------------------------------------------------------------
+
+        #
+        # the coverage painter maintains its own internal record of what
+        # instruction addresses and graph nodes it has painted.
+        #
 
         self._painted_nodes = set()
         self._painted_instructions = set()
@@ -31,8 +38,18 @@ class CoveragePainter(object):
         # Async
         #----------------------------------------------------------------------
 
+        #
+        # to communicate with the asynchronous painting thread, we send a
+        # a message over the queue to kick off a new paint event, and the
+        # bool to interrupt a running paint request.
+        #
+
         self._repaint_queue = Queue.Queue()
         self._repaint_requested = False
+
+        #
+        # asynchronous database painting thread
+        #
 
         self._painting_worker = threading.Thread(
             target=self._async_database_painter,
@@ -66,6 +83,13 @@ class CoveragePainter(object):
         """
         if idaapi.init_hexrays_plugin():
             idaapi.install_hexrays_callback(self._hxe_callback)
+
+        #
+        # we only use self._hooks (UI_Hooks) to install our hexrays hooks.
+        # since this 'init' function should only ever be called once, remove
+        # our UI_Hooks now to clean up after ourselves.
+        #
+
         self._hooks.unhook()
 
     #------------------------------------------------------------------------------
@@ -74,9 +98,13 @@ class CoveragePainter(object):
 
     def repaint(self):
         """
-        Paint coverage defined by the current database mappings
+        Paint coverage defined by the current database mappings.
         """
+
+        # immediately paint the regions of the database the user is looking at
         self._priority_paint()
+
+        # request a complete repaint
         self._repaint_requested = True
         self._repaint_queue.put(True)
 
@@ -92,13 +120,6 @@ class CoveragePainter(object):
             idaapi.set_item_color(address, self.palette.ida_coverage)
             self._painted_instructions.add(address)
 
-    @idawrite
-    def _paint_instructions(self, instructions):
-        """
-        Internal routine to force called action to the main thread.
-        """
-        self.paint_instructions(instructions)
-
     def clear_instructions(self, instructions):
         """
         Clear paint from the given instructions.
@@ -106,6 +127,13 @@ class CoveragePainter(object):
         for address in instructions:
             idaapi.set_item_color(address, idc.DEFCOLOR)
             self._painted_instructions.discard(address)
+
+    @idawrite
+    def _paint_instructions(self, instructions):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        self.paint_instructions(instructions)
 
     @idawrite
     def _clear_instructions(self, instructions):
@@ -147,13 +175,6 @@ class CoveragePainter(object):
 
             self._painted_nodes.add(node_metadata.address)
 
-    @idawrite
-    def _paint_nodes(self, nodes_coverage):
-        """
-        Internal routine to force called action to the main thread.
-        """
-        self.paint_nodes(nodes_coverage)
-
     def clear_nodes(self, nodes_metadata):
         """
         Clear paint from the given graph nodes.
@@ -181,6 +202,13 @@ class CoveragePainter(object):
             self._painted_nodes.discard(node_metadata.address)
 
     @idawrite
+    def _paint_nodes(self, nodes_coverage):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        self.paint_nodes(nodes_coverage)
+
+    @idawrite
     def _clear_nodes(self, nodes_metadata):
         """
         Internal routine to force called action to the main thread.
@@ -193,7 +221,7 @@ class CoveragePainter(object):
 
     def paint_function(self, function):
         """
-        Paint function instructions & nodes with the current database mappings
+        Paint function instructions & nodes with the current database mappings.
         """
 
         # sanity check
@@ -335,7 +363,7 @@ class CoveragePainter(object):
 
     def _hxe_callback(self, event, *args):
         """
-        HexRays callback event handler.
+        HexRays event handler.
         """
 
         # decompilation text generation is complete and it is about to be shown
@@ -359,6 +387,12 @@ class CoveragePainter(object):
     def _priority_paint(self):
         """
         Immediately repaint regions of the database visible to the user.
+
+        TODO:
+
+          it would be nice to loop through the address history and grab
+          other database hotspots where the user has been recently.
+
         """
         cursor_address = idaapi.get_screen_ea()
 
@@ -493,6 +527,8 @@ class CoveragePainter(object):
 
     def _async_action(self, paint_action, work_iterable):
         """
+        Split a normal paint routine into interruptable chunks.
+
         Internal routine for asynchrnous painting.
         """
         CHUNK_SIZE = 800 # somewhat arbitrary
