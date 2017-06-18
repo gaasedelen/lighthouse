@@ -1,12 +1,11 @@
 import os
-import cProfile
-
 import idaapi
 
-from ida import *
+from .ida import *
+from .debug import *
 from .misc import CompositionCache
-from log import lmsg, logging_started, start_logging
-from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
+from .log import lmsg, logging_started, start_logging
+from .qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
 
 #
 # TODO: this file is a dumpster fire right now, clean it up
@@ -16,56 +15,6 @@ def MonospaceFont():
     font = QtGui.QFont("Monospace")
     font.setStyleHint(QtGui.QFont.TypeWriter)
     return font
-
-#------------------------------------------------------------------------------
-# Profiling / Testing Helpers
-#------------------------------------------------------------------------------
-
-pr = cProfile.Profile()
-
-def profile(func):
-    """
-    Function profiling decorator.
-    """
-    def wrap(*args, **kwargs):
-        global pr
-        pr.enable()
-        result = func(*args, **kwargs)
-        pr.disable()
-        pr.print_stats(sort="tottime")
-        return result
-    return wrap
-
-# portable line profiler
-# from: https://gist.github.com/sibelius/3920b3eb5adab482b105
-try:
-    from line_profiler import LineProfiler
-    def line_profile(func):
-        def profiled_func(*args, **kwargs):
-            try:
-                profiler = LineProfiler()
-                profiler.add_function(func)
-                profiler.enable_by_count()
-                return func(*args, **kwargs)
-            finally:
-                profiler.print_stats()
-        return profiled_func
-
-except ImportError:
-    def line_profile(func):
-        def nothing(*args, **kwargs):
-            return func(*args, **kwargs)
-        return nothing
-
-#from line_profiler import LineProfiler
-#lpr = LineProfiler()
-
-#import lighthouse.metadata as metadata_module
-#lpr.add_module(metadata_module)
-#global lpr
-#lpr.enable_by_count()
-#lpr.disable_by_count()
-#lpr.print_stats()
 
 #------------------------------------------------------------------------------
 # Misc
