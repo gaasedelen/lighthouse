@@ -1,5 +1,4 @@
 import os
-import Queue
 
 from idaapi import plugin_t
 
@@ -152,13 +151,12 @@ class Lighthouse(plugin_t):
         Install the 'File->Load->Code Coverage File(s)...' menu entry.
         """
 
-        # createa a custom IDA icon
+        # create a custom IDA icon
         self._icon_id_load = idaapi.load_custom_icon(
             data=str(open(resource_file("icons/load.png"), "rb").read())
         )
 
-        # describe the action
-        # add an menu entry to the options dropdown on the IDA toolbar
+        # describe a custom IDA UI action
         action_desc = idaapi.action_desc_t(
             self._action_name_load,                   # The action name.
             "~C~ode Coverage File(s)...",             # The action text.
@@ -180,7 +178,7 @@ class Lighthouse(plugin_t):
             idaapi.SETMENU_APP       # We want to append the action after ^
         )
         if not result:
-            RuntimeError("Failed to attach load action to 'File/Load file/' dropdown")
+            RuntimeError("Failed action attach to 'File/Load file/' dropdown")
 
         logger.info("Installed the 'Load Code Coverage' menu entry")
 
@@ -189,13 +187,12 @@ class Lighthouse(plugin_t):
         Install the 'View->Open subviews->Coverage Overview' menu entry.
         """
 
-        # createa a custom IDA icon
+        # create a custom IDA icon
         self._icon_id_overview = idaapi.load_custom_icon(
             data=str(open(resource_file("icons/overview.png"), "rb").read())
         )
 
-        # describe the action
-        # add an menu entry to the options dropdown on the IDA toolbar
+        # describe a custom IDA UI action
         action_desc = idaapi.action_desc_t(
             self._action_name_overview,               # The action name.
             "~C~overage Overview",                    # The action text.
@@ -210,14 +207,14 @@ class Lighthouse(plugin_t):
         if not result:
             RuntimeError("Failed to register open coverage overview action with IDA")
 
-        # attach the action to the File-> dropdown menu
+        # attach the action to the View-> dropdown menu
         result = idaapi.attach_action_to_menu(
             "View/Open subviews/Hex dump", # Relative path of where to add the action
             self._action_name_overview,    # The action ID (see above)
-            idaapi.SETMENU_INS             # We want to append the action after ^
+            idaapi.SETMENU_INS             # We want to insert the action before ^
         )
         if not result:
-            RuntimeError("Failed to attach open action to 'subviews' dropdown")
+            RuntimeError("Failed action attach to 'View/Open subviews' dropdown")
 
         logger.info("Installed the 'Coverage Overview' menu entry")
 
@@ -249,8 +246,9 @@ class Lighthouse(plugin_t):
 
         # remove the entry from the File-> menu
         result = idaapi.detach_action_from_menu(
-            "File/Load file/",                 # Relative path of where we put the action
-            self._action_name_load)
+            "File/Load file/",
+            self._action_name_load
+        )
         if not result:
             return False
 
@@ -272,8 +270,9 @@ class Lighthouse(plugin_t):
 
         # remove the entry from the View-> menu
         result = idaapi.detach_action_from_menu(
-            "View/Open subviews/Hex dump",    # Relative path of where we put the action
-            self._action_name_overview)
+            "View/Open subviews/Hex dump",
+            self._action_name_overview
+        )
         if not result:
             return False
 
@@ -294,15 +293,15 @@ class Lighthouse(plugin_t):
 
     def load_coverage(self):
         """
-        Interactive file dialog based loading of Code Coverage.
+        An interactive file dialog flow for loading code coverage files.
         """
 
         #
         # kick off an asynchronous metadata refresh. this collects underlying
-        # database metadata while the user is busy selecting coverage files.
+        # database metadata while the user will be busy selecting coverage files.
         #
-        # our metadata enables the director to process, map, and manipulate
-        # coverage data in a performant, asynchronous manner.
+        # the collected metadata enables the director to process, map, and
+        # manipulate loaded coverage data in a performant, asynchronous manner.
         #
 
         future = self.director.metadata.refresh(progress_callback=metadata_progress)
@@ -311,7 +310,7 @@ class Lighthouse(plugin_t):
         # prompt the user with a QtFileDialog so that they can select any
         # number of coverage files to load at once.
         #
-        # if not files are selected, we abort the coverage loading process.
+        # if no files are selected, we abort the coverage loading process.
         #
 
         filenames = self._select_coverage_files()
@@ -319,39 +318,40 @@ class Lighthouse(plugin_t):
             return
 
         #
-        # load the raw coverage data from disk
+        # load the selected coverage files from disk
         #
 
         coverage_data = self._load_coverage_files(filenames)
 
         #
-        # touch the async metadata collection result to see if it has finished.
-        # if the collection is finished, we can just move on without ever
-        # showing the user a waitbox dialog (or flickering one).
+        # refresh the theme aware color palette for lighthouse
+        #
+
+        self.palette.refresh_colors()
+
+        #
+        # to continue any further, we need the database metadata. hopefully
+        # it has finished with its asynchronous collection, otherwise we will
+        # block until it completes. the user will be shown a progress dialog.
         #
 
         idaapi.show_wait_box("Building database metadata...")
         await_future(future)
 
-        #----------------------------------------------------------------------
-
         #
-        # at this point, the metadata caching is complete and all the raw
-        # coverage data has been parsed and is ready for use.
+        # at this point the metadata caching is guaranteed to be complete.
+        # the coverage data has been loaded and is ready for mapping.
         #
 
-        # TODO: everything below this is a bit of a jumbled mess for now...
-
-        self.palette.refresh_colors()
+        idaapi.replace_wait_box("Normalizing and mapping coverage data...")
 
         #
         # TODO:
+        #
         #   I do not hold great confidence in this code yet, so let's wrap
         #   this in a try/catch so the user doesn't get stuck with a wait
         #   box they can't close should things go poorly ;P
         #
-
-        idaapi.replace_wait_box("Normalizing and mapping coverage data...")
 
         try:
 
@@ -377,12 +377,15 @@ class Lighthouse(plugin_t):
             logger.exception(e)
             return
 
+        # print a success message to the output window
+        lmsg("loaded %u coverage file(s)..." % len(coverage_data))
+
         # show the coverage overview
         self.open_coverage_overview()
 
     def open_coverage_overview(self):
         """
-        Open the Coverage Overview dialog.
+        Open the 'Coverage Overview' dialog.
         """
         self._ui_coverage_overview.Show()
 
@@ -417,7 +420,7 @@ class Lighthouse(plugin_t):
 
     def _load_coverage_file(self, filename):
         """
-        Load code coverage file from disk.
+        Load a single code coverage file from disk.
 
         TODO: Add other formats. Only drcov logs supported for now.
         """
@@ -428,11 +431,13 @@ class Lighthouse(plugin_t):
         Normalize loaded coverage data to the database metadata.
 
         TODO:
+
           This will probably be moved out and turn into a layer for each unique
           lighthouse coverage parser/loader to implement.
 
           for example, this effectively translate the DrcovData log to a more
           general / universal format for the director.
+
         """
 
         # extract the coverage relevant to this IDB (well, the root binary)
@@ -476,24 +481,20 @@ class LighthousePalette(object):
         #
         # Coverage Overview
         #
-                              #        dark              -           light
+
         self._coverage_bad  = [QtGui.QColor(221, 0, 0),    QtGui.QColor(207, 31, 0)]
         self._coverage_good = [QtGui.QColor(51, 153, 255), QtGui.QColor(75, 209, 42)]
-
-        # TODO: unused for now
-        #self._profiling_cold = QtGui.QColor(0,0,0)
-        #self._profiling_hot  = QtGui.QColor(0,0,0)
 
         #
         # IDA Views / HexRays
         #
-                             #  dark   -  light
+
         self._ida_coverage = [0x990000, 0xC8E696] # NOTE: IDA uses BBGGRR
 
         #
         # Composing Shell
         #
-                               #  dark   -  light
+
         self._logic_token    = [0xF02070, 0xFF0000]
         self._comma_token    = [0x00FF00, 0x0000FF]
         self._paren_token    = [0x40FF40, 0x0000FF]
