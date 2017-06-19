@@ -106,7 +106,7 @@ class CoverageOverview(idaapi.PluginForm):
         """
 
         # set window icon to the coverage overview icon
-        self.parent.setWindowIcon(QtGui.QIcon(resource_file("icons\overview.png")))
+        self.parent.setWindowIcon(QtGui.QIcon(plugin_resource("icons\overview.png")))
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()

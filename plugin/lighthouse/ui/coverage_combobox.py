@@ -255,6 +255,10 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         self.setTextElideMode(QtCore.Qt.ElideRight)
         self.setWordWrap(False)
 
+        # more code-friendly, readable aliases
+        vh = self.verticalHeader()
+        hh = self.horizontalHeader()
+
         #
         # NOTE/COMPAT:
         # - set the coverage name column to be stretchy and as tall as the text
@@ -262,15 +266,15 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         #
 
         if using_pyqt5():
-            self.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-            self.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
-            self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+            hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+            hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+            vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         else:
-            self.horizontalHeader().setResizeMode(0, QtWidgets.QHeaderView.Stretch)
-            self.horizontalHeader().setResizeMode(1, QtWidgets.QHeaderView.Fixed)
-            self.verticalHeader().setResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+            hh.setResizeMode(0, QtWidgets.QHeaderView.Stretch)
+            hh.setResizeMode(1, QtWidgets.QHeaderView.Fixed)
+            vh.setResizeMode(QtWidgets.QHeaderView.ResizeToContents)
 
-        self.verticalHeader().setMinimumSectionSize(0)
+        vh.setMinimumSectionSize(0)
 
         # get the column width hint from the model for the 'X' delete column
         icon_column_width = self.model().headerData(
@@ -280,7 +284,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         )
 
         # set the 'X' delete icon column width to a fixed size based on the hint
-        self.horizontalHeader().resizeSection(COLUMN_DELETE, icon_column_width)
+        hh.resizeSection(COLUMN_DELETE, icon_column_width)
 
         # install a delegate to do some custom painting against the combobox
         self.setItemDelegate(ComboBoxDelegate())
@@ -358,7 +362,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # load the raw 'X' delete icon from disk
-        delete_icon = QtGui.QPixmap(resource_file("icons/delete_coverage.png"))
+        delete_icon = QtGui.QPixmap(plugin_resource("icons/delete_coverage.png"))
 
         # compute the appropriate size for the deletion icon
         icon_height = self._font_metrics.height()/2

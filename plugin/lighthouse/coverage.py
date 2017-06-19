@@ -4,6 +4,7 @@ import itertools
 import collections
 
 from lighthouse.util import *
+from lighthouse.palette import compute_color_on_gradiant
 from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata
 
