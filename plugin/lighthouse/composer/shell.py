@@ -417,6 +417,16 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Draw the coverage hint as applicable.
         """
+
+        #
+        # if the shell is not focused, don't bother to show a hint as it
+        # frequently gets in the way and is really annoying...
+        #
+
+        if not self._line.hasFocus():
+            return
+
+        # scrape info from the current shell text state
         cursor_index = self._line.textCursor().position()
         text_token   = self._get_cursor_coverage_token(cursor_index)
 
