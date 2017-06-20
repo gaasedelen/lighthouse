@@ -125,6 +125,7 @@ class CoverageOverview(idaapi.PluginForm):
         Initialize the coverage table.
         """
         self._table = QtWidgets.QTableView()
+        self._table.setStyleSheet("QTableView { gridline-color: black; }")
 
         # set these properties so the user can arbitrarily shrink the table
         self._table.setMinimumHeight(0)

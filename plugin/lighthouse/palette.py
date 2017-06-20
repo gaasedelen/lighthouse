@@ -75,7 +75,16 @@ class LighthousePalette(object):
         Depending on if IDA is using a dark or light theme, we *try*
         to select colors that will hopefully keep things most readable.
         """
-        self._qt_theme  = self._qt_theme_hint()
+
+        #
+        # NOTE/TODO:
+        #
+        #   the dark table (Qt) theme is way better than the light theme
+        #   right now, so we're just going to force that on for everyone
+        #   for the time being.
+        #
+
+        self._qt_theme  = "Dark" # self._qt_theme_hint()
         self._ida_theme = self._ida_theme_hint()
 
     def _ida_theme_hint(self):
