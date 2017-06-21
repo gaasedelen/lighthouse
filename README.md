@@ -13,6 +13,7 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 
 ## Releases
 
+* v0.4 -- Most compute is now asynchronous, bugfixes.
 * v0.3 -- Coverage composition, interactive composing shell.
 * v0.2 -- Multifile support, perfomance improvements, bugfixes.
 * v0.1 -- Initial release
@@ -94,13 +95,13 @@ Loaded coverage data and user constructed compositions can be selected or delete
 
 ## Hot Shell (experimental)
 
-Additionally, there is a prototype 'Hot Shell' mode that evaluates user compositions in real-time. This promotes a more natural experience in the unguided exploration of composed relationships.
+Additionally, there is a prototype 'Hot Shell' mode that asynchronously evaluates and caches user compositions in real-time. 
 
 <p align="center">
 <img alt="Lighthouse Hot Shell" src="screenshots/hot_shell.gif"/>
 </p>
 
-The performance of this feature will be vastly improved in the next release, v0.4.0.
+The hot shell serves as a natural gateway to the unguided exploration of composed relationships.
 
 ## Collecting Coverage
 
@@ -126,7 +127,7 @@ While Lighthouse is considered a prototype, internally it is largely agnostic of
 
 Time and motivation permitting, future work may include:
 
-* Asynchronous composition, painting, metadata collection
+* ~~Asynchronous composition, painting, metadata collection~~
 * ~~Multifile/coverage support~~
 * Profiling based heatmaps/painting
 * Coverage & Profiling Treemaps
