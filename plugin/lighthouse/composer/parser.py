@@ -163,7 +163,7 @@ def ast_equal(first, second):
     """
 
     # both trees are 'NULL' / empty AST
-    if isinstance(second, TokenNull) and isinstance(second, TokenNull):
+    if isinstance(first, TokenNull) and isinstance(second, TokenNull):
         return True
 
     # recursively evaluate the AST's
