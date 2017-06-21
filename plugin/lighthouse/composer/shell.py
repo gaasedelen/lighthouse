@@ -232,6 +232,7 @@ class ComposingShell(QtWidgets.QWidget):
     # Refresh
     #--------------------------------------------------------------------------
 
+    @idafast
     def refresh(self):
         """
         Refresh the shell context.

@@ -187,6 +187,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
     # Refresh
     #--------------------------------------------------------------------------
 
+    @idafast
     def refresh(self):
         """
         Refresh the coverage combobox.
