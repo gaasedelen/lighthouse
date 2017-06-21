@@ -16,6 +16,9 @@ class DrcovData(object):
     """
     def __init__(self, filepath=None):
 
+        # original filepath
+        self.filepath = filepath
+
         # drcov header attributes
         self.version = 0
         self.flavor  = None
@@ -109,6 +112,15 @@ class DrcovData(object):
     def _parse_module_table_header(self, f):
         """
         Parse drcov log module table header from filestream.
+
+        -------------------------------------------------------------------
+
+        Format used in DynamoRIO v6.1.1 through 6.2.0
+           eg: 'Module Table: 11'
+
+        Format used in DynamoRIO v7.0.0-RC1 (and hopefully above)
+           eg: 'Module Table: version 2, count 11'
+
         """
 
         # parse module table 'header'
@@ -117,8 +129,26 @@ class DrcovData(object):
         field_name, field_data = header_line.split(": ")
         #assert field_name == "Module Table"
 
-        # seperate 'version X' and 'count Y' from each other
-        version_data, count_data = field_data.split(", ")
+        #
+        # NOTE/COMPAT:
+        #
+        #   DynamoRIO doesn't document their drcov log format, and it has
+        #   changed its format at least once during its lifetime.
+        #
+        #   we just have to try parsing the table header one way to determine
+        #   if its the old (say, a 'v1') table, or the new 'v2' table.
+        #
+
+        try:
+
+            # seperate 'version X' and 'count Y' from each other ('v2')
+            version_data, count_data = field_data.split(", ")
+
+        # failure to unpack indicates this is an 'older, v1' drcov log
+        except ValueError:
+            self.module_table_count   = int(field_data)
+            self.module_table_version = 1
+            return
 
         # parse module table version out of 'version X'
         data_name, version = version_data.split(" ")
@@ -133,7 +163,20 @@ class DrcovData(object):
     def _parse_module_table_columns(self, f):
         """
         Parse drcov log module table columns from filestream.
+
+        -------------------------------------------------------------------
+
+        Format used in DynamoRIO v6.1.1 through 6.2.0
+           eg: (Not present)
+
+        Format used in DynamoRIO v7.0.0-RC1 (and hopefully above)
+           eg: 'Columns: id, base, end, entry, checksum, timestamp, path'
+
         """
+
+        # NOTE/COMPAT: there is no 'Columns' line for the v1 table...
+        if self.module_table_version == 1:
+            return
 
         # parse module table 'columns'
         #   eg: Columns: id, base, end, entry, checksum, timestamp, path
@@ -220,6 +263,7 @@ class DrcovModule(object):
         self.id    = 0
         self.base  = 0
         self.end   = 0
+        self.size  = 0
         self.entry = 0
         self.checksum  = 0
         self.timestamp = 0
@@ -231,25 +275,40 @@ class DrcovModule(object):
 
     def _parse_module(self, module_line, version):
         """
-        Parse a Module Table v2 line.
+        Parse a module table entry.
         """
+        data = module_line.split(", ")
 
-        if version == 2:
-            data = module_line.split(", ")
-
-            # parse the individual fields from the module specification line
-            self.id        = int(data[0])
-            self.base      = int(data[1], 16)
-            self.end       = int(data[2], 16)
-            self.entry     = int(data[3], 16)
-            self.checksum  = int(data[4], 16)
-            self.timestamp = int(data[5], 16)
-            self.path      = str(data[6])
-            self.filename  = os.path.basename(self.path)
-
-        # unknown format
+        # NOTE/COMPAT
+        if version == 1:
+            self._parse_module_v1(data)
+        elif version == 2:
+            self._parse_module_v2(data)
         else:
             raise ValueError("Unknown module format (v%u)" % version)
+
+    def _parse_module_v1(self, data):
+        """
+        Parse a module table v1 entry.
+        """
+        self.id       = int(data[0])
+        self.size     = int(data[1])
+        self.path     = str(data[2])
+        self.filename = os.path.basename(self.path)
+
+    def _parse_module_v2(self, data):
+        """
+        Parse a module table v2 entry.
+        """
+        self.id        = int(data[0])
+        self.base      = int(data[1], 16)
+        self.end       = int(data[2], 16)
+        self.entry     = int(data[3], 16)
+        self.checksum  = int(data[4], 16)
+        self.timestamp = int(data[5], 16)
+        self.path      = str(data[6])
+        self.size      = self.end-self.base
+        self.filename  = os.path.basename(self.path)
 
 #------------------------------------------------------------------------------
 # drcov basic block parser

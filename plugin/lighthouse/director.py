@@ -2,13 +2,13 @@ import time
 import string
 import logging
 import weakref
+import threading
 import collections
 
 from lighthouse.util import *
-from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata, MetadataDelta
 from lighthouse.coverage import DatabaseCoverage
-from lighthouse.composer.parser import TokenLogicOperator, TokenCoverageRange, TokenCoverageSingle, TokenNull
+from lighthouse.composer.parser import *
 
 logger = logging.getLogger("Lighthouse.Director")
 
@@ -41,13 +41,13 @@ class CoverageDirector(object):
     """
 
     def __init__(self, palette):
-        self._NULL_COVERAGE = DatabaseCoverage(idaapi.BADADDR, None, palette)
+        self._NULL_COVERAGE = DatabaseCoverage(None, palette)
 
         # color palette
         self._palette = palette
 
         # database metadata cache
-        self._database_metadata = DatabaseMetadata(False)
+        self._database_metadata = DatabaseMetadata()
 
         #----------------------------------------------------------------------
         # Coverage
@@ -71,9 +71,9 @@ class CoverageDirector(object):
 
         self._special_coverage = collections.OrderedDict(
         [
-            (HOT_SHELL, self._NULL_COVERAGE),       # hot shell composition
-            (NEW_COMPOSITION, self._NULL_COVERAGE), # slow shell composition
-            (AGGREGATE, self._NULL_COVERAGE),       # aggregate composition
+            (HOT_SHELL,       DatabaseCoverage(None, palette)), # hot shell composition
+            (NEW_COMPOSITION, DatabaseCoverage(None, palette)), # slow shell composition
+            (AGGREGATE,       DatabaseCoverage(None, palette)), # aggregate composition
         ])
 
         #----------------------------------------------------------------------
@@ -146,6 +146,20 @@ class CoverageDirector(object):
         self._alias_coverage(AGGREGATE, AGGREGATE_ALIAS)
 
         #----------------------------------------------------------------------
+        # Async
+        #----------------------------------------------------------------------
+
+        self._ast_queue = Queue.Queue()
+        self._composition_cache = CompositionCache()
+
+        self._composition_worker = threading.Thread(
+            target=self._async_evaluate_ast,
+            name="EvaluateAST"
+        )
+        self._composition_worker.daemon = True
+        self._composition_worker.start()
+
+        #----------------------------------------------------------------------
         # Callbacks
         #----------------------------------------------------------------------
         #
@@ -180,6 +194,13 @@ class CoverageDirector(object):
         The active database coverage.
         """
         return self.get_coverage(self.coverage_name)
+
+    @property
+    def aggregate(self):
+        """
+        The aggregate of loaded data.
+        """
+        return self._special_coverage[AGGREGATE]
 
     @property
     def coverage_names(self):
@@ -347,38 +368,24 @@ class CoverageDirector(object):
             return
 
         #
-        # before switching to the new coverage, we want to un-paint
-        # whatever will NOT be painted over by the new coverage data.
-        #
-
-        self.unpaint_difference(self.coverage, self.get_coverage(coverage_name))
-
-        #
         # switch out the active coverage name with the new coverage name.
         # this pivots the director
         #
 
         self.coverage_name = coverage_name
 
-        #
-        # now we paint using the active coverage. any paint that was left over
-        # from the last coverage set will get painted over here (and more)
-        #
-
-        self.paint_coverage()
-
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
-    def add_coverage(self, coverage_name, coverage_base, coverage_data):
+    def add_coverage(self, coverage_name, coverage_data):
         """
         Add new coverage to the director.
 
         This is effectively an alias of self.update_coverage
         """
-        self.update_coverage(coverage_name, coverage_base, coverage_data)
+        self.update_coverage(coverage_name, coverage_data)
 
-    def update_coverage(self, coverage_name, coverage_base, coverage_data):
+    def update_coverage(self, coverage_name, coverage_data):
         """
         Add or update coverage maintained by the director.
         """
@@ -391,7 +398,7 @@ class CoverageDirector(object):
             logger.debug("Adding coverage %s" % coverage_name)
 
         # create & map a new database coverage object using the given data
-        new_coverage = self._build_coverage(coverage_base, coverage_data)
+        new_coverage = self._build_coverage(coverage_data)
 
         # coverage mapping complete, looks like we're good. add the new
         # coverage to the director's coverage table and surface it for use.
@@ -421,14 +428,10 @@ class CoverageDirector(object):
         #
 
         if coverage_name in self.coverage_names:
-
-            # TODO: hack to be removed in v0.4.0
-            aggregate = self._special_coverage[AGGREGATE]
-            coverage  = self._database_coverage[coverage_name]
-
-            self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
-            self._special_coverage[AGGREGATE].update_metadata(self.metadata)
-            self._special_coverage[AGGREGATE].refresh()
+            old_coverage = self._database_coverage[coverage_name]
+            self.aggregate.subtract_data(old_coverage.data)
+            self.aggregate.update_metadata(self.metadata)
+            self.aggregate.refresh()
 
         #
         # this is the critical point where we actually integrate the newly
@@ -447,22 +450,17 @@ class CoverageDirector(object):
         #
 
         # (re)-add the newly loaded/updated coverage to the aggregate set
-        self._special_coverage[AGGREGATE] |= new_coverage
-        self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?
-        self._special_coverage[AGGREGATE].refresh()
+        self.aggregate.add_data(new_coverage.data)
+        self.aggregate.update_metadata(self.metadata)
+        self.aggregate.refresh()
 
-    def _build_coverage(self, coverage_base, coverage_data):
+    def _build_coverage(self, coverage_data):
         """
         Build a new database coverage object from the given data.
         """
-
-        # initialize a new database-wide coverage object for this data
-        new_coverage = DatabaseCoverage(coverage_base, coverage_data, self._palette)
-
-        # map the coverage data using the database metadata
+        new_coverage = DatabaseCoverage(coverage_data, self._palette)
         new_coverage.update_metadata(self.metadata)
         new_coverage.refresh()
-
         return new_coverage
 
     def delete_coverage(self, coverage_name):
@@ -486,11 +484,9 @@ class CoverageDirector(object):
         coverage = self._database_coverage.pop(coverage_name)
         # TODO: check if there's any references to the coverage object here...
 
-        # TODO: hack to be removed in v0.4.0
-        aggregate = self._special_coverage[AGGREGATE]
-        self._special_coverage[AGGREGATE] = aggregate.hitmap_subtract(coverage)
-        self._special_coverage[AGGREGATE].update_metadata(self.metadata) # TODO: delta?
-        self._special_coverage[AGGREGATE].refresh()
+        self.aggregate.subtract_data(coverage.data)
+        self.aggregate.update_metadata(self.metadata)
+        self.aggregate.refresh()
 
         # notify any listeners that we have deleted coverage
         self._notify_coverage_deleted()
@@ -597,30 +593,25 @@ class CoverageDirector(object):
     # Composing
     #----------------------------------------------------------------------
 
-    def accept_composition(self, coverage_name):
+    def add_composition(self, composite_name, ast):
         """
-        Save the last known composition to the specified name.
-
-        TODO:
-          this paradigm of 'last_ast' seems wonky, but it should make more
-          sense as things are moved async in v0.4.0
-
+        Evaluate and add a new composition to the director.
         """
-        assert not (coverage_name in RESERVED_NAMES)
-        updating_coverage = coverage_name in self.coverage_names
-        logger.debug("Accepting composition %s" % coverage_name)
+        assert not (composite_name in RESERVED_NAMES)
+        updating_coverage = composite_name in self.coverage_names
+        logger.debug("Adding composition %s" % composite_name)
 
         # evaluate the last AST into a coverage set
-        composite_coverage = self._evaluate_composition(self._last_ast)
+        composite_coverage = self._evaluate_composition(ast)
         composite_coverage.update_metadata(self.metadata)
-        composite_coverage.refresh()
+        composite_coverage.refresh() # TODO: hash refresh?
 
         # save the evaluated coverage under the given name
-        self._update_coverage(coverage_name, composite_coverage)
+        self._update_coverage(composite_name, composite_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
         if not updating_coverage:
-            self._request_shorthand_alias(coverage_name)
+            self._request_shorthand_alias(composite_name)
 
         # notify any listeners that we have added or updated coverage
         if updating_coverage:
@@ -628,32 +619,53 @@ class CoverageDirector(object):
         else:
             self._notify_coverage_created()
 
-    def cache_composition(self, ast):
+    def cache_composition(self, ast, force=False):
         """
         Cache the given composition.
         """
 
-        # hot shell requests are evaluated immediately
-        if self.coverage_name == HOT_SHELL:
+        #
+        # normally, we only pro-actively evaluate/cache if the hotshell is
+        # active, but we can also allow the caller to force a cache to occur
+        #
 
+        if self.coverage_name == HOT_SHELL or force:
+            self._ast_queue.put(ast)
+
+    def _async_evaluate_ast(self):
+        """
+        Asynchronous composition evaluation worker loop.
+        """
+        logger.debug("Starting EvaluateAST thread...")
+
+        while True:
+
+            # get the next AST to evaluate
+            ast = self._ast_queue.get()
+
+            # signal to stop
+            if ast == None:
+                break
+
+            # produce a single composite coverage object as described by the AST
             composite_coverage = self._evaluate_composition(ast)
+
+            # map the composited coverage data to the database metadata
             composite_coverage.update_metadata(self.metadata)
             composite_coverage.refresh()
 
-            self.unpaint_difference(self.coverage, composite_coverage)
+            # we always save the most recent composite to the hotshell entry
             self._special_coverage[HOT_SHELL] = composite_coverage
-            self.paint_coverage()
 
-            self._notify_coverage_modified()
+            # if the hotshell entry is the active coverage selection, notify
+            # listeners of its update
+            if self.coverage_name == HOT_SHELL:
+                self._notify_coverage_modified()
 
-        #
-        # TODO:
-        #   in v0.4.0 we will actually offload the AST to be evaluated
-        #   in an async thread and cache that
-        #
+            # loop and wait for the next AST to evaluate
 
-        # cache this request as the last known user AST
-        self._last_ast = ast
+        # thread exit
+        logger.debug("Exiting EvaluateAST thread...")
 
     def _evaluate_composition(self, ast):
         """
@@ -679,9 +691,103 @@ class CoverageDirector(object):
         #
 
         if isinstance(node, TokenLogicOperator):
+
+            #
+            # collect the left and right components of the logical operation
+            #   eg:
+            #       op1 = DatabaseCoverage for 'A'
+            #       op2 = DatabaseCoverage for 'B'
+            #
+
             op1 = self._evaluate_composition_recursive(node.op1)
             op2 = self._evaluate_composition_recursive(node.op2)
-            return node.operator(op1, op2)
+
+            #
+            # Before computing a new composition, we actually compute a hash
+            # actually compute a 'hash' of the operation that would normally
+            # generate the composition.
+            #
+            # This 'hash' can be used to index into an LRU based cache that
+            # holds compositions created by the AST evaluation process.
+            #
+            # The 'hash' is actually computed as a product of the operator
+            # that would normally combine the two coverage sets.
+            #
+            # For example, when computing compositions the logical operators
+            # (eg |, &, ^), it does not matter which side of the equation the
+            # coverage components fall on.
+            #  eg:
+            #      (A | B) == (B | A)
+            #
+            # while arithmetic operations (-) will produce different results
+            #
+            #      (A - B) != (B - A)
+            #
+            # So if we are being asked to compute a composition of (A | B),
+            # we first compute:
+            #
+            #      composition_hash = hash(A) | hash(B)
+            #
+            # And use composition_hash to check an LRU cache for the complete
+            # evaluation/composition of (A | B).
+            #
+            # The possibility of collisions are generally higher with this
+            # form of 'hash', but I still expect them to be extremely rare.
+            #
+
+            composition_hash = node.operator(op1.coverage_hash, op2.coverage_hash)
+
+            #
+            # Evaluating an AST produces lots of 'transient' compositions. To
+            # mitigate unecessary re-computation, we maintain a small LRU cache
+            # of these compositions to draw from during evaluation.
+            #
+            #   eg:
+            #       evaluating the input
+            #
+            #         (A | B) - (C | D)
+            #
+            #       produces
+            #
+            #         COMP_1 = (A | B)
+            #         COMP_2 = (C | D)
+            #         COMP_3 = COMP_1 - COMP_2
+            #
+            # In the example above, COMP_3 is the final evaluated result, and
+            # COMP_1/COMP_2 would normally be discarded. Instead, we cache all
+            # of these compositions (1, 2, 3) as they may be useful to us in
+            # the subsequent evaluations.
+            #
+            # If the user then choses to evaluate (A | B) - (Z | D), our cache
+            # can retrieve the fully computed (A | B) composition assuming it
+            # has not been evicted.
+            #
+
+            # check the cache to see if this composition was recently computed
+            cached_coverage = self._composition_cache[composition_hash]
+
+            # if the composition was found in the cache, return that for speed
+            if cached_coverage:
+                return cached_coverage
+
+            #
+            # using the collected components of the logical operation, we
+            # compute the coverage mask defined by this TokenLogicOperator
+            #
+
+            coverage_mask = node.operator(op1.coverage, op2.coverage)
+
+            #
+            # now that we have computed the requested coverage mask (bitmap),
+            # apply the mask to the data held by the left operand (op1). we
+            # return a masked copy of said DatabaseCoverage
+            #
+
+            new_composition = DatabaseCoverage(coverage_mask, self._palette)
+
+            # cache & return the newly computed composition
+            self._composition_cache[composition_hash] = new_composition
+            return new_composition
 
         #
         # if the current node is a coverage range, we need to evaluate the
@@ -713,7 +819,7 @@ class CoverageDirector(object):
         Returns an existing coverage set.
         """
         assert isinstance(coverage_token, TokenCoverageSingle)
-        return self.get_coverage(self._alias2name[coverage_token.symbol])
+        return self.get_coverage(self._alias2name[coverage_token.symbol]) # TODO: rename get_coverage?
 
     def _evaluate_coverage_range(self, range_token):
         """
@@ -724,14 +830,14 @@ class CoverageDirector(object):
         assert isinstance(range_token, TokenCoverageRange)
 
         # initialize output to a null coverage set
-        output = self._NULL_COVERAGE
+        output = DatabaseCoverage(None, self._palette)
 
         # exapand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
         symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
 
         # build a coverage aggregate described by the range of shorthand symbols
         for symbol in symbols:
-            output = output | self.get_coverage(self._alias2name[symbol])
+            output.add_data(self.get_coverage(self._alias2name[symbol]).data)
 
         # return the computed coverage
         return output
@@ -743,6 +849,8 @@ class CoverageDirector(object):
     def refresh(self):
         """
         Complete refresh of the director and mapped coverage.
+
+        # TODO: Remove/update
         """
         logger.debug("Refreshing the CoverageDirector")
 
@@ -755,11 +863,14 @@ class CoverageDirector(object):
     def _refresh_database_metadata(self):
         """
         Refresh the database metadata cache utilized by the director.
+
+        # TODO: Remove/update
         """
         logger.debug("Refreshing database metadata")
 
         # compute the metadata for the current state of the database
         new_metadata = DatabaseMetadata()
+        new_metadata.build_metadata()
 
         # compute the delta between the old metadata, and latest
         delta = MetadataDelta(new_metadata, self.metadata)
@@ -773,6 +884,8 @@ class CoverageDirector(object):
     def _refresh_database_coverage(self, delta):
         """
         Refresh the database coverage mappings managed by the director.
+
+        # TODO: Remove/update
         """
         logger.debug("Refreshing database coverage mappings")
 
@@ -822,38 +935,48 @@ class CoverageDirector(object):
         # add the symbol back to the end of the shorthand pool
         self._shorthand.append(symbol)
 
-    #----------------------------------------------------------------------
-    # Painting / TODO: move/remove?
-    #----------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# Composition Cache
+#------------------------------------------------------------------------------
 
-    def paint_coverage(self):
+DEFAULT_CACHE_CAPACITY = 30
+
+class CompositionCache(object):
+    """
+    A simple LRU cache to hold coverage compositions.
+    """
+
+    def __init__(self, capacity=DEFAULT_CACHE_CAPACITY):
+        self._cache = collections.OrderedDict()
+        self._capacity = capacity
+
+    def __getitem__(self, key):
         """
-        Paint the active coverage to the database.
-
-        NOTE/TODO:
-
-          I am not convinced the director should have any of the
-          painting code. this may be refactored out.
-
+        Get an entry from the cache.
         """
-        logger.debug("Painting active coverage")
+        result = self._cache.pop(key, None)
 
-        # refresh the palette to ensure our colors appropriate for painting.
-        #self._palette.refresh_colors()
+        # cache hit, raise priority of this item
+        if result:
+            self._cache[key] = result
 
-        # color the database based on coverage
-        paint_coverage(self.coverage, self._palette.ida_coverage)
+        # return the cache entry (or None)
+        return result
 
-    def unpaint_difference(self, old_coverage, new_coverage):
+    def __setitem__(self, key, value):
         """
-        Clear paint on the difference of two coverage sets.
+        Update the cache with the given entry.
         """
-        logger.debug("Clearing paint difference between coverages")
+        result = self._cache.pop(key, None)
 
-        # compute the difference in coverage between two sets of coverage
-        difference = old_coverage - new_coverage
-        difference.update_metadata(self.metadata)
-        difference.refresh_nodes()
+        # item is already in the cache, touch it.
+        if result:
+            self._cache[key] = result
+            return
 
-        # clear the paint on the computed difference
-        unpaint_coverage(difference)
+        # if the cache is full, evict the entry oldest entry
+        if len(self._cache) > self._capacity:
+            self._cache.popitem(False)
+
+        # insert the new cache entry
+        self._cache[key] = value

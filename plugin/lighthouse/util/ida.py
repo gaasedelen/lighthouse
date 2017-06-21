@@ -1,59 +1,16 @@
+import time
+import Queue
 import logging
-import collections
+import functools
 
 import idaapi
-
 from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
 
 logger = logging.getLogger("Lighthouse.Util.IDA")
 
 #------------------------------------------------------------------------------
-# HexRays Helpers
+# HexRays Util
 #------------------------------------------------------------------------------
-
-def lex_citem_indexes(line):
-    """
-    Lex all ctree item indexes from a given line of text.
-    """
-    i = 0
-    indexes = []
-    line_length = len(line)
-
-    # lex COLOR_ADDR tokens from the line of text
-    while i < line_length:
-
-        # does this character mark the start of a new COLOR_* token?
-        if line[i] == idaapi.COLOR_ON:
-
-            # yes, so move past the COLOR_ON byte
-            i += 1
-
-            # is this sequence for a COLOR_ADDR?
-            if ord(line[i]) == idaapi.COLOR_ADDR:
-
-                # yes, so move past the COLOR_ADDR byte
-                i += 1
-
-                #
-                # A COLOR_ADDR token is followed by either 8, or 16 characters
-                # (a hex encoded number) that represents an address/pointer.
-                # in this context, it is actually the index number of a citem
-                #
-
-                citem_index = int(line[i:i+idaapi.COLOR_ADDR_SIZE], 16)
-                i += idaapi.COLOR_ADDR_SIZE
-
-                # save the extracted citem index
-                indexes.append(citem_index)
-
-                # skip to the next iteration as i has moved
-                continue
-
-        # nothing we care about happened, keep lexing forward
-        i += 1
-
-    # return all the citem indexes extracted from this line of text
-    return indexes
 
 def map_line2citem(decompilation_text):
     """
@@ -170,13 +127,77 @@ def map_line2node(cfunc, metadata, line2citem):
     # all done, return the computed map
     return line2node
 
+def lex_citem_indexes(line):
+    """
+    Lex all ctree item indexes from a given line of text.
+
+    -----------------------------------------------------------------------
+
+    The HexRays decompiler output contains invisible text tokens that can
+    be used to attribute spans of text to the ctree items that produced them.
+
+    This function will simply scrape and return a list of all the these
+    tokens (COLOR_ADDR) which contain item indexes into the ctree.
+
+    """
+    i = 0
+    indexes = []
+    line_length = len(line)
+
+    # lex COLOR_ADDR tokens from the line of text
+    while i < line_length:
+
+        # does this character mark the start of a new COLOR_* token?
+        if line[i] == idaapi.COLOR_ON:
+
+            # yes, so move past the COLOR_ON byte
+            i += 1
+
+            # is this sequence for a COLOR_ADDR?
+            if ord(line[i]) == idaapi.COLOR_ADDR:
+
+                # yes, so move past the COLOR_ADDR byte
+                i += 1
+
+                #
+                # A COLOR_ADDR token is followed by either 8, or 16 characters
+                # (a hex encoded number) that represents an address/pointer.
+                # in this context, it is actually the index number of a citem
+                #
+
+                citem_index = int(line[i:i+idaapi.COLOR_ADDR_SIZE], 16)
+                i += idaapi.COLOR_ADDR_SIZE
+
+                # save the extracted citem index
+                indexes.append(citem_index)
+
+                # skip to the next iteration as i has moved
+                continue
+
+        # nothing we care about happened, keep lexing forward
+        i += 1
+
+    # return all the citem indexes extracted from this line of text
+    return indexes
+
 #------------------------------------------------------------------------------
 # Misc
 #------------------------------------------------------------------------------
 
 def get_disas_bg_color():
     """
-    Get the background color of the disas text area via pixel... YOLO
+    Get the background color of an IDA disassembly view.
+
+    -----------------------------------------------------------------------
+
+    The necessity of this function is pretty silly. I would like lighthouse
+    to be color-aware of the user's IDA theme such that it selects reasonable
+    colors that maintain readability.
+
+    Since there is no supported way to probe the palette & colors in use by
+    IDA, we must get creative. This function attempts to locate an IDA
+    disassembly view, and take a screenshot of said widget. It will then
+    attempt to extract the color of a single background pixel (hopefully).
 
     PS: please expose the get_graph_color(...) palette accessor, Ilfak ;_;
     """
@@ -189,17 +210,160 @@ def get_disas_bg_color():
     else:
         raise RuntimeError("Failed to find donor IDA View")
 
-    # lookup the Qt Widget for the given form and take 2px tall image
+    # locate the Qt Widget for an IDA View form and take 2px tall screenshot
     if using_pyqt5():
         widget = idaapi.PluginForm.FormToPyQtWidget(form)
-        pixmap = widget.grab(QtCore.QRect(0, 0, widget.width(),2))
+        pixmap = widget.grab(QtCore.QRect(0, 0, widget.width(), 2))
     else:
         widget = idaapi.PluginForm.FormToPySideWidget(form)
-        pixmap = QtGui.QPixmap.grabWidget(widget, QtCore.QRect(0, 0, widget.width(), 2))
+        region = QtCore.QRect(0, 0, widget.width(), 2)
+        pixmap = QtGui.QPixmap.grabWidget(widget, region)
 
-    # extract a pixel from the top center like a pleb (hopefully a background pixel :|)
+    # extract 1 pixel like a pleb (hopefully a background pixel :|)
     img    = QtGui.QImage(pixmap.toImage())
     color  = QtGui.QColor(img.pixel(img.width()/2,1))
 
     # return the color of the pixel we extracted
     return color
+
+#------------------------------------------------------------------------------
+# IDA execute_sync decorators
+#------------------------------------------------------------------------------
+# from: Will Ballenthin
+# http://www.williballenthin.com/blog/2015/09/04/idapython-synchronization-decorator
+#
+
+def idafast(f):
+    """
+    Decorator for marking a function as fast / UI event
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        if idaapi.is_main_thread():
+            return ff()
+        else:
+            return idaapi.execute_sync(ff, idaapi.MFF_FAST)
+    return wrapper
+
+def idanowait(f):
+    """
+    Decorator for marking a function as completely async.
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT)
+    return wrapper
+
+def idawrite(f):
+    """
+    Decorator for marking a function as modifying the IDB.
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
+    return wrapper
+
+def idaread(f):
+    """
+    Decorator for marking a function as reading from the IDB.
+
+    MFF_READ constant via: http://www.openrce.org/forums/posts/1827
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        return idaapi.execute_sync(ff, idaapi.MFF_READ)
+    return wrapper
+
+def mainthread(f):
+    """
+    A debug decorator to assert main thread execution.
+    """
+    def wrapper(*args, **kwargs):
+        assert idaapi.is_main_thread()
+        return f(*args, **kwargs)
+    return wrapper
+
+def execute_sync(sync_flags=idaapi.MFF_FAST):
+    """
+    Synchronization decorator capable of providing return values.
+
+    From https://github.com/vrtadmin/FIRST-plugin-ida
+    """
+    def real_decorator(function):
+        @functools.wraps(function)
+        def wrapper(*args, **kwargs):
+            output = [None]
+
+            #
+            # this inline function definition is technically what will execute
+            # in the context of the main thread. we use this thunk to capture
+            # any output the function may want to return to the user.
+            #
+
+            def thunk():
+                output[0] = function(*args, **kwargs)
+                return 1
+
+            # send the synchronization request to IDA
+            idaapi.execute_sync(thunk, sync_flags)
+
+            # return the output of the synchronized function
+            return output[0]
+        return wrapper
+    return real_decorator
+
+#------------------------------------------------------------------------------
+# IDA Async Magic
+#------------------------------------------------------------------------------
+
+@mainthread
+def await_future(future, block=True, timeout=1.0):
+    """
+    This is effectively a technique I use to get around completely blocking
+    IDA's mainthread while waiting for a threaded result that may need to make
+    use of the sync operators.
+
+    Waiting for a 'future' thread result to come through via this function
+    lets other execute_sync actions to slip through (at least Read, Fast).
+    """
+
+    elapsed  = 0       # total time elapsed processing this future object
+    interval = 0.02    # the interval which we wait for a response
+    end_time = time.time() + timeout
+
+    # run until the the future completes or the timeout elapses
+    while block or (time.time() < end_time):
+
+        # block for a brief period to see if the future completes
+        try:
+            return future.get(timeout=interval)
+
+        #
+        # the future timed out, so perhaps it is blocked on a request
+        # to the mainthread. flush the requests now and try again
+        #
+
+        except Queue.Empty as e:
+            logger.debug("Flushing execute_sync requests")
+            flush_ida_sync_requests()
+
+@mainthread
+def flush_ida_sync_requests():
+    """
+    Flush all execute_sync requests.
+
+    NOTE: This MUST be called from the IDA Mainthread to be effective.
+    """
+    if not idaapi.is_main_thread():
+        return False
+
+    # this will trigger/flush the IDA UI loop
+    qta = QtCore.QCoreApplication.instance()
+    qta.processEvents()
+
+    # done
+    return True
