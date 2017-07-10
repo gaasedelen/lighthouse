@@ -12,7 +12,7 @@ import idaapi
 
 def using_pyqt5():
     major, minor = map(int, idaapi.get_kernel_version().split("."))
-    return (major == 6 and minor >= 9)
+    return (major > 6) or (major == 6 and minor >= 9)
 
 if using_pyqt5():
     import PyQt5.QtGui as QtGui
