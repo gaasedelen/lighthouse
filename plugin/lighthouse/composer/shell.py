@@ -164,6 +164,13 @@ class ComposingShell(QtWidgets.QWidget):
         # the text box / shell / ComposingLine
         self._line = ComposingLine()
 
+        # configure the shell background & default text color
+        palette = self._line.palette()
+        palette.setColor(QtGui.QPalette.Base, self._director._palette.composer_bg)
+        palette.setColor(QtGui.QPalette.Text, self._director._palette.composer_fg)
+        palette.setColor(QtGui.QPalette.WindowText, self._director._palette.composer_fg)
+        self._line.setPalette(palette)
+
     def _ui_init_completer(self):
         """
         Initialize the coverage hint UI elements.

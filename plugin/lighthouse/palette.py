@@ -44,6 +44,9 @@ class LighthousePalette(object):
         # Composing Shell
         #
 
+        self._composer_bg    = [QtGui.QColor(30, 30, 30), QtGui.QColor(30, 30, 30)]
+        self._composer_fg    = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
         self._logic_token    = [0xF02070, 0xFF0000]
         self._comma_token    = [0x00FF00, 0x0000FF]
         self._paren_token    = [0x40FF40, 0x0000FF]
@@ -181,6 +184,14 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
     # Composing Shell
     #--------------------------------------------------------------------------
+
+    @property
+    def composer_bg(self):
+        return self._composer_bg[self.qt_theme]
+
+    @property
+    def composer_fg(self):
+        return self._composer_fg[self.qt_theme]
 
     @property
     def logic_token(self):
