@@ -373,7 +373,6 @@ class DatabaseMetadata(object):
 
             # if an abort was requested, bail immediately
             if self._stop_threads:
-                print "Bailing from metadata collection"
                 return False
 
             # sleep some so we don't choke the main IDA thread
