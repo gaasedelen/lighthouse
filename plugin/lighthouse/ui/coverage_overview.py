@@ -48,41 +48,20 @@ SAMPLE_CONTENTS = \
 # Coverage Overview
 #------------------------------------------------------------------------------
 
-class CoverageOverview(idaapi.PluginForm):
+class CoverageOverview(DockableShim):
     """
     The Coverage Overview Widget.
     """
 
     def __init__(self, director):
-        super(CoverageOverview, self).__init__()
-        self._title = "Coverage Overview"
-
-        self._director = director
-        self._model = CoverageModel(director)
-
-    #--------------------------------------------------------------------------
-    # PluginForm Overloads
-    #--------------------------------------------------------------------------
-
-    def Show(self):
-        """
-        Show the dialog.
-        """
-        return super(CoverageOverview, self).Show(
-            self._title,
-            options=idaapi.PluginForm.FORM_PERSIST
+        super(CoverageOverview, self).__init__(
+            "Coverage Overview",
+            plugin_resource(os.path.join("icons", "overview.png"))
         )
 
-    def OnCreate(self, form):
-        """
-        Called when the view is created.
-        """
-
-        # NOTE/COMPAT
-        if using_pyqt5():
-            self.parent = self.FormToPyQtWidget(form)
-        else:
-            self.parent = self.FormToPySideWidget(form)
+        # internal
+        self._director = director
+        self._model = CoverageModel(director)
 
         # initialize the plugin UI
         self._ui_init()
@@ -90,11 +69,12 @@ class CoverageOverview(idaapi.PluginForm):
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
 
-    def OnClose(self, Form):
+    def show(self):
         """
-        Called when the view is being closed.
+        Show the CoverageOverview UI / widget.
         """
-        self.parent = None
+        self.refresh()
+        super(CoverageOverview, self).show()
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -104,9 +84,6 @@ class CoverageOverview(idaapi.PluginForm):
         """
         Initialize UI elements.
         """
-
-        # set window icon to the coverage overview icon
-        self.parent.setWindowIcon(QtGui.QIcon(plugin_resource("icons\overview.png")))
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
@@ -260,22 +237,21 @@ class CoverageOverview(idaapi.PluginForm):
         self._hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
 
         # register for cues from the director
-        self._director.coverage_switched(self._coverage_changed) # TODO: too heavy
-        self._director.coverage_modified(self._coverage_changed)
+        self._director.coverage_switched(self.refresh)
+        self._director.coverage_modified(self.refresh)
 
     def _ui_layout(self):
         """
         Layout the major UI elements of the widget.
         """
-        assert self.parent
 
         # layout the major elements of our widget
         layout = QtWidgets.QGridLayout()
         layout.addWidget(self._table)
         layout.addWidget(self._toolbar)
 
-        # apply the widget layout
-        self.parent.setLayout(layout)
+        # apply the layout to the containing form
+        self._widget.setLayout(layout)
 
     #--------------------------------------------------------------------------
     # Signal Handlers
@@ -299,22 +275,6 @@ class CoverageOverview(idaapi.PluginForm):
         """
         self._model.hide_zero_coverage(checked)
 
-    def _coverage_changed(self):
-        """
-        Handle a coverage (switched | modified) event from the director.
-        """
-
-        #
-        # we only bother to act on an incoming director signal if the
-        # coverage overview is actually visible. return now if hidden
-        #
-
-        if not self.parent.isVisible():
-            return
-
-        # refresh the coverage overview
-        self.refresh()
-
     #--------------------------------------------------------------------------
     # Refresh
     #--------------------------------------------------------------------------
@@ -324,8 +284,6 @@ class CoverageOverview(idaapi.PluginForm):
         """
         Refresh the Coverage Overview.
         """
-        assert self.parent
-
         self._model.refresh()
         self._shell.refresh()
         self._combobox.refresh()
@@ -512,7 +470,24 @@ class CoverageModel(QtCore.QAbstractTableModel):
             sort_field = COLUMN_TO_FIELD[column]
         except KeyError as e:
             logger.warning("TODO: implement column %u sorting" % column)
-            return False
+
+            #
+            # TODO/HACK:
+            #
+            #   This emit serves a rare case where sort is called via refresh()
+            #   and the sort fails (we come through here). The completeness and
+            #   correctness of the refresh() depends on sort() emitting a
+            #   layoutChanged event.
+            #
+            #   We don't call layoutChanged from refresh() itself to avoid a
+            #   possible double-emit... which can be costly in terms of time
+            #   a refresh will take.
+            #
+
+            self.layoutChanged.emit()
+
+            # bail
+            return
 
         #
         # sort the existing entries in the table by the selected field name
@@ -582,9 +557,6 @@ class CoverageModel(QtCore.QAbstractTableModel):
         self._last_sort = column
         self._last_sort_order = sort_order
 
-        # done
-        return True
-
     #--------------------------------------------------------------------------
     # Model Controls
     #--------------------------------------------------------------------------
@@ -616,15 +588,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         self._refresh_row2func_map()
 
         # sort the data set according to the last selected sorted column
-        if not self.sort(self._last_sort, self._last_sort_order):
-
-            #
-            # if the sort was not successful (eg, unsupported column), then
-            # emit the layout changed signal now to let consumers know that
-            # we have updated the arrangement of model items
-            #
-
-            self.layoutChanged.emit()
+        self.sort(self._last_sort, self._last_sort_order)
 
     def _refresh_row2func_map(self):
         """

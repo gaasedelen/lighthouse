@@ -506,7 +506,10 @@ class FunctionMetadata(object):
         """
         Refresh the function name against the open database.
         """
-        self.name = idaapi.get_func_name2(self.address)
+        if using_ida7api:
+            self.name = idaapi.get_func_name(self.address)
+        else:
+            self.name = idaapi.get_func_name2(self.address)
 
     def _refresh_nodes(self):
         """
@@ -530,19 +533,25 @@ class FunctionMetadata(object):
         for node_id in xrange(flowchart.size()):
             node = flowchart[node_id]
 
-            # TODO
-            if node.startEA == node.endEA:
+            # NOTE/COMPAT:
+            if using_ida7api:
+                start_ea = node.start_ea
+                end_ea = node.end_ea
+            else:
+                start_ea = node.startEA
+                end_ea = node.endEA
+
+            #
+            # the node size as this flowchart sees it is 'zero'. This means
+            # that another flowchart / function owns this node so we can just
+            # ignore it.
+            #
+
+            if start_ea == end_ea:
                 continue
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node)
-
-            #
-            # save the node's id as it exists in this function's flowchart so
-            # that we do not have to walk the flowchart to locate it every time
-            #
-
-            node_metadata.id = node_id
+            node_metadata = NodeMetadata(start_ea, end_ea, node_id)
 
             #
             # establish a relationship between this node (basic block) and
@@ -550,7 +559,7 @@ class FunctionMetadata(object):
             #
 
             node_metadata.function = function_metadata
-            function_metadata.nodes[node.startEA] = node_metadata
+            function_metadata.nodes[start_ea] = node_metadata
 
     def _finalize(self):
         """
@@ -598,15 +607,15 @@ class NodeMetadata(object):
     Fast access node level metadata cache.
     """
 
-    def __init__(self, node):
+    def __init__(self, start_ea, end_ea, node_id=idaapi.BADADDR):
 
         # node metadata
-        self.size = node.endEA - node.startEA
-        self.address = node.startEA
+        self.size = end_ea - start_ea
+        self.address = start_ea
         self.instruction_count = 0
 
         # flowchart node_id
-        self.id = idaapi.BADADDR
+        self.id = node_id
 
         # parent function_metadata
         self.function = None

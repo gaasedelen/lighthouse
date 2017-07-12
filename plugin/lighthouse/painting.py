@@ -155,6 +155,12 @@ class CoveragePainter(object):
         # create a node info object as our vehicle for setting the node color
         node_info = idaapi.node_info_t()
 
+        # NOTE/COMPAT:
+        if using_ida7api:
+            set_node_info = idaapi.set_node_info
+        else:
+            set_node_info = idaapi.set_node_info2
+
         #
         # loop through every node that we have coverage data for, painting them
         # in the IDA graph view as applicable.
@@ -167,7 +173,7 @@ class CoveragePainter(object):
             node_info.bg_color = node_coverage.coverage_color
 
             # do the *actual* painting of a single node instance
-            idaapi.set_node_info2(
+            set_node_info(
                 node_metadata.function.address,
                 node_metadata.id,
                 node_info,
@@ -185,6 +191,12 @@ class CoveragePainter(object):
         node_info = idaapi.node_info_t()
         node_info.bg_color = idc.DEFCOLOR
 
+        # NOTE/COMPAT:
+        if using_ida7api:
+            set_node_info = idaapi.set_node_info
+        else:
+            set_node_info = idaapi.set_node_info2
+
         #
         # loop through every node that we have metadata data for, clearing
         # their paint (color) in the IDA graph view as applicable.
@@ -193,7 +205,7 @@ class CoveragePainter(object):
         for node_metadata in nodes_metadata:
 
             # do the *actual* painting of a single node instance
-            idaapi.set_node_info2(
+            set_node_info(
                 node_metadata.function.address,
                 node_metadata.id,
                 node_info,
@@ -233,9 +245,17 @@ class CoveragePainter(object):
         metadata = self._director.metadata
         coverage = self._director.coverage
 
+        # NOTE/COMPAT:
+        if using_ida7api:
+            start_ea = function.start_ea
+            end_ea = function.end_ea
+        else:
+            start_ea = function.startEA
+            end_ea = function.endEA
+
         # collect function information
-        function_metadata = metadata.functions[function.startEA]
-        function_coverage = coverage.functions.get(function.startEA, None)
+        function_metadata = metadata.functions[start_ea]
+        function_coverage = coverage.functions.get(start_ea, None)
 
         # function coverage exists, so let's do a cleaner paint
         if function_coverage:
@@ -424,15 +444,21 @@ class CoveragePainter(object):
 
         # repaint the specified range of functions
         for num in xrange(func_num_start, func_num_end):
-            func = idaapi.getn_func(num)
-            if not func:
+            function = idaapi.getn_func(num)
+            if not function:
                 continue
 
             # repaint the function
-            self.paint_function(func)
+            self.paint_function(function)
+
+            # NOTE/COMPAT:
+            if using_ida7api:
+                start_ea = function.start_ea
+            else:
+                start_ea = function.startEA
 
             # get the function coverage data for the target address
-            function_coverage = database_coverage.functions.get(func.startEA, None)
+            function_coverage = database_coverage.functions.get(start_ea, None)
             if not function_coverage:
                 continue
 

@@ -51,7 +51,7 @@ class Lighthouse(plugin_t):
         self.painter = CoveragePainter(self.director, self.palette)
 
         # plugin qt elements
-        self._ui_coverage_overview = CoverageOverview(self.director)
+        self._ui_coverage_overview = None
 
         # members for the 'Load Code Coverage' menu entry
         self._icon_id_load     = idaapi.BADADDR
@@ -388,7 +388,8 @@ class Lighthouse(plugin_t):
         """
         Open the 'Coverage Overview' dialog.
         """
-        self._ui_coverage_overview.Show()
+        self._ui_coverage_overview = CoverageOverview(self.director)
+        self._ui_coverage_overview.show()
 
     def _select_coverage_files(self):
         """
