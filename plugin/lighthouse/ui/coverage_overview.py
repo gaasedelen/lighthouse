@@ -134,7 +134,7 @@ class CoverageOverview(DockableShim):
         hh = self._table.horizontalHeader()
 
         # NOTE/COMPAT: set the row heights as fixed
-        if using_pyqt5():
+        if using_pyqt5:
             vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
         else:
             vh.setResizeMode(QtWidgets.QHeaderView.Fixed)

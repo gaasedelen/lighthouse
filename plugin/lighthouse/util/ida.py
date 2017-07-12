@@ -4,7 +4,7 @@ import logging
 import functools
 
 import idaapi
-from .qtshim import using_ida7api, using_pyqt5, QtCore, QtGui, QtWidgets
+from .shims import using_ida7api, using_pyqt5, QtCore, QtGui, QtWidgets
 
 logger = logging.getLogger("Lighthouse.Util.IDA")
 
@@ -245,7 +245,7 @@ def get_disas_bg_color_ida6():
         raise RuntimeError("Failed to find donor IDA View")
 
     # locate the Qt Widget for an IDA View form and take 2px tall screenshot
-    if using_pyqt5():
+    if using_pyqt5:
         widget = idaapi.PluginForm.FormToPyQtWidget(form)
         pixmap = widget.grab(QtCore.QRect(0, 0, widget.width(), 2))
     else:

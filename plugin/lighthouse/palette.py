@@ -143,7 +143,7 @@ class LighthousePalette(object):
         #   lmao, don't ask me why they forgot about this attribute from 5.0 - 5.6
         #
 
-        if using_pyqt5():
+        if using_pyqt5:
             test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
         else:
             test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)

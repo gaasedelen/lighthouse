@@ -1,30 +1,55 @@
 import idaapi
 
+#------------------------------------------------------------------------------
+# Compatability File
+#------------------------------------------------------------------------------
 #
-# TODO
+#    This file is used to reduce the number of compatibility checks made
+#    throughout Lighthouse for varying versions of IDA.
+#
+#    As of July 2017, Lighthouse fully supports IDA 6.8 - 7.0. I expect that
+#    much of this compatibility layer and IDA 6.x support will be dropped for
+#    maintainability reasons sometime in 2018 as the userbase migrates up to
+#    IDA 7.0 and beyond.
 #
 
+# get the IDA version number
 major, minor = map(int, idaapi.get_kernel_version().split("."))
 
-# IDA 7 API compatibility
+#------------------------------------------------------------------------------
+# IDA 7 API - COMPAT
+#------------------------------------------------------------------------------
+#
+#    In IDA 7.0, Hex-Rays refactored the IDA API quite a bit. This impacts
+#    Lighthouse in a few places, so we have had to apply a compatibility
+#    fixup to a few places throughout the code.
+#
+#    We use the 'using_ida7api' global throughout the code to determine if
+#    the IDA 7 API is available, and should be used.
+#
+
 using_ida7api = (major > 6)
-#using_pyqt5   = using_ida7api or (major == 6 and minor >= 9)
 
 #------------------------------------------------------------------------------
 # Pyside --> PyQt5 - COMPAT
 #------------------------------------------------------------------------------
 #
-#  NOTE:
 #    As of IDA 6.9, Hex-Rays has started using PyQt5 versus PySide on Qt4.
+#
+#    There are a few differences between these
 #    This file tries to help us cut back from having as much compatibility
 #    checks/churn by in every other file that consumes them.
 #
 
-def using_pyqt5():
-    major, minor = map(int, idaapi.get_kernel_version().split("."))
-    return (major > 6) or (major == 6 and minor >= 9)
+using_pyqt5 = using_ida7api or (major == 6 and minor >= 9)
 
-if using_pyqt5():
+#
+# From Qt4 --> Qt5, the organization of some of the code / objects has
+# changed. We use this file to shim/re-alias a few of these to reduce the
+# number of compatibility checks / code churn in the code that consumes them.
+#
+
+if using_pyqt5:
     import PyQt5.QtGui as QtGui
     import PyQt5.QtCore as QtCore
     import PyQt5.QtWidgets as QtWidgets
@@ -43,6 +68,9 @@ else:
 class DockableShim(object):
     """
     A compatibility layer for dockable widgets (IDA 6.8 --> IDA 7.0)
+
+    IDA 7.0 got rid of 'TForms' and instead only uses TWidgets (QWidgets),
+    this class acts as a basic compatibility shim for IDA 6.8 --> IDA 7.0.
     """
 
     def __init__(self, title, icon_path):
@@ -59,7 +87,7 @@ class DockableShim(object):
         # legacy IDA PluginForm's
         else:
             self._form = idaapi.create_tform(self._title, None)
-            if using_pyqt5():
+            if using_pyqt5:
                 self._widget = idaapi.PluginForm.FormToPyQtWidget(self._form)
             else:
                 self._widget = idaapi.PluginForm.FormToPySideWidget(self._form)

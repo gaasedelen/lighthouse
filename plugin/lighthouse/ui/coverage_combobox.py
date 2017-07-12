@@ -149,7 +149,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         #
 
         # NOTE/COMPAT
-        if using_pyqt5():
+        if using_pyqt5:
             self.view().selectionModel().setCurrentIndex(
                 QtCore.QModelIndex(),
                 QtCore.QItemSelectionModel.ClearAndSelect
@@ -266,7 +266,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         # - make the 'X' icon column fixed width
         #
 
-        if using_pyqt5():
+        if using_pyqt5:
             hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
             hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
             vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)

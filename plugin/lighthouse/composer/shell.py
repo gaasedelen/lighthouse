@@ -177,7 +177,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # NOTE/COMPAT:
-        if using_pyqt5():
+        if using_pyqt5:
             self._completer_model = QtCore.QStringListModel([])
         else:
             self._completer_model = QtGui.QStringListModel([])
