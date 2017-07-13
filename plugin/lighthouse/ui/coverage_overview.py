@@ -111,13 +111,6 @@ class CoverageOverview(DockableShim):
             QtWidgets.QSizePolicy.Ignored
         )
 
-        # allow sorting of the table, and initialize the sort indicator
-        self._table.setSortingEnabled(True)
-        self._table.horizontalHeader().setSortIndicator(
-            FUNC_ADDR,
-            QtCore.Qt.AscendingOrder
-        )
-
         # install the underlying data source for the table
         self._table.setModel(self._model)
 
@@ -144,6 +137,13 @@ class CoverageOverview(DockableShim):
 
         # stretch the last column (which is blank)
         hh.setStretchLastSection(True)
+
+        # disable bolding of table column headers when table is selected
+        hh.setHighlightSections(False)
+
+        # allow sorting of the table, and initialize the sort indicator
+        self._table.setSortingEnabled(True)
+        hh.setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
     def _ui_init_toolbar(self):
         """
