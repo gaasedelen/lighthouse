@@ -406,6 +406,11 @@ class ComposingShell(QtWidgets.QWidget):
         #
         # ~ syntax highlighting ~
         #
+        self._line.setUpdatesEnabled(False)
+        ################# UPDATES DISABLED #################
+
+        # clear any existing text colors
+        self._color_clear()
 
         # the parse failed, so there will be invalid text to highlight
         if self._parser_error:
@@ -413,6 +418,9 @@ class ComposingShell(QtWidgets.QWidget):
 
         # paint any valid tokens
         self._color_tokens()
+
+        ################# UPDATES ENABLED #################
+        self._line.setUpdatesEnabled(True)
 
         # done
         return
@@ -650,6 +658,41 @@ class ComposingShell(QtWidgets.QWidget):
         # reset the cursor position & style
         cursor.setPosition(cursor_position)
         cursor.setCharFormat(QtGui.QTextCharFormat())
+        self._line.setTextCursor(cursor)
+
+        ################# UPDATES ENABLED #################
+        self._line.blockSignals(False)
+
+        # done
+        return
+
+    def _color_clear(self):
+        """
+        Clear any existing text colors.
+        """
+
+        # more code-friendly, readable aliases
+        text = self._line.toPlainText()
+
+        # alias the user cursor, and save its original (current) position
+        cursor = self._line.textCursor()
+        cursor_position = cursor.position()
+
+        # setup a blank / default text style
+        default = QtGui.QTextCharFormat()
+
+        self._line.blockSignals(True)
+        ################# UPDATES DISABLED #################
+
+        # select the entire line
+        cursor.setPosition(0, QtGui.QTextCursor.MoveAnchor)
+        cursor.setPosition(len(text), QtGui.QTextCursor.KeepAnchor)
+
+        # set all the text to the default format
+        cursor.setCharFormat(default)
+
+        # reset the cursor position & style
+        cursor.setPosition(cursor_position)
         self._line.setTextCursor(cursor)
 
         ################# UPDATES ENABLED #################
