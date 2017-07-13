@@ -197,7 +197,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # text changed in the shell
-        self._line.textChanged.connect(self.ui_shell_text_changed)
+        self._line.textChanged.connect(self._ui_shell_text_changed)
 
         # cursor position changed in the shell
         self._line.cursorPositionChanged.connect(self._ui_shell_cursor_changed)
@@ -367,11 +367,81 @@ class ComposingShell(QtWidgets.QWidget):
         """
         self._ui_hint_coverage_refresh()
 
-    def ui_shell_text_changed(self):
+    def _ui_shell_text_changed(self):
         """
         Text changed in the shell.
         """
         text = self._line.toPlainText()
+
+        # a Search, eg '/DnsParse_'
+        if self._parse_search(text):
+            return
+
+        # a Jump, eg '0x804010a'
+        elif self._parse_jump(text):
+            return
+
+        # a Composition, eg '(A | B) - C'
+        elif self._parse_composition(text):
+            self._ui_hint_coverage_refresh()
+            self._highlight_composition()
+            return
+
+    #--------------------------------------------------------------------------
+    # Search
+    #--------------------------------------------------------------------------
+
+    def _parse_search(self, text):
+        """
+        Parse and execute a serch query.
+
+        A search query is used to filter functions listed in the coverage
+        overview table based on their name.
+
+        eg: text = '/DnsParse_'
+        """
+
+        # not a search query, ignore
+        if not text or text[0] != "/":
+            return False
+
+
+        print "TODO: parse_search"
+
+        # done
+        return True
+
+    #--------------------------------------------------------------------------
+    # Jump
+    #--------------------------------------------------------------------------
+
+    def _parse_jump(self, text):
+        """
+        Parse and execute an address jump query.
+
+        A jump query is used to jump to a function in the coverage overview
+        table based on their address.
+
+        eg: text = '0x8040100'
+        """
+
+        # not a jump query, ignore
+        if not text or not (len(text) > 2 and text[:2].lower() == "0x"):
+            return False
+
+        print "TODO: parse_jump"
+
+        # done
+        return True
+
+    #--------------------------------------------------------------------------
+    # Composition
+    #--------------------------------------------------------------------------
+
+    def _parse_composition(self, text):
+        """
+        Parse and execute a composition query.
+        """
 
         try:
 
@@ -400,12 +470,14 @@ class ComposingShell(QtWidgets.QWidget):
 
             self._parsed_tokens = e.parsed_tokens
 
-        # queue a refresh of the coverage hint
-        self._ui_hint_coverage_refresh()
+        # done
+        return True
 
-        #
-        # ~ syntax highlighting ~
-        #
+    def _highlight_composition(self):
+        """
+        Syntax highlight a composition.
+        """
+
         self._line.setUpdatesEnabled(False)
         ################# UPDATES DISABLED #################
 
@@ -514,6 +586,9 @@ class ComposingShell(QtWidgets.QWidget):
         # show the coverage hint popup
         self._completer.complete(cr)
         self._completer.popup().repaint() # reduces hint flicker on the Hot Shell
+
+        # done
+        return
 
     def _ui_hint_coverage_hide(self):
         """
