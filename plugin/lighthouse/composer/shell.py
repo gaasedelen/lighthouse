@@ -116,9 +116,9 @@ class ComposingShell(QtWidgets.QWidget):
     def __init__(self, director, model):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
-        self._palette = self._director._palette
-        self._model = model
         self._director = director
+        self._palette = director._palette
+        self._model = model
 
         # the last known user AST
         self._last_ast = None
@@ -134,6 +134,7 @@ class ComposingShell(QtWidgets.QWidget):
         # configure the widget for use
         self._ui_init()
 
+    @property
     def text(self):
         """
         The existing shell text.
@@ -748,7 +749,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # the invalid text starts from the token that caused a parse error
         invalid_start = self._parser_error.error_index
-        invalid_text  = text[invalid_start:]
+        invalid_text  = self.text[invalid_start:]
 
         # no invalid text? nothing to highlight I guess!
         if not invalid_text:
