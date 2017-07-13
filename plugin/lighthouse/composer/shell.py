@@ -375,10 +375,12 @@ class ComposingShell(QtWidgets.QWidget):
 
         # a Search, eg '/DnsParse_'
         if self._parse_search(text):
+            self._highlight_search()
             return
 
         # a Jump, eg '0x804010a'
         elif self._parse_jump(text):
+            self._highlight_jump()
             return
 
         # a Composition, eg '(A | B) - C'
@@ -411,6 +413,25 @@ class ComposingShell(QtWidgets.QWidget):
         # done
         return True
 
+    def _highlight_search(self):
+        """
+        Syntax highlight a search query.
+        """
+
+        self._line.setUpdatesEnabled(False)
+        ################# UPDATES DISABLED #################
+
+        # clear any existing text colors
+        self._color_clear()
+
+        print "TODO: highlight_search"
+
+        ################# UPDATES ENABLED #################
+        self._line.setUpdatesEnabled(True)
+
+        # done
+        return
+
     #--------------------------------------------------------------------------
     # Jump
     #--------------------------------------------------------------------------
@@ -433,6 +454,25 @@ class ComposingShell(QtWidgets.QWidget):
 
         # done
         return True
+
+    def _highlight_jump(self):
+        """
+        Syntax highlight a jump query.
+        """
+
+        self._line.setUpdatesEnabled(False)
+        ################# UPDATES DISABLED #################
+
+        # clear any existing text colors
+        self._color_clear()
+
+        print "TODO: highlight_jump"
+
+        ################# UPDATES ENABLED #################
+        self._line.setUpdatesEnabled(True)
+
+        # done
+        return
 
     #--------------------------------------------------------------------------
     # Composition
