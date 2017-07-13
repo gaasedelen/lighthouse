@@ -116,6 +116,7 @@ class ComposingShell(QtWidgets.QWidget):
     def __init__(self, director):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
+        self._palette = self._director._palette
         self._director = director
 
         # the last known user AST
@@ -172,9 +173,9 @@ class ComposingShell(QtWidgets.QWidget):
 
         # configure the shell background & default text color
         palette = self._line.palette()
-        palette.setColor(QtGui.QPalette.Base, self._director._palette.composer_bg)
-        palette.setColor(QtGui.QPalette.Text, self._director._palette.composer_fg)
-        palette.setColor(QtGui.QPalette.WindowText, self._director._palette.composer_fg)
+        palette.setColor(QtGui.QPalette.Base, self._palette.composer_bg)
+        palette.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
+        palette.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
         self._line.setPalette(palette)
 
     def _ui_init_completer(self):
@@ -671,7 +672,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # more code-friendly, readable aliases
-        TOKEN_COLORS = self._director._palette.TOKEN_COLORS
+        TOKEN_COLORS = self._palette.TOKEN_COLORS
 
         #
         # in order to syntax highlight text of interest, we must use a text
@@ -757,7 +758,7 @@ class ComposingShell(QtWidgets.QWidget):
         cursor_position = cursor.position()
 
         # setup the invalid text highlighter
-        invalid_color = self._director._palette.invalid_text
+        invalid_color = self._palette.invalid_text
         highlight = QtGui.QTextCharFormat()
         highlight.setFontWeight(QtGui.QFont.Bold)
         highlight.setBackground(QtGui.QBrush(QtGui.QColor(invalid_color)))
