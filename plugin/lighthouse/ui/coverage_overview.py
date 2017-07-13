@@ -183,7 +183,7 @@ class CoverageOverview(DockableShim):
         """
 
         # the composing shell
-        self._shell = ComposingShell(self._director)
+        self._shell = ComposingShell(self._director, self._model)
 
         # the coverage combobox
         self._combobox = CoverageComboBox(self._director)
@@ -333,8 +333,11 @@ class CoverageModel(QtCore.QAbstractTableModel):
         self._last_sort = FUNC_ADDR
         self._last_sort_order = QtCore.Qt.AscendingOrder
 
-        # used by the model to determine whether it should display 0% coverage entries
+        # OPTION: display 0% coverage entries
         self._hide_zero = False
+
+        # OPTION: display functions matching search_string (substring)
+        self._search_string = ""
 
         # TODO: list for director updates
 
@@ -617,6 +620,10 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
             # OPTION: ignore items with 0% coverage items
             if self._hide_zero and not function_address in coverage.functions:
+                continue
+
+            # OPTIONS: ignore items that do not match the search string
+            if self._search_string and not self._search_string in metadata.functions[function_address].name:
                 continue
 
             #

@@ -113,10 +113,11 @@ class ComposingShell(QtWidgets.QWidget):
     independent, but obviously must communicate with the director.
     """
 
-    def __init__(self, director):
+    def __init__(self, director, model):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
         self._palette = self._director._palette
+        self._model = model
         self._director = director
 
         # the last known user AST
@@ -414,8 +415,8 @@ class ComposingShell(QtWidgets.QWidget):
         if not text or text[0] != "/":
             return False
 
-
-        print "TODO: parse_search"
+        self._model._search_string = self.text[1:]
+        self._model.refresh()
 
         # done
         return True
