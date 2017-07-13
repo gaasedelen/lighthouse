@@ -132,6 +132,12 @@ class ComposingShell(QtWidgets.QWidget):
         # configure the widget for use
         self._ui_init()
 
+    def text(self):
+        """
+        The existing shell text.
+        """
+        return str(self._line.toPlainText())
+
     #--------------------------------------------------------------------------
     # Initialization - UI
     #--------------------------------------------------------------------------
@@ -371,7 +377,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Text changed in the shell.
         """
-        text = self._line.toPlainText()
+        text = self.text
 
         # a Search, eg '/DnsParse_'
         if self._parse_search(text):
@@ -665,7 +671,6 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # more code-friendly, readable aliases
-        text = self._line.toPlainText()
         TOKEN_COLORS = self._director._palette.TOKEN_COLORS
 
         #
@@ -739,9 +744,6 @@ class ComposingShell(QtWidgets.QWidget):
         """
         assert self._parser_error
 
-        # more code-friendly, readable aliases
-        text = self._line.toPlainText()
-
         # the invalid text starts from the token that caused a parse error
         invalid_start = self._parser_error.error_index
         invalid_text  = text[invalid_start:]
@@ -765,7 +767,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # select the invalid text
         cursor.setPosition(invalid_start, QtGui.QTextCursor.MoveAnchor)
-        cursor.setPosition(len(text), QtGui.QTextCursor.KeepAnchor)
+        cursor.setPosition(len(self.text), QtGui.QTextCursor.KeepAnchor)
 
         # insert a highlighted version of the invalid text
         cursor.setCharFormat(highlight)
@@ -786,9 +788,6 @@ class ComposingShell(QtWidgets.QWidget):
         Clear any existing text colors.
         """
 
-        # more code-friendly, readable aliases
-        text = self._line.toPlainText()
-
         # alias the user cursor, and save its original (current) position
         cursor = self._line.textCursor()
         cursor_position = cursor.position()
@@ -801,7 +800,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # select the entire line
         cursor.setPosition(0, QtGui.QTextCursor.MoveAnchor)
-        cursor.setPosition(len(text), QtGui.QTextCursor.KeepAnchor)
+        cursor.setPosition(len(self.text), QtGui.QTextCursor.KeepAnchor)
 
         # set all the text to the default format
         cursor.setCharFormat(default)
