@@ -195,6 +195,9 @@ class DatabaseCoverage(object):
         # bake our coverage map
         self._finalize(dirty_nodes, dirty_functions)
 
+        # dump the unmappable coverage data
+        #self.dump_unmapped()
+
     def refresh_nodes(self):
         """
         Special fast-refresh of nodes as used in the un-painting process.
@@ -392,9 +395,15 @@ class DatabaseCoverage(object):
 
             while 1:
 
-                # map the hitmap data for the current address to this node mapping
-                node_coverage.executed_instructions[address] = self._hitmap[address]
-                self._unmapped_data.discard(address)
+                #
+                # map the hitmap data for the current address (an instruction)
+                # to this node mapping and mark the instruction as mapped by
+                # discarding its address from the unmapped data list
+                #
+
+                if address in node_metadata.instructions:
+                    node_coverage.executed_instructions[address] = self._hitmap[address]
+                    self._unmapped_data.discard(address)
 
                 # get the next address to attempt mapping on
                 address = addresses_to_map.popleft()
@@ -528,6 +537,18 @@ class DatabaseCoverage(object):
         """
         for function_address in function_addresses:
             self.functions.pop(function_address, None)
+
+    #--------------------------------------------------------------------------
+    # Debug
+    #--------------------------------------------------------------------------
+
+    def dump_unmapped(self):
+        """
+        Dump the unmapped coverage data.
+        """
+        lmsg("Unmapped Coverage:")
+        for address in self._unmapped_data:
+            lmsg(" * 0x%X" % address)
 
 #------------------------------------------------------------------------------
 # Function Level Coverage

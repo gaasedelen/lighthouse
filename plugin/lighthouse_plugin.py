@@ -450,6 +450,9 @@ class Lighthouse(plugin_t):
         base = idaapi.get_imagebase()
         rebased_blocks = rebase_blocks(base, coverage_blocks)
 
-        # flatten the basic blocks into individual instructions or addresses
-        return metadata.flatten_blocks(rebased_blocks)
+        # coalesce the blocks into larger contiguous blobs
+        condensed_blocks = coalesce_blocks(rebased_blocks)
+
+        # flatten the blobs into individual instructions or addresses
+        return metadata.flatten_blocks(condensed_blocks)
 
