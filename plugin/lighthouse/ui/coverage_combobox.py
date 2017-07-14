@@ -532,11 +532,17 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         Refresh the model data.
         """
 
+        # extract all the names from the director with a shorthand symbol
+        with_shorthand = []
+        for name in self._director.coverage_names:
+            if self._director.get_shorthand(name):
+                with_shorthand.append(name)
+
         # re-populate the model entries
         self._entries  = []
         self._entries += list(self._director.special_names)
         self._entries += [SEPARATOR]
-        self._entries += list(self._director.coverage_names)
+        self._entries += with_shorthand
 
         # save the index of the separator for easy reference
         self._seperator_index = self._entries.index(SEPARATOR)
