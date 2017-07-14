@@ -220,9 +220,9 @@ class ComposingShell(QtWidgets.QWidget):
         # this data may have changed. install callbacks for these events now.
         #
 
-        self._director.coverage_created(self.refresh)
-        self._director.coverage_deleted(self.refresh)
-        self._director.coverage_modified(self.refresh)
+        self._director.coverage_created(self._internal_refresh)
+        self._director.coverage_deleted(self._internal_refresh)
+        self._director.coverage_modified(self._internal_refresh)
 
     def _ui_layout(self):
         """
@@ -248,10 +248,16 @@ class ComposingShell(QtWidgets.QWidget):
     # Refresh
     #--------------------------------------------------------------------------
 
-    @idafast
     def refresh(self):
         """
-        Refresh the shell context.
+        Public refresh of the shell.
+        """
+        self._internal_refresh()
+
+    @idafast
+    def _internal_refresh(self):
+        """
+        Internal refresh of the shell.
         """
         self._refresh_hint_list()
 
