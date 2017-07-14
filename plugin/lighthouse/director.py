@@ -346,6 +346,24 @@ class CoverageDirector(object):
             callback_list.remove(callback_ref)
 
     #----------------------------------------------------------------------
+    # Batch Loading
+    #----------------------------------------------------------------------
+
+    def start_batch(self):
+        """
+        Gate the start of a batch coverage load.
+        """
+        self._batch_in_progress = True
+
+    def end_batch(self):
+        """
+        Gate the end of a batch coverage load.
+        """
+        assert self._batch_in_progress
+        self._refresh_aggregate()
+        self._batch_in_progress = False
+
+    #----------------------------------------------------------------------
     # Coverage
     #----------------------------------------------------------------------
 
@@ -430,8 +448,8 @@ class CoverageDirector(object):
         if coverage_name in self.coverage_names:
             old_coverage = self._database_coverage[coverage_name]
             self.aggregate.subtract_data(old_coverage.data)
-            self.aggregate.update_metadata(self.metadata)
-            self.aggregate.refresh()
+            if not self._batch_in_progress:
+                self._refresh_aggregate()
 
         #
         # this is the critical point where we actually integrate the newly
@@ -440,19 +458,10 @@ class CoverageDirector(object):
 
         self._database_coverage[coverage_name] = new_coverage
 
-        #
-        # TODO/PERF:
-        #
-        #   If we are calling add_coverage 1000x times, we don't want to
-        #   refresh the aggregate set every time... we will want to
-        #   restructure things such that we can refresh once only after a
-        #   batch load
-        #
-
         # (re)-add the newly loaded/updated coverage to the aggregate set
         self.aggregate.add_data(new_coverage.data)
-        self.aggregate.update_metadata(self.metadata)
-        self.aggregate.refresh()
+        if not self._batch_in_progress:
+            self._refresh_aggregate()
 
     def _build_coverage(self, coverage_data):
         """
@@ -485,8 +494,8 @@ class CoverageDirector(object):
         # TODO: check if there's any references to the coverage object here...
 
         self.aggregate.subtract_data(coverage.data)
-        self.aggregate.update_metadata(self.metadata)
-        self.aggregate.refresh()
+        if not self._batch_in_progress:
+            self._refresh_aggregate()
 
         # notify any listeners that we have deleted coverage
         self._notify_coverage_deleted()
@@ -934,6 +943,13 @@ class CoverageDirector(object):
 
         # add the symbol back to the end of the shorthand pool
         self._shorthand.append(symbol)
+
+    def _refresh_aggregate(self):
+        """
+        Refresh the aggregate coverage set.
+        """
+        self.aggregate.update_metadata(self.metadata)
+        self.aggregate.refresh()
 
 #------------------------------------------------------------------------------
 # Composition Cache

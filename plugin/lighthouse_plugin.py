@@ -354,9 +354,17 @@ class Lighthouse(plugin_t):
         #   box they can't close should things go poorly ;P
         #
 
+        # start a batch coverage data load for better performance
+        self.director.start_batch()
+
         try:
 
-            for data in coverage_data:
+            for i, data in enumerate(coverage_data):
+
+                # notify the user of what we're doing
+                idaapi.replace_wait_box(
+                    "Normalizing and mapping coverage %u/%u" % (i, len(coverage_data))
+                )
 
                 # normalize coverage data to the database
                 name = os.path.basename(data.filepath)
@@ -368,15 +376,20 @@ class Lighthouse(plugin_t):
             # select the 'first' coverage file loaded
             self.director.select_coverage(self.director.coverage_names[0])
 
+            # all done, hide the IDA wait box
             idaapi.hide_wait_box()
 
         # 'something happened :('
         except Exception as e:
+            self.director.end_batch()
             idaapi.hide_wait_box()
             lmsg("Failed to load coverage:")
             lmsg("- %s" % e)
             logger.exception(e)
             return
+
+        # collapse the batch job, computing the final aggregate director set
+        self.director.end_batch()
 
         # print a success message to the output window
         lmsg("loaded %u coverage file(s)..." % len(coverage_data))
