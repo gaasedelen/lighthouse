@@ -111,13 +111,6 @@ class CoverageOverview(DockableShim):
             QtWidgets.QSizePolicy.Ignored
         )
 
-        # allow sorting of the table, and initialize the sort indicator
-        self._table.setSortingEnabled(True)
-        self._table.horizontalHeader().setSortIndicator(
-            FUNC_ADDR,
-            QtCore.Qt.AscendingOrder
-        )
-
         # install the underlying data source for the table
         self._table.setModel(self._model)
 
@@ -147,6 +140,13 @@ class CoverageOverview(DockableShim):
 
         # stretch the last column (which is blank)
         hh.setStretchLastSection(True)
+
+        # disable bolding of table column headers when table is selected
+        hh.setHighlightSections(False)
+
+        # allow sorting of the table, and initialize the sort indicator
+        self._table.setSortingEnabled(True)
+        hh.setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
     def _ui_init_toolbar(self):
         """
@@ -186,7 +186,7 @@ class CoverageOverview(DockableShim):
         """
 
         # the composing shell
-        self._shell = ComposingShell(self._director)
+        self._shell = ComposingShell(self._director, self._model)
 
         # the coverage combobox
         self._combobox = CoverageComboBox(self._director)
@@ -239,10 +239,6 @@ class CoverageOverview(DockableShim):
         # toggle 0% coverage checkbox
         self._hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
 
-        # register for cues from the director
-        self._director.coverage_switched(self.refresh)
-        self._director.coverage_modified(self.refresh)
-
     def _ui_layout(self):
         """
         Layout the major UI elements of the widget.
@@ -263,20 +259,17 @@ class CoverageOverview(DockableShim):
     def _ui_entry_double_click(self, index):
         """
         Handle double click event on the coverage table view.
+
+        A double click on the coverage table view will jump the user to
+        the corresponding function in the IDA disassembly view.
         """
-
-        #
-        # a double click on the coverage table view will jump the user to
-        # the corresponding function in the IDA disassembly view
-        #
-
         idaapi.jumpto(self._model.row2func[index.row()])
 
     def _ui_hide_zero_toggle(self, checked):
         """
         Handle state change of 'Hide 0% Coverage' checkbox.
         """
-        self._model.hide_zero_coverage(checked)
+        self._model.filter_zero_coverage(checked)
 
     #--------------------------------------------------------------------------
     # Refresh
@@ -308,8 +301,8 @@ class CoverageModel(QtCore.QAbstractTableModel):
         self._director = director
 
         # mapping to correlate a given row in the table to its function coverage
-        self._rows = 0
         self.row2func = {}
+        self._row_count = 0
 
         # internal mappings of the explicit data / coverage we render
         self._no_coverage = []
@@ -332,14 +325,31 @@ class CoverageModel(QtCore.QAbstractTableModel):
         self._font = MonospaceFont()
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
+        #----------------------------------------------------------------------
+        # Sorting
+        #----------------------------------------------------------------------
+
         # members to enlighten the model to its last known sort state
         self._last_sort = FUNC_ADDR
         self._last_sort_order = QtCore.Qt.AscendingOrder
 
-        # used by the model to determine whether it should display 0% coverage entries
+        #----------------------------------------------------------------------
+        # Filters
+        #----------------------------------------------------------------------
+
+        # OPTION: display 0% coverage entries
         self._hide_zero = False
 
-        # TODO: list for director updates
+        # OPTION: display functions matching search_string (substring)
+        self._search_string = ""
+
+        #----------------------------------------------------------------------
+        # Signals
+        #----------------------------------------------------------------------
+
+        # register for cues from the director
+        self._director.coverage_switched(self._internal_refresh)
+        self._director.coverage_modified(self._internal_refresh)
 
     #--------------------------------------------------------------------------
     # AbstractItemModel Overloads
@@ -352,7 +362,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         """
         The number of table rows.
         """
-        return self._rows
+        return self._row_count
 
     def columnCount(self, index=QtCore.QModelIndex()):
         """
@@ -388,23 +398,15 @@ class CoverageModel(QtCore.QAbstractTableModel):
         Define how Qt should access the underlying model data.
         """
 
-        if not index.isValid():
-            return None
-
-        # font format request
-        if role == QtCore.Qt.FontRole:
-            return self._font
-
-        # text alignment request
-        elif role == QtCore.Qt.TextAlignmentRole:
-            return QtCore.Qt.AlignCenter
-
         # data display request
-        elif role == QtCore.Qt.DisplayRole:
+        if role == QtCore.Qt.DisplayRole:
 
-            # lookup the function metadata for this row
+            # grab for speed
+            column = index.column()
+
+            # lookup the function info for this row
             function_address  = self.row2func[index.row()]
-            function_metadata = self._visible_metadata[function_address]
+            function_metadata = self._director.metadata.functions[function_address]
 
             #
             # remember, if a function does *not* have coverage data, it will
@@ -412,41 +414,41 @@ class CoverageModel(QtCore.QAbstractTableModel):
             # yield a default, 'blank', coverage item in these instances
             #
 
-            function_coverage = self._visible_coverage.get(
+            function_coverage = self._director.coverage.functions.get(
                 function_address,
                 self._blank_coverage
             )
 
             # Coverage % - (by instruction execution)
-            if index.column() == COV_PERCENT:
+            if column == COV_PERCENT:
                 return "%5.2f%%" % (function_coverage.instruction_percent*100)
 
             # Function Name
-            elif index.column() == FUNC_NAME:
+            elif column == FUNC_NAME:
                 return function_metadata.name
 
             # Function Address
-            elif index.column() == FUNC_ADDR:
+            elif column == FUNC_ADDR:
                 return "0x%08X" % function_metadata.address
 
             # Basic Blocks
-            elif index.column() == BLOCKS_HIT:
+            elif column == BLOCKS_HIT:
                 return "%3u / %-3u" % (function_coverage.nodes_executed,
                                        function_metadata.node_count)
 
             # Instructions Hit
-            elif index.column() == INST_HIT:
+            elif column == INST_HIT:
                 return "%4u / %-4u" % (function_coverage.instructions_executed,
                                      function_metadata.instruction_count)
 
             # Function Size
-            elif index.column() == FUNC_SIZE:
+            elif column == FUNC_SIZE:
                 return "%u" % function_metadata.size
 
         # cell background color request
         elif role == QtCore.Qt.BackgroundRole:
             function_address  = self.row2func[index.row()]
-            function_coverage = self._visible_coverage.get(
+            function_coverage = self._director.coverage.functions.get(
                 function_address,
                 self._blank_coverage
             )
@@ -456,8 +458,20 @@ class CoverageModel(QtCore.QAbstractTableModel):
         elif role == QtCore.Qt.ForegroundRole:
             return QtGui.QColor(QtCore.Qt.white)
 
+        # font format request
+        elif role == QtCore.Qt.FontRole:
+            return self._font
+
+        # text alignment request
+        elif role == QtCore.Qt.TextAlignmentRole:
+            return QtCore.Qt.AlignCenter
+
         # unhandeled request, nothing to do
         return None
+
+    #----------------------------------------------------------------------
+    # Sorting
+    #----------------------------------------------------------------------
 
     def sort(self, column, sort_order):
         """
@@ -471,38 +485,19 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         try:
             sort_field = COLUMN_TO_FIELD[column]
+
+        # column has not been enlightened to sorting
         except KeyError as e:
             logger.warning("TODO: implement column %u sorting" % column)
-
-            #
-            # TODO/HACK:
-            #
-            #   This emit serves a rare case where sort is called via refresh()
-            #   and the sort fails (we come through here). The completeness and
-            #   correctness of the refresh() depends on sort() emitting a
-            #   layoutChanged event.
-            #
-            #   We don't call layoutChanged from refresh() itself to avoid a
-            #   possible double-emit... which can be costly in terms of time
-            #   a refresh will take.
-            #
-
             self.layoutChanged.emit()
-
-            # bail
             return
 
         #
-        # sort the existing entries in the table by the selected field name
-        #
-
-        #
-        # NOTE:
-        #   using attrgetter appears to profile ~8-12% faster than lambdas
+        # NOTE: attrgetter appears to profile ~8-12% faster than lambdas
         #   accessing the member on the member, hence the strange paradigm
         #
 
-        # sort by a metric stored in the metadata
+        # sort the table entries by a function metadata attribute
         if column in [FUNC_NAME, FUNC_ADDR, FUNC_SIZE]:
             sorted_functions = sorted(
                 self._visible_metadata.itervalues(),
@@ -510,7 +505,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
                 reverse=sort_order
             )
 
-        # sort by a metric stored in the coverage
+        # sort the table entries by a function coverage attribute
         elif column in [COV_PERCENT, BLOCKS_HIT, INST_HIT]:
             sorted_functions = sorted(
                 self._visible_coverage.itervalues(),
@@ -544,15 +539,10 @@ class CoverageModel(QtCore.QAbstractTableModel):
             else:
                 sorted_functions = self._no_coverage + sorted_functions
 
-        # this should never be hit
-        else:
-            raise RuntimeError("WTF, Invalid sort column '%s'" % sort_field)
-
         # create a generator of the sorted function addresses
         sorted_addresses = (x.address for x in sorted_functions)
 
-        # finally, rebuild the row2func mapping
-        self.layoutAboutToBeChanged.emit()
+        # finally, rebuild the row2func mapping and notify views of this change
         self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_addresses))
         self.layoutChanged.emit()
 
@@ -561,45 +551,73 @@ class CoverageModel(QtCore.QAbstractTableModel):
         self._last_sort_order = sort_order
 
     #--------------------------------------------------------------------------
-    # Model Controls
+    # Public
     #--------------------------------------------------------------------------
 
-    def hide_zero_coverage(self, hide=True):
+    def get_modeled_coverage_percent(self):
         """
-        Toggle zero coverage entries as visible.
+        Get the coverage % represented by the current (visible) model.
+        """
+        sum_coverage = sum(cov.instruction_percent for cov in self._visible_coverage.itervalues())
+        return (sum_coverage / (self._row_count or 1))*100
+
+    #--------------------------------------------------------------------------
+    # Filters
+    #--------------------------------------------------------------------------
+
+    def filter_zero_coverage(self, hide=True):
+        """
+        Filter out zero coverage functions from the model.
         """
 
-        #
-        # the request to hide or unhide the 0% coverage items matches the
-        # current state, so there's nothing to do
-        #
-
+        # the hide/unhide request matches the current state, ignore
         if self._hide_zero == hide:
             return
 
-        # the hide state is changing, so we need to recompute the model
+        # the filter is changing states, so we need to recompute the model
         self._hide_zero = hide
-        self.refresh()
+        self._internal_refresh()
 
-    @idafast
+    def filter_string(self, search_string):
+        """
+        Filter out functions whose names do not contain the given substring.
+        """
+
+        # the filter string matches the current string, ignore
+        if search_string == self._search_string:
+            return
+
+        # the filter is changing states, so we need to recompute the model
+        self._search_string = search_string
+        self._internal_refresh()
+
+    #--------------------------------------------------------------------------
+    # Refresh
+    #--------------------------------------------------------------------------
+
     def refresh(self):
         """
-        Internal refresh of the model.
+        Public refresh of the coverage model.
         """
+        self._internal_refresh()
 
-        # initialize a new row2func map as the coverage data has changed
-        self._refresh_row2func_map()
+    @idafast
+    def _internal_refresh(self):
+        """
+        Internal refresh of the coverage model.
+        """
+        self._refresh_data()
 
         # sort the data set according to the last selected sorted column
         self.sort(self._last_sort, self._last_sort_order)
 
-    def _refresh_row2func_map(self):
+    def _refresh_data(self):
         """
         Initialize the mapping to go from displayed row to function.
         """
         row = 0
-        self._rows = 0
         self.row2func = {}
+        self._row_count = 0
         self._no_coverage = []
         self._visible_coverage = {}
         self._visible_metadata = {}
@@ -612,33 +630,35 @@ class CoverageModel(QtCore.QAbstractTableModel):
         # the coverage overview list. during this process, we filter out entries
         # that do not meet the criteria as specified by the user.
         #
-        # NOTE: at this time, there is only one filtration option :P
-        #
 
         # loop through *all* the functions as defined in the active metadata
         for function_address in metadata.functions.iterkeys():
+
+            #------------------------------------------------------------------
+            # Filters - START
+            #------------------------------------------------------------------
 
             # OPTION: ignore items with 0% coverage items
             if self._hide_zero and not function_address in coverage.functions:
                 continue
 
-            #
-            # TODO: make more filtration options!
-            #
+            # OPTIONS: ignore items that do not match the search string
+            if not self._search_string in metadata.functions[function_address].name:
+                continue
 
-            #
-            # ~ this entry has passed the overview filter, add it now ~
-            #
+            #------------------------------------------------------------------
+            # Filters - END
+            #------------------------------------------------------------------
 
             # store a reference to the listed function's metadata
             self._visible_metadata[function_address] = metadata.functions[function_address]
 
             # store a reference to the listed function's coverage
-            try:
+            if function_address in coverage.functions:
                 self._visible_coverage[function_address] = coverage.functions[function_address]
 
             # reminder: coverage is *not* guaranteed :-)
-            except KeyError as e:
+            else:
                 self._no_coverage.append(metadata.functions[function_address])
 
             # map the function address to a visible row # for easy lookup
@@ -646,4 +666,4 @@ class CoverageModel(QtCore.QAbstractTableModel):
             row += 1
 
         # bake the final number of rows into the model
-        self._rows = len(self.row2func)
+        self._row_count = len(self.row2func)

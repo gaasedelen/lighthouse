@@ -120,10 +120,12 @@ class ComposingShell(QtWidgets.QWidget):
     independent, but obviously must communicate with the director.
     """
 
-    def __init__(self, director):
+    def __init__(self, director, model):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
         self._director = director
+        self._palette = director._palette
+        self._model = model
 
         # the last known user AST
         self._last_ast = None
@@ -138,6 +140,13 @@ class ComposingShell(QtWidgets.QWidget):
 
         # configure the widget for use
         self._ui_init()
+
+    @property
+    def text(self):
+        """
+        The existing shell text.
+        """
+        return str(self._line.toPlainText())
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -166,16 +175,18 @@ class ComposingShell(QtWidgets.QWidget):
         # the composer label at the head of the shell
         self._line_label = QtWidgets.QLabel("Composer")
         self._line_label.setStyleSheet("QLabel { margin: 0 1ex 0 1ex }")
+        self._line_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter)
         self._line_label.setFont(self._font)
+        self._line_label.setFixedWidth(self._line_label.sizeHint().width())
 
         # the text box / shell / ComposingLine
         self._line = ComposingLine()
 
         # configure the shell background & default text color
         palette = self._line.palette()
-        palette.setColor(QtGui.QPalette.Base, self._director._palette.composer_bg)
-        palette.setColor(QtGui.QPalette.Text, self._director._palette.composer_fg)
-        palette.setColor(QtGui.QPalette.WindowText, self._director._palette.composer_fg)
+        palette.setColor(QtGui.QPalette.Base, self._palette.composer_bg)
+        palette.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
+        palette.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
         self._line.setPalette(palette)
 
     def _ui_init_completer(self):
@@ -204,7 +215,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # text changed in the shell
-        self._line.textChanged.connect(self.ui_shell_text_changed)
+        self._line.textChanged.connect(self._ui_shell_text_changed)
 
         # cursor position changed in the shell
         self._line.cursorPositionChanged.connect(self._ui_shell_cursor_changed)
@@ -218,9 +229,12 @@ class ComposingShell(QtWidgets.QWidget):
         # this data may have changed. install callbacks for these events now.
         #
 
-        self._director.coverage_created(self.refresh)
-        self._director.coverage_deleted(self.refresh)
-        self._director.coverage_modified(self.refresh)
+        self._director.coverage_created(self._internal_refresh)
+        self._director.coverage_deleted(self._internal_refresh)
+        self._director.coverage_modified(self._internal_refresh)
+
+        # register for cues from the model
+        self._model.layoutChanged.connect(self._ui_shell_text_changed)
 
     def _ui_layout(self):
         """
@@ -246,10 +260,16 @@ class ComposingShell(QtWidgets.QWidget):
     # Refresh
     #--------------------------------------------------------------------------
 
-    @idafast
     def refresh(self):
         """
-        Refresh the shell context.
+        Public refresh of the shell.
+        """
+        self._internal_refresh()
+
+    @idafast
+    def _internal_refresh(self):
+        """
+        Internal refresh of the shell.
         """
         self._refresh_hint_list()
 
@@ -374,11 +394,139 @@ class ComposingShell(QtWidgets.QWidget):
         """
         self._ui_hint_coverage_refresh()
 
-    def ui_shell_text_changed(self):
+    def _ui_shell_text_changed(self):
         """
         Text changed in the shell.
         """
-        text = self._line.toPlainText()
+        text = self.text
+
+        # a Search, eg '/DnsParse_'
+        if self._parse_search(text):
+            self._highlight_search()
+            return
+
+        # a Jump, eg '0x804010a'
+        elif self._parse_jump(text):
+            self._highlight_jump()
+            return
+
+        # a Composition, eg '(A | B) - C'
+        elif self._parse_composition(text):
+            self._ui_hint_coverage_refresh()
+            self._highlight_composition()
+            return
+
+    #--------------------------------------------------------------------------
+    # Search
+    #--------------------------------------------------------------------------
+
+    def _parse_search(self, text):
+        """
+        Parse and execute a serch query.
+
+        A search query is used to filter functions listed in the coverage
+        overview table based on their name.
+
+        eg: text = '/DnsParse_'
+        """
+
+        # not a search query, ignore
+        if not text or text[0] != "/":
+
+            # clear any previous filter that may have been present
+            self._model.filter_string("")
+            return False
+
+        # the given text is a real search query, apply it as a filter now
+        self._model.filter_string(self.text[1:])
+
+        #
+        # if the user input is only '/' (starting to type something), hint
+        # that they are entering the Search mode.
+        #
+
+        if text == "/":
+            self._line_label.setText("Search")
+            return True # nothing else to do!
+
+        # compute coverage % of visible model
+        percent = self._model.get_modeled_coverage_percent()
+
+        # make this visible
+        self._line_label.setText("~%1.2f%%" % percent)
+
+        # done
+        return True
+
+    def _highlight_search(self):
+        """
+        Syntax highlight a search query.
+        """
+
+        self._line.setUpdatesEnabled(False)
+        ################# UPDATES DISABLED #################
+
+        # clear any existing text colors
+        self._color_clear()
+
+        print "TODO: highlight_search"
+
+        ################# UPDATES ENABLED #################
+        self._line.setUpdatesEnabled(True)
+
+        # done
+        return
+
+    #--------------------------------------------------------------------------
+    # Jump
+    #--------------------------------------------------------------------------
+
+    def _parse_jump(self, text):
+        """
+        Parse and execute an address jump query.
+
+        A jump query is used to jump to a function in the coverage overview
+        table based on their address.
+
+        eg: text = '0x8040100'
+        """
+
+        # not a jump query, ignore
+        if not text or not (len(text) > 2 and text[:2].lower() == "0x"):
+            return False
+
+        print "TODO: parse_jump"
+
+        # done
+        return True
+
+    def _highlight_jump(self):
+        """
+        Syntax highlight a jump query.
+        """
+
+        self._line.setUpdatesEnabled(False)
+        ################# UPDATES DISABLED #################
+
+        # clear any existing text colors
+        self._color_clear()
+
+        print "TODO: highlight_jump"
+
+        ################# UPDATES ENABLED #################
+        self._line.setUpdatesEnabled(True)
+
+        # done
+        return
+
+    #--------------------------------------------------------------------------
+    # Composition
+    #--------------------------------------------------------------------------
+
+    def _parse_composition(self, text):
+        """
+        Parse and execute a composition query.
+        """
 
         try:
 
@@ -407,12 +555,22 @@ class ComposingShell(QtWidgets.QWidget):
 
             self._parsed_tokens = e.parsed_tokens
 
-        # queue a refresh of the coverage hint
-        self._ui_hint_coverage_refresh()
+        # reset the line text
+        self._line_label.setText("Composer")
 
-        #
-        # ~ syntax highlighting ~
-        #
+        # done
+        return True
+
+    def _highlight_composition(self):
+        """
+        Syntax highlight a composition.
+        """
+
+        self._line.setUpdatesEnabled(False)
+        ################# UPDATES DISABLED #################
+
+        # clear any existing text colors
+        self._color_clear()
 
         # the parse failed, so there will be invalid text to highlight
         if self._parser_error:
@@ -420,6 +578,9 @@ class ComposingShell(QtWidgets.QWidget):
 
         # paint any valid tokens
         self._color_tokens()
+
+        ################# UPDATES ENABLED #################
+        self._line.setUpdatesEnabled(True)
 
         # done
         return
@@ -514,6 +675,9 @@ class ComposingShell(QtWidgets.QWidget):
         self._completer.complete(cr)
         self._completer.popup().repaint() # reduces hint flicker on the Hot Shell
 
+        # done
+        return
+
     def _ui_hint_coverage_hide(self):
         """
         Hide the coverage hint.
@@ -549,8 +713,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # more code-friendly, readable aliases
-        text = self._line.toPlainText()
-        TOKEN_COLORS = self._director._palette.TOKEN_COLORS
+        TOKEN_COLORS = self._palette.TOKEN_COLORS
 
         #
         # in order to syntax highlight text of interest, we must use a text
@@ -623,12 +786,9 @@ class ComposingShell(QtWidgets.QWidget):
         """
         assert self._parser_error
 
-        # more code-friendly, readable aliases
-        text = self._line.toPlainText()
-
         # the invalid text starts from the token that caused a parse error
         invalid_start = self._parser_error.error_index
-        invalid_text  = text[invalid_start:]
+        invalid_text  = self.text[invalid_start:]
 
         # no invalid text? nothing to highlight I guess!
         if not invalid_text:
@@ -639,7 +799,7 @@ class ComposingShell(QtWidgets.QWidget):
         cursor_position = cursor.position()
 
         # setup the invalid text highlighter
-        invalid_color = self._director._palette.invalid_text
+        invalid_color = self._palette.invalid_text
         highlight = QtGui.QTextCharFormat()
         highlight.setFontWeight(QtGui.QFont.Bold)
         highlight.setBackground(QtGui.QBrush(QtGui.QColor(invalid_color)))
@@ -649,7 +809,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # select the invalid text
         cursor.setPosition(invalid_start, QtGui.QTextCursor.MoveAnchor)
-        cursor.setPosition(len(text), QtGui.QTextCursor.KeepAnchor)
+        cursor.setPosition(len(self.text), QtGui.QTextCursor.KeepAnchor)
 
         # insert a highlighted version of the invalid text
         cursor.setCharFormat(highlight)
@@ -657,6 +817,38 @@ class ComposingShell(QtWidgets.QWidget):
         # reset the cursor position & style
         cursor.setPosition(cursor_position)
         cursor.setCharFormat(QtGui.QTextCharFormat())
+        self._line.setTextCursor(cursor)
+
+        ################# UPDATES ENABLED #################
+        self._line.blockSignals(False)
+
+        # done
+        return
+
+    def _color_clear(self):
+        """
+        Clear any existing text colors.
+        """
+
+        # alias the user cursor, and save its original (current) position
+        cursor = self._line.textCursor()
+        cursor_position = cursor.position()
+
+        # setup a blank / default text style
+        default = QtGui.QTextCharFormat()
+
+        self._line.blockSignals(True)
+        ################# UPDATES DISABLED #################
+
+        # select the entire line
+        cursor.setPosition(0, QtGui.QTextCursor.MoveAnchor)
+        cursor.setPosition(len(self.text), QtGui.QTextCursor.KeepAnchor)
+
+        # set all the text to the default format
+        cursor.setCharFormat(default)
+
+        # reset the cursor position & style
+        cursor.setPosition(cursor_position)
         self._line.setTextCursor(cursor)
 
         ################# UPDATES ENABLED #################
