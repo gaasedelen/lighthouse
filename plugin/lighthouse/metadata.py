@@ -78,9 +78,9 @@ class DatabaseMetadata(object):
 
         # lookup list members
         self._stale_lookup = False
+        self._name2func = {}
         self._last_node = []           # TODO/HACK: blank iterable for now
         self._node_addresses = []
-        self._function_addresses = []
 
         # asynchrnous metadata collection thread
         self._refresh_worker = None
@@ -92,7 +92,7 @@ class DatabaseMetadata(object):
 
     def get_node(self, address):
         """
-        Get the node (basic block) for a given address.
+        Get the node (basic block) metadata for a given address.
 
         This function provides fast lookup of node metadata for an
         arbitrary address (ea). Assuming the address falls within a
@@ -162,6 +162,28 @@ class DatabaseMetadata(object):
         #
 
         raise ValueError("Given address does not fall within a known node")
+
+    def get_function(self, address):
+        """
+        Get the function metadata for a given address.
+
+        See get_node() for more information.
+
+        If the target address falls within a function, the function's
+        metadata is returned. Otherwise, a ValueError is raised.
+        """
+        node_metadata = self.get_node(address)
+        return node_metadata.function
+
+    def get_function_by_name(self, function_name):
+        """
+        Get the function metadata for a given function name.
+        """
+        try:
+            return self.functions[self._name2func[function_name]]
+        except (IndexError, KeyError):
+            pass
+        raise ValueError("Given function name does not exist")
 
     def flatten_blocks(self, basic_blocks):
         """
@@ -334,8 +356,8 @@ class DatabaseMetadata(object):
             return False
 
         # update the lookup lists
-        self._node_addresses     = sorted(self.nodes.keys())
-        self._function_addresses = sorted(self.functions.keys())
+        self._name2func = { f.name: f.address for f in self.functions.itervalues() }
+        self._node_addresses = sorted(self.nodes.keys())
 
         # lookup lists are no longer stale, reset the stale flag as such
         self._stale_lookup = False
