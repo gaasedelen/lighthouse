@@ -186,7 +186,7 @@ class CoverageOverview(DockableShim):
         """
 
         # the composing shell
-        self._shell = ComposingShell(self._director, self._model)
+        self._shell = ComposingShell(self._director, self._model, self._table)
 
         # the coverage combobox
         self._combobox = CoverageComboBox(self._director)

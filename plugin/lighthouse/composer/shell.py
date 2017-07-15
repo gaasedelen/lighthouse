@@ -19,7 +19,7 @@ class ComposingShell(QtWidgets.QWidget):
     independent, but obviously must communicate with the director.
     """
 
-    def __init__(self, director, model):
+    def __init__(self, director, model, table=None):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
 
@@ -27,6 +27,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._director = director
         self._palette = director._palette
         self._model = model
+        self._table = table
 
         # the last known user AST
         self._last_ast = None
@@ -241,10 +242,10 @@ class ComposingShell(QtWidgets.QWidget):
             self._model.filter_string("")
 
         #
-        # a Jump, eg '0x804010a'
+        # a Jump, eg '0x804010a' or 'sub_1400016F0'
         #
 
-        if self.is_jump(text):
+        if self.is_jump(text) and self._table:
             self._line_label.setText("Jump")
             self._highlight_jump()
             return
@@ -271,8 +272,8 @@ class ComposingShell(QtWidgets.QWidget):
             return
 
         # jump to the function entry containing the requested address
-        if self.is_jump(text):
-            self._execute_jump()
+        if self.is_jump(text) and self._table:
+            self._execute_jump(text)
             return
 
         # attempt to save the user crafted composition
@@ -343,27 +344,94 @@ class ComposingShell(QtWidgets.QWidget):
     # Jump
     #--------------------------------------------------------------------------
 
-    @staticmethod
-    def is_jump(text):
+    def is_jump(self, text):
         """
         Check if a string (text) looks like a jump query.
 
         A jump query is used to jump to a function in the coverage overview
         table based on their address.
 
-        eg: text = '0x8040100'
+        eg: text = '0x8040100', or 'sub_1400016F0'
         """
-        return (text and (len(text) > 1 and (text[:2].lower() == "0x")))
+        return self._compute_jump(text) != 0
 
-    def _execute_jump(self):
+    def _compute_jump(self, text):
+        """
+        Compute the function address destination of a jump target from a string.
+
+        eg: text = '0x8040100', or 'sub_8040100' --> jump to function 0x8040100
+        """
+        text = text.strip()
+
+        #
+        # if the user input is less than two characters, we automatically
+        # dismiss it as a valid jump target. the primary reasons for this
+        # is to avoid possible shorthand parsing clashes.
+        #
+        # eg: imagine the user has a valid function named 'A' that they want to
+        # jump to - well we actually choose to ignore that request here.
+        #
+        # We favor the importance of shorthand symbols as used in compositions.
+        #
+
+        if len(text) < 2:
+            return 0
+
+        #
+        # attempt to convert the user input from a hex number eg '0x8040105'
+        # to its corresponding function address validated by the director
+        #
+
+        try:
+
+            address = int(text, 16)
+            function_metadata = self._director.metadata.get_function(address)
+            return function_metadata.address
+
+        #
+        # the user string did not translate to a parsable hex number (address)
+        # or the function it falls within could not be found in the director.
+        #
+
+        except ValueError:
+            pass
+
+        #
+        # attempt to convert the user input from a function name eg
+        # 'sub_1400016F0' to a function address validated by the director
+        #
+
+        try:
+            function_metadata = self._director.metadata.get_function_by_name(text)
+            return function_metadata.address
+
+        #
+        # the user string did not translate to a function name that could
+        # be found in the director.
+        #
+
+        except ValueError:
+            pass
+
+        # failure, the user input (text) isn't a jump ...
+        return 0
+
+    def _execute_jump(self, text):
         """
         Execute the jump semantics.
         """
+        assert self._table
 
-        logger.info("TODO: _execute_jump")
+        # retrieve the jump target
+        function_address = self._compute_jump(text)
+        assert function_address
 
-        # done
-        return
+        # select the function entry in the coverage overview table
+        self._table.selectRow(self._model.func2row[function_address])
+        self._table.scrollTo(
+            self._table.currentIndex(),
+            QtGui.QAbstractItemView.PositionAtCenter
+        )
 
     def _highlight_jump(self):
         """
@@ -376,7 +444,8 @@ class ComposingShell(QtWidgets.QWidget):
         # clear any existing text colors
         self._color_clear()
 
-        logger.info("TODO: highlight_jump")
+        # color jump
+        self._color_text(self._palette.valid_jump)
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -509,11 +578,11 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         #
-        # if the shell is not focused, don't bother to show a hint as it
-        # frequently gets in the way and is really annoying...
+        # if the shell is not focused (or empty), don't bother to show a hint
+        # as it frequently gets in the way and is really annoying...
         #
 
-        if not self._line.hasFocus():
+        if not (self._line.hasFocus() or self.text):
             return
 
         # scrape info from the current shell text state
@@ -747,13 +816,21 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Clear any existing text colors.
         """
+        self._color_text()
+
+    def _color_text(self, color=None):
+        """
+        Color shell text with the given color.
+        """
 
         # alias the user cursor, and save its original (current) position
         cursor = self._line.textCursor()
         cursor_position = cursor.position()
 
-        # setup a blank / default text style
-        default = QtGui.QTextCharFormat()
+        # setup a simple font coloring (or clearing) text format
+        simple = QtGui.QTextCharFormat()
+        if color:
+            simple.setForeground(QtGui.QBrush(QtGui.QColor(color)))
 
         self._line.blockSignals(True)
         ################# UPDATES DISABLED #################
@@ -762,8 +839,8 @@ class ComposingShell(QtWidgets.QWidget):
         cursor.setPosition(0, QtGui.QTextCursor.MoveAnchor)
         cursor.setPosition(len(self.text), QtGui.QTextCursor.KeepAnchor)
 
-        # set all the text to the default format
-        cursor.setCharFormat(default)
+        # set all the text to the simple format
+        cursor.setCharFormat(simple)
 
         # reset the cursor position & style
         cursor.setPosition(cursor_position)

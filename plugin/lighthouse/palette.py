@@ -44,14 +44,19 @@ class LighthousePalette(object):
         # Composing Shell
         #
 
-        self._composer_bg    = [QtGui.QColor(30, 30, 30), QtGui.QColor(30, 30, 30)]
+        self._composer_bg    = [QtGui.QColor(30, 30, 30),    QtGui.QColor(30, 30, 30)]
         self._composer_fg    = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+        self._invalid_text   = [0x990000, 0xFF0000]
+        self._valid_jump     = [0x40FF40, 0x0000FF]
+
+        #
+        # Composition Grammar
+        #
 
         self._logic_token    = [0xF02070, 0xFF0000]
         self._comma_token    = [0x00FF00, 0x0000FF]
         self._paren_token    = [0x40FF40, 0x0000FF]
         self._coverage_token = [0x80F0FF, 0x000000]
-        self._invalid_text   = [0x990000, 0xFF0000]
 
     #--------------------------------------------------------------------------
     # Theme Management
@@ -194,6 +199,18 @@ class LighthousePalette(object):
         return self._composer_fg[self.qt_theme]
 
     @property
+    def invalid_text(self):
+        return self._invalid_text[self.qt_theme]
+
+    @property
+    def valid_jump(self):
+        return self._valid_jump[self.qt_theme]
+
+    #--------------------------------------------------------------------------
+    # Composition Grammar
+    #--------------------------------------------------------------------------
+
+    @property
     def logic_token(self):
         return self._logic_token[self.qt_theme]
 
@@ -208,10 +225,6 @@ class LighthousePalette(object):
     @property
     def coverage_token(self):
         return self._coverage_token[self.qt_theme]
-
-    @property
-    def invalid_text(self):
-        return self._invalid_text[self.qt_theme]
 
     @property
     def TOKEN_COLORS(self):
