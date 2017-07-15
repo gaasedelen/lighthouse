@@ -359,7 +359,7 @@ class Lighthouse(plugin_t):
 
         try:
 
-            for i, data in enumerate(coverage_data):
+            for i, data in enumerate(coverage_data, 1):
 
                 # notify the user of what we're doing
                 idaapi.replace_wait_box(

@@ -1,106 +1,5 @@
-from lighthouse.util import *
 from .parser import *
-
-#------------------------------------------------------------------------------
-# Composing Line
-#------------------------------------------------------------------------------
-
-class ComposingLine(QtWidgets.QPlainTextEdit):
-    """
-    The textbox UI where user compositions are entered (typed).
-
-    While this a QLineEdit may appear to be more appropriate for our
-    'Composing Shell', its support for syntax highlighting like features
-    are completely absent.
-
-    QPlainTextEdit has much better support for coloring or highlighting
-    entered text, so we subclass from it and make a best effort attempt
-    to make it appear and act like a QLineEdit 'shell'
-
-    """
-
-    #
-    # QLineEdit has a signal called 'returnPressed' which fires when the
-    # user hits 'return' or 'enter'. This is a convenient signal, but
-    # QPlainTextEdit does *not* have an equivalent.
-    #
-    # We define and fire this signal ourself for consistency and the same
-    # conveniences as the one QLineEdit offers.
-    #
-    returnPressed = QtCore.pyqtSignal()
-
-    def __init__(self, parent=None):
-        super(ComposingLine, self).__init__(parent)
-        self.setObjectName(self.__class__.__name__)
-
-        # configure the widget for use
-        self._ui_init()
-
-    #--------------------------------------------------------------------------
-    # Initialization - UI
-    #--------------------------------------------------------------------------
-
-    def _ui_init(self):
-        """
-        Initialize UI elements.
-        """
-
-        # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
-        self._font_metrics = QtGui.QFontMetricsF(self._font)
-        self.setFont(self._font)
-
-        # configure the QPlainTextEdit to appear and act as much like a
-        # QLineEdit as possible (a single line text box)
-        self.setWordWrapMode(QtGui.QTextOption.NoWrap)
-        self.setLineWrapMode(QtGui.QPlainTextEdit.NoWrap)
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.setTabChangesFocus(True)
-        self.setMaximumBlockCount(1)
-
-        # set the height of the textbox based on some arbitrary math :D
-        LINE_PADDING = self.document().documentMargin()*2
-        line_height = self._font_metrics.height() + LINE_PADDING - 2
-        self.setFixedHeight(line_height)
-
-    #--------------------------------------------------------------------------
-    # QPlainTextEdit Overloads
-    #--------------------------------------------------------------------------
-
-    def keyPressEvent(self, e):
-        """
-        Overload of the key press event.
-        """
-
-        # trap the return/enter key event
-        if e.key() == QtCore.Qt.Key_Return or \
-           e.key() == QtCore.Qt.Key_Enter:
-
-            #
-            # fire our convenience signal notifying listerns that the user
-            # pressed enter. this signal firing indicates the user is
-            # probably trying to complete their query / input.
-            #
-
-            self.returnPressed.emit()
-
-            #
-            # now we must consume the keypress so it doesn't get passed on
-            # to any other widgets/handlers/put in the text box
-            #
-
-            e.accept()
-
-        # business as usual
-        else:
-            super(ComposingLine, self).keyPressEvent(e)
-
-    def timerEvent(self, e):
-        """
-        Stubbed out to prevent the QPlainTextEdit selection autoscroll.
-        """
-        return
+from lighthouse.util import *
 
 #------------------------------------------------------------------------------
 # Composing Shell
@@ -123,6 +22,8 @@ class ComposingShell(QtWidgets.QWidget):
     def __init__(self, director, model):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
+
+        # external entities
         self._director = director
         self._palette = director._palette
         self._model = model
@@ -130,16 +31,18 @@ class ComposingShell(QtWidgets.QWidget):
         # the last known user AST
         self._last_ast = None
 
-        # parser related members
+        # composition parser related members
         self._parser = CompositionParser()
         self._parser_error = None
         self._parsed_tokens = []
-
-        # local list of valid shorthand coverage symbols
         self._shorthand = []
 
         # configure the widget for use
         self._ui_init()
+
+    #--------------------------------------------------------------------------
+    # Properties
+    #--------------------------------------------------------------------------
 
     @property
     def text(self):
@@ -223,12 +126,7 @@ class ComposingShell(QtWidgets.QWidget):
         # return key pressed in the shell
         self._line.returnPressed.connect(self._ui_shell_return_pressed)
 
-        #
-        # we need to refresh some of our elements and internal state (say,
-        # coverage hint stuff) should the director fire events indicating
-        # this data may have changed. install callbacks for these events now.
-        #
-
+        # register for cues from the director
         self._director.coverage_created(self._internal_refresh)
         self._director.coverage_deleted(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
@@ -241,7 +139,7 @@ class ComposingShell(QtWidgets.QWidget):
         Layout the major UI elements of the widget.
         """
 
-        # create a qt layout
+        # create a qt layout for the 'compser' (the shell)
         layout = QtWidgets.QHBoxLayout()
         layout.setContentsMargins(0,0,0,0)
 
@@ -290,31 +188,21 @@ class ComposingShell(QtWidgets.QWidget):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    def _ui_hint_save_error(self):
+    def _ui_hint_tooltip(self, text, index):
         """
-        Display a non-intrusive save error hint / tooltip.
-
-        I hate popping up dialogs. most of the time it is a very jarring
-        and flow-breaking user experience. even worse, we are tying this
-        notification to a very impulsive and error-prone event: the user
-        hitting enter/return on the shell.
-
-        I don't want my users to have popup induced rage.
-
-        Instead of popping up a ridiculously annoying dialog telling the
-        user we can't parse / save their composition (when they hit enter),
-        we instead pop a more palettable tooltip on the shell.
-
+        Display a non-intrusive error tooltip to the user.
         """
-        assert self._parser_error
 
+        #
         # hide the coverage hint if it is visible. things can look cluttered
         # down by the shell if we're trying to show both.
+        #
+
         self._ui_hint_coverage_hide()
 
         # create a cursor and move it to the parse error location on the shell
         cursor_tip = QtGui.QTextCursor(self._line.document())
-        cursor_tip.setPosition(self._parser_error.error_index)
+        cursor_tip.setPosition(index)
 
         #
         # using our carefully positioned cursor, we can now extract the relative
@@ -325,68 +213,7 @@ class ComposingShell(QtWidgets.QWidget):
         position = self._line.mapToGlobal(self._line.cursorRect(cursor_tip).topLeft())
 
         # draw the tooltip at the computed parse error position
-        x = QtWidgets.QToolTip.showText(position, "Invalid Composition (Parse Error)")
-
-    def _ui_shell_return_pressed(self):
-        """
-        Return / Enter pressed in the shell.
-
-        The user pressed 'enter' in the shell, this means we want to try
-        and save their composition as a new coverage set to the director.
-        """
-
-        #
-        # if there's an existing parse error on the shell, there's nothing we
-        # can do but pop a hint for the user and have them try again
-        #
-
-        if self._parser_error:
-            self._ui_hint_save_error()
-            return
-
-        # there's no text in the shell text box, so there's nothing for us to do
-        if len(self._line.toPlainText()) == 0:
-            return
-
-        #
-        # TODO/UX: disallow save/create if not on the 'New Composition' option?
-        #
-
-        assert self._last_ast
-
-        #
-        # While the user is picking a name for the new composite, we might as well
-        # try and cache it asynchronously :-)
-        #
-
-        self._director.cache_composition(self._last_ast, force=True)
-
-        #
-        # the user has entered a valid composition that we have parsed. we
-        # want to save this to the director, but first we need a name for the
-        # new composition.
-        #
-
-        # pop a simple dialog prompting the user for a composition name
-        coverage_name = idaapi.askstr(
-            0,
-            str("COMP_%s" % self._line.toPlainText()),
-            "Save composition as..."
-        )
-
-        # the user did not enter a coverage name or hit cancel - abort the save
-        if not coverage_name:
-            return
-
-        #
-        # all good, ask the director to save the last composition
-        # composition under the given coverage name
-        #
-
-        self._director.add_composition(coverage_name, self._last_ast)
-
-        # switch to the newly created composition
-        self._director.select_coverage(coverage_name)
+        x = QtWidgets.QToolTip.showText(position, text)
 
     def _ui_shell_cursor_changed(self):
         """
@@ -400,63 +227,98 @@ class ComposingShell(QtWidgets.QWidget):
         """
         text = self.text
 
+        #
         # a Search, eg '/DnsParse_'
-        if self._parse_search(text):
+        #
+
+        if self.is_search(text):
+            self._execute_search(text)
             self._highlight_search()
             return
 
+        # not a search query clear any lingering filters for it
+        else:
+            self._model.filter_string("")
+
+        #
         # a Jump, eg '0x804010a'
-        elif self._parse_jump(text):
+        #
+
+        if self.is_jump(text):
+            self._line_label.setText("Jump")
             self._highlight_jump()
             return
 
+        #
         # a Composition, eg '(A | B) - C'
-        elif self._parse_composition(text):
-            self._ui_hint_coverage_refresh()
-            self._highlight_composition()
+        #
+
+        self._execute_composition(text)
+        self._highlight_composition()
+        self._ui_hint_coverage_refresh()
+
+    def _ui_shell_return_pressed(self):
+        """
+        Return / Enter pressed in the shell.
+
+        The user pressed 'enter' in the shell, this means we want to try
+        and save their composition as a new coverage set to the director.
+        """
+        text = self.text
+
+        # a search query has no accept state, nothing to do
+        if self.is_search(text):
             return
+
+        # jump to the function entry containing the requested address
+        if self.is_jump(text):
+            self._execute_jump()
+            return
+
+        # attempt to save the user crafted composition
+        self._accept_composition()
 
     #--------------------------------------------------------------------------
     # Search
     #--------------------------------------------------------------------------
 
-    def _parse_search(self, text):
+    @staticmethod
+    def is_search(text):
         """
-        Parse and execute a serch query.
+        Check if a string (text) looks like a search query.
 
         A search query is used to filter functions listed in the coverage
         overview table based on their name.
 
         eg: text = '/DnsParse_'
         """
+        return (text and text[0] == "/")
 
-        # not a search query, ignore
-        if not text or text[0] != "/":
-
-            # clear any previous filter that may have been present
-            self._model.filter_string("")
-            return False
+    def _execute_search(self, text):
+        """
+        Execute the search semantics.
+        """
 
         # the given text is a real search query, apply it as a filter now
-        self._model.filter_string(self.text[1:])
+        self._model.filter_string(text[1:])
 
         #
-        # if the user input is only '/' (starting to type something), hint
-        # that they are entering the Search mode.
+        # if the user input is only "/" (starting to type something), hint
+        # that they are entering the Search mode. nothing else to do!
         #
 
         if text == "/":
             self._line_label.setText("Search")
-            return True # nothing else to do!
+            return
 
-        # compute coverage % of visible model
+        # compute coverage % of the visible (filtered) results
         percent = self._model.get_modeled_coverage_percent()
 
-        # make this visible
-        self._line_label.setText("~%1.2f%%" % percent)
+        # show the coverage % of the search results in the shell label
+        self._line_label.setText("%1.2f%%" % percent)
 
         # done
-        return True
+        return
 
     def _highlight_search(self):
         """
@@ -469,7 +331,7 @@ class ComposingShell(QtWidgets.QWidget):
         # clear any existing text colors
         self._color_clear()
 
-        print "TODO: highlight_search"
+        logger.info("TODO: highlight_search")
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -481,24 +343,27 @@ class ComposingShell(QtWidgets.QWidget):
     # Jump
     #--------------------------------------------------------------------------
 
-    def _parse_jump(self, text):
+    @staticmethod
+    def is_jump(text):
         """
-        Parse and execute an address jump query.
+        Check if a string (text) looks like a jump query.
 
         A jump query is used to jump to a function in the coverage overview
         table based on their address.
 
         eg: text = '0x8040100'
         """
+        return (text and (len(text) > 1 and (text[:2].lower() == "0x")))
 
-        # not a jump query, ignore
-        if not text or not (len(text) > 2 and text[:2].lower() == "0x"):
-            return False
+    def _execute_jump(self):
+        """
+        Execute the jump semantics.
+        """
 
-        print "TODO: parse_jump"
+        logger.info("TODO: _execute_jump")
 
         # done
-        return True
+        return
 
     def _highlight_jump(self):
         """
@@ -511,7 +376,7 @@ class ComposingShell(QtWidgets.QWidget):
         # clear any existing text colors
         self._color_clear()
 
-        print "TODO: highlight_jump"
+        logger.info("TODO: highlight_jump")
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -523,11 +388,15 @@ class ComposingShell(QtWidgets.QWidget):
     # Composition
     #--------------------------------------------------------------------------
 
-    def _parse_composition(self, text):
+    def _execute_composition(self, text):
         """
-        Parse and execute a composition query.
+        Execute a composition query.
         """
 
+        # reset the shell head text
+        self._line_label.setText("Composer")
+
+        # attempt to parse & execute a composition
         try:
 
             # clear any previous parse attempts/failures
@@ -555,9 +424,6 @@ class ComposingShell(QtWidgets.QWidget):
 
             self._parsed_tokens = e.parsed_tokens
 
-        # reset the line text
-        self._line_label.setText("Composer")
-
         # done
         return True
 
@@ -584,6 +450,54 @@ class ComposingShell(QtWidgets.QWidget):
 
         # done
         return
+
+    def _accept_composition(self):
+        """
+        Save the user crafted composition to the director.
+        """
+
+        #
+        # if there's an existing parse error on the shell, there's nothing we
+        # can do but pop a hint for the user and have them try again
+        #
+
+        if self._parser_error:
+            self._ui_hint_tooltip("Invalid Composition", self._parser_error.error_index)
+            return
+
+        #
+        # While the user is picking a name for the new composite, we might as well
+        # try and cache it asynchronously :-). kick the caching off now.
+        #
+
+        self._director.cache_composition(self._last_ast, force=True)
+
+        #
+        # the user has entered a valid composition that we have parsed. we
+        # want to save this to the director, but first we need a name for the
+        # new composition. pop a simple dialog prompting the user for a
+        # composition name
+        #
+
+        coverage_name = idaapi.askstr(
+            0,
+            str("COMP_%s" % self.text),
+            "Save composition as..."
+        )
+
+        # the user did not enter a coverage name or hit cancel - abort the save
+        if not coverage_name:
+            return
+
+        #
+        # all good, ask the director to save the last composition
+        # composition under the given coverage name
+        #
+
+        self._director.add_composition(coverage_name, self._last_ast)
+
+        # switch to the newly created composition
+        self._director.select_coverage(coverage_name)
 
     #--------------------------------------------------------------------------
     # Coverage Hint
@@ -704,7 +618,7 @@ class ComposingShell(QtWidgets.QWidget):
         return None
 
     #--------------------------------------------------------------------------
-    # Syntax Highlighting
+    # Composition Highlighting
     #--------------------------------------------------------------------------
 
     def _color_tokens(self):
@@ -825,6 +739,10 @@ class ComposingShell(QtWidgets.QWidget):
         # done
         return
 
+    #--------------------------------------------------------------------------
+    # General Highlighting
+    #--------------------------------------------------------------------------
+
     def _color_clear(self):
         """
         Clear any existing text colors.
@@ -855,4 +773,105 @@ class ComposingShell(QtWidgets.QWidget):
         self._line.blockSignals(False)
 
         # done
+        return
+
+#------------------------------------------------------------------------------
+# Composing Line
+#------------------------------------------------------------------------------
+
+class ComposingLine(QtWidgets.QPlainTextEdit):
+    """
+    The textbox UI where user compositions are entered (typed).
+
+    While this a QLineEdit may appear to be more appropriate for our
+    'Composing Shell', its support for syntax highlighting like features
+    are completely absent.
+
+    QPlainTextEdit has much better support for coloring or highlighting
+    entered text, so we subclass from it and make a best effort attempt
+    to make it appear and act like a QLineEdit 'shell'
+    """
+
+    #
+    # QLineEdit has a signal called 'returnPressed' which fires when the
+    # user hits 'return' or 'enter'. This is a convenient signal, but
+    # QPlainTextEdit does *not* have an equivalent.
+    #
+    # We define and fire this signal ourself for consistency and the same
+    # conveniences as the one QLineEdit offers.
+    #
+
+    returnPressed = QtCore.pyqtSignal()
+
+    def __init__(self, parent=None):
+        super(ComposingLine, self).__init__(parent)
+        self.setObjectName(self.__class__.__name__)
+
+        # configure the widget for use
+        self._ui_init()
+
+    #--------------------------------------------------------------------------
+    # Initialization - UI
+    #--------------------------------------------------------------------------
+
+    def _ui_init(self):
+        """
+        Initialize UI elements.
+        """
+
+        # initialize a monospace font to use with our widget(s)
+        self._font = MonospaceFont()
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
+        self.setFont(self._font)
+
+        # configure the QPlainTextEdit to appear and act as much like a
+        # QLineEdit as possible (a single line text box)
+        self.setWordWrapMode(QtGui.QTextOption.NoWrap)
+        self.setLineWrapMode(QtGui.QPlainTextEdit.NoWrap)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setTabChangesFocus(True)
+        self.setMaximumBlockCount(1)
+
+        # set the height of the textbox based on some arbitrary math :D
+        LINE_PADDING = self.document().documentMargin()*2
+        line_height = self._font_metrics.height() + LINE_PADDING - 2
+        self.setFixedHeight(line_height)
+
+    #--------------------------------------------------------------------------
+    # QPlainTextEdit Overloads
+    #--------------------------------------------------------------------------
+
+    def keyPressEvent(self, e):
+        """
+        Overload of the key press event.
+        """
+
+        # trap the return/enter key event
+        if e.key() == QtCore.Qt.Key_Return or \
+           e.key() == QtCore.Qt.Key_Enter:
+
+            #
+            # fire our convenience signal notifying listerns that the user
+            # pressed enter. this signal firing indicates the user is
+            # probably trying to complete their query / input.
+            #
+
+            self.returnPressed.emit()
+
+            #
+            # now we must consume the keypress so it doesn't get passed on
+            # to any other widgets/handlers/put in the text box
+            #
+
+            e.accept()
+
+        # business as usual
+        else:
+            super(ComposingLine, self).keyPressEvent(e)
+
+    def timerEvent(self, e):
+        """
+        Stubbed out to prevent the QPlainTextEdit selection autoscroll.
+        """
         return

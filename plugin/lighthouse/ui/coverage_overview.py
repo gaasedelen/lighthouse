@@ -429,7 +429,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
             # Function Address
             elif column == FUNC_ADDR:
-                return "0x%08X" % function_metadata.address
+                return "0x%X" % function_metadata.address
 
             # Basic Blocks
             elif column == BLOCKS_HIT:

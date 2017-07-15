@@ -632,6 +632,7 @@ class CoverageDirector(object):
         """
         Cache the given composition.
         """
+        assert ast
 
         #
         # normally, we only pro-actively evaluate/cache if the hotshell is
