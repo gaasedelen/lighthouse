@@ -53,6 +53,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
         # configure the QPlainTextEdit to appear and act as much like a
         # QLineEdit as possible (a single line text box)
         self.setWordWrapMode(QtGui.QTextOption.NoWrap)
+        self.setLineWrapMode(QtGui.QPlainTextEdit.NoWrap)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setTabChangesFocus(True)
@@ -94,6 +95,12 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
         # business as usual
         else:
             super(ComposingLine, self).keyPressEvent(e)
+
+    def timerEvent(self, e):
+        """
+        Stubbed out to prevent the QPlainTextEdit selection autoscroll.
+        """
+        return
 
 #------------------------------------------------------------------------------
 # Composing Shell
