@@ -266,7 +266,7 @@ class CoverageOverview(DockableShim):
         """
         Handle state change of 'Hide 0% Coverage' checkbox.
         """
-        self._model.hide_zero_coverage(checked)
+        self._model.filter_zero_coverage(checked)
 
     #--------------------------------------------------------------------------
     # Refresh
@@ -466,6 +466,10 @@ class CoverageModel(QtCore.QAbstractTableModel):
         # unhandeled request, nothing to do
         return None
 
+    #----------------------------------------------------------------------
+    # Sorting
+    #----------------------------------------------------------------------
+
     def sort(self, column, sort_order):
         """
         Sort coverage data model by column.
@@ -484,10 +488,6 @@ class CoverageModel(QtCore.QAbstractTableModel):
             logger.warning("TODO: implement column %u sorting" % column)
             self.layoutChanged.emit()
             return
-
-        #----------------------------------------------------------------------
-        # Sort
-        #----------------------------------------------------------------------
 
         #
         # NOTE: attrgetter appears to profile ~8-12% faster than lambdas
@@ -548,24 +548,44 @@ class CoverageModel(QtCore.QAbstractTableModel):
         self._last_sort_order = sort_order
 
     #--------------------------------------------------------------------------
+    # Public
+    #--------------------------------------------------------------------------
+
+    def get_modeled_coverage_percent(self):
+        """
+        Get the coverage % represented by the current (visible) model.
+        """
+        sum_coverage = sum(cov.instruction_percent for cov in self._visible_coverage.itervalues())
+        return (sum_coverage / (self._row_count or 1))*100
+
+    #--------------------------------------------------------------------------
     # Filters
     #--------------------------------------------------------------------------
 
-    def hide_zero_coverage(self, hide=True):
+    def filter_zero_coverage(self, hide=True):
         """
-        Toggle zero coverage entries as visible.
+        Filter out zero coverage functions from the model.
         """
 
-        #
-        # the request to hide or unhide the 0% coverage items matches the
-        # current state, so there's nothing to do
-        #
-
+        # the hide/unhide request matches the current state, ignore
         if self._hide_zero == hide:
             return
 
-        # the hide state is changing, so we need to recompute the model
+        # the filter is changing states, so we need to recompute the model
         self._hide_zero = hide
+        self._internal_refresh()
+
+    def filter_string(self, search_string):
+        """
+        Filter out functions whose names do not contain the given substring.
+        """
+
+        # the filter string matches the current string, ignore
+        if search_string == self._search_string:
+            return
+
+        # the filter is changing states, so we need to recompute the model
+        self._search_string = search_string
         self._internal_refresh()
 
     #--------------------------------------------------------------------------

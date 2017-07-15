@@ -168,7 +168,9 @@ class ComposingShell(QtWidgets.QWidget):
         # the composer label at the head of the shell
         self._line_label = QtWidgets.QLabel("Composer")
         self._line_label.setStyleSheet("QLabel { margin: 0 1ex 0 1ex }")
+        self._line_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter)
         self._line_label.setFont(self._font)
+        self._line_label.setFixedWidth(self._line_label.sizeHint().width())
 
         # the text box / shell / ComposingLine
         self._line = ComposingLine()
@@ -223,6 +225,9 @@ class ComposingShell(QtWidgets.QWidget):
         self._director.coverage_created(self._internal_refresh)
         self._director.coverage_deleted(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
+
+        # register for cues from the model
+        self._model.layoutChanged.connect(self._ui_shell_text_changed)
 
     def _ui_layout(self):
         """
@@ -420,10 +425,28 @@ class ComposingShell(QtWidgets.QWidget):
 
         # not a search query, ignore
         if not text or text[0] != "/":
+
+            # clear any previous filter that may have been present
+            self._model.filter_string("")
             return False
 
-        self._model._search_string = self.text[1:]
-        self._model.refresh()
+        # the given text is a real search query, apply it as a filter now
+        self._model.filter_string(self.text[1:])
+
+        #
+        # if the user input is only '/' (starting to type something), hint
+        # that they are entering the Search mode.
+        #
+
+        if text == "/":
+            self._line_label.setText("Search")
+            return True # nothing else to do!
+
+        # compute coverage % of visible model
+        percent = self._model.get_modeled_coverage_percent()
+
+        # make this visible
+        self._line_label.setText("~%1.2f%%" % percent)
 
         # done
         return True
@@ -524,6 +547,9 @@ class ComposingShell(QtWidgets.QWidget):
             #
 
             self._parsed_tokens = e.parsed_tokens
+
+        # reset the line text
+        self._line_label.setText("Composer")
 
         # done
         return True
