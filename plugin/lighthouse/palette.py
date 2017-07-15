@@ -31,6 +31,7 @@ class LighthousePalette(object):
         # Coverage Overview
         #
 
+        self._selection     = [QtGui.QColor(100, 0, 130),  QtGui.QColor(226, 143, 0)]
         self._coverage_bad  = [QtGui.QColor(221, 0, 0),    QtGui.QColor(207, 31, 0)]
         self._coverage_good = [QtGui.QColor(51, 153, 255), QtGui.QColor(75, 209, 42)]
 
@@ -169,6 +170,10 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
     # Coverage Overview
     #--------------------------------------------------------------------------
+
+    @property
+    def selection(self):
+        return self._selection[self.qt_theme]
 
     @property
     def coverage_bad(self):
