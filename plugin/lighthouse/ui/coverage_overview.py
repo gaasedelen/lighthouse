@@ -544,6 +544,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # finally, rebuild the row2func mapping and notify views of this change
         self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_addresses))
+        self.func2row = {v: k for k, v in self.row2func.iteritems()}
         self.layoutChanged.emit()
 
         # save the details of this sort event as they may be needed later
@@ -617,6 +618,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         """
         row = 0
         self.row2func = {}
+        self.func2row = {}
         self._row_count = 0
         self._no_coverage = []
         self._visible_coverage = {}
@@ -664,6 +666,9 @@ class CoverageModel(QtCore.QAbstractTableModel):
             # map the function address to a visible row # for easy lookup
             self.row2func[row] = function_address
             row += 1
+
+        # build the inverse func --> row mapping
+        self.func2row = {v: k for k, v in self.row2func.iteritems()}
 
         # bake the final number of rows into the model
         self._row_count = len(self.row2func)
