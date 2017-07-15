@@ -96,7 +96,7 @@ class CoveragePainter(object):
     # Painting
     #------------------------------------------------------------------------------
 
-    @execute_sync(idaapi.MFF_WRITE)
+    @idawrite
     def repaint(self):
         """
         Paint coverage defined by the current database mappings.

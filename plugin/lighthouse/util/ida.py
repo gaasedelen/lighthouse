@@ -297,7 +297,10 @@ def idawrite(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
+        if idaapi.is_main_thread():
+            return ff()
+        else:
+            return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
     return wrapper
 
 def idaread(f):
@@ -309,7 +312,10 @@ def idaread(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_READ)
+        if idaapi.is_main_thread():
+            return ff()
+        else:
+            return idaapi.execute_sync(ff, idaapi.MFF_READ)
     return wrapper
 
 def mainthread(f):
@@ -342,8 +348,13 @@ def execute_sync(sync_flags=idaapi.MFF_FAST):
                 output[0] = function(*args, **kwargs)
                 return 1
 
+            # already in the target (main) thread, execute thunk now
+            if idaapi.is_main_thread():
+                thunk()
+
             # send the synchronization request to IDA
-            idaapi.execute_sync(thunk, sync_flags)
+            else:
+                idaapi.execute_sync(thunk, sync_flags)
 
             # return the output of the synchronized function
             return output[0]
