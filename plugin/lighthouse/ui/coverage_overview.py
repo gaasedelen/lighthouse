@@ -142,6 +142,9 @@ class CoverageOverview(DockableShim):
         # specify the fixed row height in pixels
         vh.setDefaultSectionSize(int(self._font_metrics.height()))
 
+        # hide the vertical header themselves as we don't need them
+        vh.hide()
+
         # stretch the last column (which is blank)
         hh.setStretchLastSection(True)
 
