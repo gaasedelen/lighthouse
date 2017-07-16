@@ -456,20 +456,16 @@ class DatabaseCoverage(object):
             # coverage mapping
             #
 
-            try:
-                function_coverage = self.functions[function_metadata.address]
+            function_coverage = self.functions.get(function_metadata.address, None)
 
             #
-            # failed to locate a function coverage object, looks like this
-            # is the first time we have identiied coverage for this
-            # function. creaate a coverage function object and use it now.
+            # if we failed to locate a function coverage object, it means
+            # that this is the first time we have identified coverage for this
+            # function. create a new coverage function object and use it now.
             #
 
-            except KeyError as e:
-                function_coverage = FunctionCoverage(
-                    function_metadata.address,
-                    self._weak_self
-                )
+            if not function_coverage:
+                function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
                 self.functions[function_metadata.address] = function_coverage
 
             # mark this node as executed in the function level mappping
