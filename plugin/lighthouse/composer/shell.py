@@ -904,7 +904,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
         # configure the QPlainTextEdit to appear and act as much like a
         # QLineEdit as possible (a single line text box)
         self.setWordWrapMode(QtGui.QTextOption.NoWrap)
-        self.setLineWrapMode(QtGui.QPlainTextEdit.NoWrap)
+        self.setLineWrapMode(QtWidget.QPlainTextEdit.NoWrap)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setTabChangesFocus(True)
