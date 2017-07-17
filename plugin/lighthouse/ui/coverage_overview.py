@@ -105,7 +105,7 @@ class CoverageOverview(DockableShim):
         self._table.setFocusPolicy(QtCore.Qt.NoFocus)
         self._table.setStyleSheet(
             "QTableView { gridline-color: black; } " +
-            "QTableView::item:selected { background-color: %s; } " % self._director._palette.selection.name()
+            "QTableView::item:selected { color: white; background-color: %s; } " % self._director._palette.selection.name()
         )
 
         # set these properties so the user can arbitrarily shrink the table
