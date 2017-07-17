@@ -332,7 +332,11 @@ class ComposingShell(QtWidgets.QWidget):
         # clear any existing text colors
         self._color_clear()
 
-        logger.info("TODO: highlight_search")
+        # color search based on if there are any matching results
+        if self._model.rowCount():
+            self._color_text(self._palette.valid_text, start=1)
+        else:
+            self._color_text(self._palette.invalid_text, start=1)
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -445,7 +449,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._color_clear()
 
         # color jump
-        self._color_text(self._palette.valid_jump)
+        self._color_text(self._palette.valid_text)
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -782,7 +786,7 @@ class ComposingShell(QtWidgets.QWidget):
         cursor_position = cursor.position()
 
         # setup the invalid text highlighter
-        invalid_color = self._palette.invalid_text
+        invalid_color = self._palette.invalid_highlight
         highlight = QtGui.QTextCharFormat()
         highlight.setFontWeight(QtGui.QFont.Bold)
         highlight.setBackground(QtGui.QBrush(QtGui.QColor(invalid_color)))
@@ -818,10 +822,14 @@ class ComposingShell(QtWidgets.QWidget):
         """
         self._color_text()
 
-    def _color_text(self, color=None):
+    def _color_text(self, color=None, start=0, end=0):
         """
         Color shell text with the given color.
         """
+
+        # if no end was specified, apply the style till the end of input
+        if end == 0:
+            end = len(self.text)
 
         # alias the user cursor, and save its original (current) position
         cursor = self._line.textCursor()
@@ -836,8 +844,8 @@ class ComposingShell(QtWidgets.QWidget):
         ################# UPDATES DISABLED #################
 
         # select the entire line
-        cursor.setPosition(0, QtGui.QTextCursor.MoveAnchor)
-        cursor.setPosition(len(self.text), QtGui.QTextCursor.KeepAnchor)
+        cursor.setPosition(start, QtGui.QTextCursor.MoveAnchor)
+        cursor.setPosition(end, QtGui.QTextCursor.KeepAnchor)
 
         # set all the text to the simple format
         cursor.setCharFormat(simple)
