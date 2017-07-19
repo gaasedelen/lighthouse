@@ -2,7 +2,7 @@ import os
 import collections
 
 import idaapi
-from .qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
+from .shims import using_pyqt5, QtCore, QtGui, QtWidgets
 
 #------------------------------------------------------------------------------
 # Plugin Util

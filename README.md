@@ -13,9 +13,10 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 
 ## Releases
 
+* v0.5 -- Search, IDA 7 support, many improvements, stability.
 * v0.4 -- Most compute is now asynchronous, bugfixes.
 * v0.3 -- Coverage composition, interactive composing shell.
-* v0.2 -- Multifile support, perfomance improvements, bugfixes.
+* v0.2 -- Multifile support, performance improvements, bugfixes.
 * v0.1 -- Initial release
 
 ## Installation
@@ -27,7 +28,7 @@ Install Lighthouse into the IDA plugins folder.
     - On MacOS, the folder is at `/Applications/IDA\ Pro\ 6.8/idaq.app/Contents/MacOS/plugins`
     - On Linux, the folder may be at `/opt/IDA/plugins/`
 
-The plugin has only been tested on IDA Pro 6.8, 6.95 for Windows.
+The plugin is platform agnostic, but has only been tested on Windows for IDA 6.8 --> 7.0
 
 ## Usage
 
@@ -58,9 +59,9 @@ The Coverage Overview is a dockable widget that provides a function level view o
 
 This table can be sorted by column, and entries can be double clicked to jump to their corresponding disassembly.
 
-## Composing Shell
+## Coverage Composition
 
-Building relationships between multiple sets of coverage data often distills deeper meaning than their individual parts. The composing shell is an interactive means of constructing these relationships.
+Building relationships between multiple sets of coverage data often distills deeper meaning than their individual parts. The shell at the bottom of the [Coverage Overview](#coverage-overview) provides an interactive means of constructing these relationships.
 
 <p align="center">
 <img alt="Lighthouse Coverage Composition" src="screenshots/shell.gif"/>
@@ -68,22 +69,50 @@ Building relationships between multiple sets of coverage data often distills dee
 
 Pressing `enter` on the shell will evaluate and save a user constructed composition.
 
-## Composition Syntax
+### Composition Syntax
 
 Coverage composition, or _Composing_ as demonstrated above is achieved through a simple expression grammar and 'shorthand' coverage symbols (A to Z) on the composing shell. 
 
-### Grammar Tokens
+#### Grammar Tokens
 * Logical Operators: `|, &, ^, -`
 * Coverage Symbol: `A, B, C, ..., Z`
 * Coverage Range: `A,C`, `Q,Z`, ...
 * Parenthesis: `(...)`
 
-### Example Compositions
+#### Example Compositions
 * `A & B`
 * `(A & B) | C`
 * `(C & (A - B)) | (F,H & Q)`
 
 The evaluation of the composition may occur right to left, parenthesis are suggested for potentially ambiguous expressions.
+
+## Hot Shell
+
+Additionally, there is a prototype 'Hot Shell' mode that asynchronously evaluates and caches user compositions in real-time.
+
+<p align="center">
+<img alt="Lighthouse Hot Shell" src="screenshots/hot_shell.gif"/>
+</p>
+
+The hot shell serves as a natural gateway into the unguided exploration of composed relationships.
+
+## Search
+
+Using the shell, one can search and filter the functions listed in the coverage table by prefixing their query with `/`.
+
+<p align="center">
+<img alt="Lighthouse Search" src="screenshots/search.gif"/>
+</p>
+
+The head of the shell will show an updated coverage % computed only from the remaining functions. This is useful when analyzing  coverage for specific function families.
+
+## Jump
+
+Entering an address or function name into the shell can be used to jump to corresponding function entries in the table.
+
+<p align="center">
+<img alt="Lighthouse Jump" src="screenshots/jump.gif"/>
+</p>
 
 ## Coverage ComboBox
 
@@ -92,16 +121,6 @@ Loaded coverage data and user constructed compositions can be selected or delete
 <p align="center">
 <img alt="Lighthouse Coverage ComboBox" src="screenshots/combobox.gif"/>
 </p>
-
-## Hot Shell (experimental)
-
-Additionally, there is a prototype 'Hot Shell' mode that asynchronously evaluates and caches user compositions in real-time. 
-
-<p align="center">
-<img alt="Lighthouse Hot Shell" src="screenshots/hot_shell.gif"/>
-</p>
-
-The hot shell serves as a natural gateway to the unguided exploration of composed relationships.
 
 ## Collecting Coverage
 

@@ -94,8 +94,8 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.view().clicked.connect(self._ui_clicked_delete)
 
         # register for cues from the director
-        self._director.coverage_switched(self.refresh)
-        self._director.coverage_modified(self.refresh)
+        self._director.coverage_switched(self._internal_refresh)
+        self._director.coverage_modified(self._internal_refresh)
 
     #--------------------------------------------------------------------------
     # Signal Handlers
@@ -149,7 +149,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         #
 
         # NOTE/COMPAT
-        if using_pyqt5():
+        if using_pyqt5:
             self.view().selectionModel().setCurrentIndex(
                 QtCore.QModelIndex(),
                 QtCore.QItemSelectionModel.ClearAndSelect
@@ -187,10 +187,16 @@ class CoverageComboBox(QtWidgets.QComboBox):
     # Refresh
     #--------------------------------------------------------------------------
 
-    @idafast
     def refresh(self):
         """
-        Refresh the coverage combobox.
+        Public refresh of the coverage combobox.
+        """
+        self._internal_refresh()
+
+    @idafast
+    def _internal_refresh(self):
+        """
+        Internal refresh of the coverage combobox.
         """
 
         # refresh the comobobox internals
@@ -266,7 +272,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         # - make the 'X' icon column fixed width
         #
 
-        if using_pyqt5():
+        if using_pyqt5:
             hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
             hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
             vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
@@ -296,7 +302,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
 
     def refresh(self):
         """
-        Refresh the table layout.
+        Refresh the coverage combobox list order.
         """
         model = self.model() # alias for readability
 
@@ -529,14 +535,20 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
 
     def refresh(self):
         """
-        Refresh the model data.
+        Refresh the coverage combobox model data.
         """
+
+        # extract all the names from the director with a shorthand symbol
+        with_shorthand = []
+        for name in self._director.coverage_names:
+            if self._director.get_shorthand(name):
+                with_shorthand.append(name)
 
         # re-populate the model entries
         self._entries  = []
         self._entries += list(self._director.special_names)
         self._entries += [SEPARATOR]
-        self._entries += list(self._director.coverage_names)
+        self._entries += with_shorthand
 
         # save the index of the separator for easy reference
         self._seperator_index = self._entries.index(SEPARATOR)

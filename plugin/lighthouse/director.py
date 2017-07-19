@@ -41,7 +41,6 @@ class CoverageDirector(object):
     """
 
     def __init__(self, palette):
-        self._NULL_COVERAGE = DatabaseCoverage(None, palette)
 
         # color palette
         self._palette = palette
@@ -53,20 +52,22 @@ class CoverageDirector(object):
         # Coverage
         #----------------------------------------------------------------------
 
-        # active coverage name (eg filename)
+        # the name of the active coverage (eg filename)
         self.coverage_name = NEW_COMPOSITION
 
         # loaded or composed database coverage mappings
         self._database_coverage = collections.OrderedDict()
+
+        # a NULL / empty coverage set
+        self._NULL_COVERAGE = DatabaseCoverage(None, palette)
 
         #
         # the director automatically maintains or generates a few coverage
         # sets of its own. these are not directly modifiable by the user,
         # but may be influenced by user actions, or loaded coverage data.
         #
-        # NOTE:
-        #   The ordering of the dict below is the order that its items will
-        #   be shown in lists such as UI dropwdowns, etc.
+        # NOTE: The ordering of the dict below is the order that its items
+        # will be shown in lists such as UI dropwdowns, etc.
         #
 
         self._special_coverage = collections.OrderedDict(
@@ -167,11 +168,11 @@ class CoverageDirector(object):
         #   is important that anything built ontop of it can act on key
         #   events or changes to the underlying data they consume.
         #
-        #   Callbacks provide a way for us to notify any interested
-        #   parties of these key events.
+        #   Callbacks provide a way for us to notify any interested parties
+        #   of these key events.
         #
 
-        # lists of registered notification callbacks, see 'Signals' below
+        # lists of registered notification callbacks, see 'Callbacks' below
         self._coverage_switched_callbacks = []
         self._coverage_modified_callbacks = []
         self._coverage_created_callbacks  = []
@@ -224,7 +225,7 @@ class CoverageDirector(object):
         return self.coverage_names + self.special_names
 
     #----------------------------------------------------------------------
-    # Signals
+    # Callbacks
     #----------------------------------------------------------------------
 
     def coverage_switched(self, callback):
@@ -277,7 +278,7 @@ class CoverageDirector(object):
 
     def _register_callback(self, callback_list, callback):
         """
-        Internal callback registration.
+        Register a given callable (callback) to the given callback_list.
 
         Adapted from http://stackoverflow.com/a/21941670
         """
@@ -290,21 +291,18 @@ class CoverageDirector(object):
         except AttributeError:
             callback_ref = weakref.ref(callback), None
 
-        # register the callback
+        # 'register' the callback
         callback_list.append(callback_ref)
 
     def _notify_callback(self, callback_list):
         """
-        Internal callback notification.
+        Notify the given list of registered callbacks.
 
-        The given list is expected to consist of all items registered to the
-        same type of callback.
+        The given list (callback_list) is a list of weakref'd callables
+        registered through the _register_callback function. To notify the
+        callbacks we simply loop through the list and call them.
 
-         eg:
-           self._coverage_switched_callbacks
-           self._coverage_modified_callbacks
-           self._coverage_created_callbacks
-           self._coverage_deleted_callbacks
+        This routine self-heals by removing dead callbacks for deleted objects.
 
         Adapted from http://stackoverflow.com/a/21941670
         """
@@ -318,7 +316,11 @@ class CoverageDirector(object):
         for callback_ref in callback_list:
             callback, obj_ref = callback_ref[0](), callback_ref[1]
 
-            # if the callback is an instance method...
+            #
+            # if the callback is an instance method, deference the instance
+            # (an object) first to check that it is still alive
+            #
+
             if obj_ref:
                 obj = obj_ref()
 
@@ -344,6 +346,24 @@ class CoverageDirector(object):
         # remove the deleted callbacks
         for callback_ref in cleanup:
             callback_list.remove(callback_ref)
+
+    #----------------------------------------------------------------------
+    # Batch Loading
+    #----------------------------------------------------------------------
+
+    def start_batch(self):
+        """
+        Gate the start of a batch coverage load.
+        """
+        self._batch_in_progress = True
+
+    def end_batch(self):
+        """
+        Gate the end of a batch coverage load.
+        """
+        assert self._batch_in_progress
+        self._refresh_aggregate()
+        self._batch_in_progress = False
 
     #----------------------------------------------------------------------
     # Coverage
@@ -430,8 +450,8 @@ class CoverageDirector(object):
         if coverage_name in self.coverage_names:
             old_coverage = self._database_coverage[coverage_name]
             self.aggregate.subtract_data(old_coverage.data)
-            self.aggregate.update_metadata(self.metadata)
-            self.aggregate.refresh()
+            if not self._batch_in_progress:
+                self._refresh_aggregate()
 
         #
         # this is the critical point where we actually integrate the newly
@@ -440,19 +460,10 @@ class CoverageDirector(object):
 
         self._database_coverage[coverage_name] = new_coverage
 
-        #
-        # TODO/PERF:
-        #
-        #   If we are calling add_coverage 1000x times, we don't want to
-        #   refresh the aggregate set every time... we will want to
-        #   restructure things such that we can refresh once only after a
-        #   batch load
-        #
-
         # (re)-add the newly loaded/updated coverage to the aggregate set
         self.aggregate.add_data(new_coverage.data)
-        self.aggregate.update_metadata(self.metadata)
-        self.aggregate.refresh()
+        if not self._batch_in_progress:
+            self._refresh_aggregate()
 
     def _build_coverage(self, coverage_data):
         """
@@ -485,8 +496,8 @@ class CoverageDirector(object):
         # TODO: check if there's any references to the coverage object here...
 
         self.aggregate.subtract_data(coverage.data)
-        self.aggregate.update_metadata(self.metadata)
-        self.aggregate.refresh()
+        if not self._batch_in_progress:
+            self._refresh_aggregate()
 
         # notify any listeners that we have deleted coverage
         self._notify_coverage_deleted()
@@ -589,6 +600,46 @@ class CoverageDirector(object):
         except KeyError:
             return None
 
+    def _request_shorthand_alias(self, coverage_name):
+        """
+        Assign the next shorthand A-Z alias to the given coverage.
+        """
+        logger.debug("Requesting shorthand alias for %s" % coverage_name)
+        assert coverage_name in self.coverage_names
+
+        # get the next symbol (A-Z) from the shorthand pool
+        try:
+            symbol = self._shorthand.popleft()
+        except IndexError:
+            return None
+
+        # alias the shorthand to the given coverage_name
+        self._alias_coverage(coverage_name, symbol)
+
+        # return the alias symbol assigned
+        return symbol
+
+    def _release_shorthand_alias(self, coverage_name):
+        """
+        Release the shorthand alias of the given coverage_name.
+        """
+        logger.debug("Releasing shorthand alias for %s" % coverage_name)
+        assert coverage_name in self.coverage_names
+
+        # get the shorthand symbol for the given coverage
+        symbol = self.get_shorthand(coverage_name)
+
+        # if there was no symbol assigned, there's nothing to do
+        if not symbol:
+            return
+
+        # delete the shorthand symbol from the alias maps
+        self._name2alias[coverage_name].remove(symbol)
+        self._alias2name.pop(symbol)
+
+        # add the symbol back to the end of the shorthand pool
+        self._shorthand.append(symbol)
+
     #----------------------------------------------------------------------
     # Composing
     #----------------------------------------------------------------------
@@ -623,6 +674,7 @@ class CoverageDirector(object):
         """
         Cache the given composition.
         """
+        assert ast
 
         #
         # normally, we only pro-actively evaluate/cache if the hotshell is
@@ -819,7 +871,7 @@ class CoverageDirector(object):
         Returns an existing coverage set.
         """
         assert isinstance(coverage_token, TokenCoverageSingle)
-        return self.get_coverage(self._alias2name[coverage_token.symbol]) # TODO: rename get_coverage?
+        return self.get_coverage(self._alias2name[coverage_token.symbol])
 
     def _evaluate_coverage_range(self, range_token):
         """
@@ -849,8 +901,6 @@ class CoverageDirector(object):
     def refresh(self):
         """
         Complete refresh of the director and mapped coverage.
-
-        # TODO: Remove/update
         """
         logger.debug("Refreshing the CoverageDirector")
 
@@ -863,8 +913,6 @@ class CoverageDirector(object):
     def _refresh_database_metadata(self):
         """
         Refresh the database metadata cache utilized by the director.
-
-        # TODO: Remove/update
         """
         logger.debug("Refreshing database metadata")
 
@@ -883,9 +931,7 @@ class CoverageDirector(object):
 
     def _refresh_database_coverage(self, delta):
         """
-        Refresh the database coverage mappings managed by the director.
-
-        # TODO: Remove/update
+        Refresh all the database coverage mappings managed by the director.
         """
         logger.debug("Refreshing database coverage mappings")
 
@@ -895,45 +941,12 @@ class CoverageDirector(object):
             coverage.update_metadata(self.metadata, delta)
             coverage.refresh()
 
-    def _request_shorthand_alias(self, coverage_name):
+    def _refresh_aggregate(self):
         """
-        Assign the next shorthand A-Z alias to the given coverage.
+        Refresh the aggregate coverage set.
         """
-        logger.debug("Requesting shorthand alias for %s" % coverage_name)
-        assert coverage_name in self.coverage_names
-
-        # get the next symbol (A-Z) from the shorthand pool
-        try:
-            symbol = self._shorthand.popleft()
-        except IndexError:
-            return None
-
-        # alias the shorthand to the given coverage_name
-        self._alias_coverage(coverage_name, symbol)
-
-        # return the alias symbol assigned
-        return symbol
-
-    def _release_shorthand_alias(self, coverage_name):
-        """
-        Release the shorthand alias of the given coverage_name.
-        """
-        logger.debug("Releasing shorthand alias for %s" % coverage_name)
-        assert coverage_name in self.coverage_names
-
-        # get the shorthand symbol for the given coverage
-        symbol = self.get_shorthand(coverage_name)
-
-        # if there was no symbol assigned, there's nothing to do
-        if not symbol:
-            return
-
-        # delete the shorthand symbol from the alias maps
-        self._name2alias[coverage_name].remove(symbol)
-        self._alias2name.pop(symbol)
-
-        # add the symbol back to the end of the shorthand pool
-        self._shorthand.append(symbol)
+        self.aggregate.update_metadata(self.metadata)
+        self.aggregate.refresh()
 
 #------------------------------------------------------------------------------
 # Composition Cache

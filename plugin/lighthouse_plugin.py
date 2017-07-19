@@ -18,7 +18,7 @@ if not logging_started():
 # IDA Plugin
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.4.0"
+PLUGIN_VERSION = "0.5.0"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2017"
 
@@ -33,7 +33,7 @@ class Lighthouse(plugin_t):
     The Lighthouse IDA Plugin.
     """
 
-    flags = idaapi.PLUGIN_PROC | idaapi.PLUGIN_MOD
+    flags = idaapi.PLUGIN_PROC | idaapi.PLUGIN_MOD | idaapi.PLUGIN_HIDE
     comment = "Code Coverage Explorer"
     help = ""
     wanted_name = "Lighthouse"
@@ -44,22 +44,20 @@ class Lighthouse(plugin_t):
         # plugin color palette
         self.palette = LighthousePalette()
 
-        # the database coverage data conglomerate
+        # the coverage engine
         self.director = CoverageDirector(self.palette)
 
         # the coverage painter
         self.painter = CoveragePainter(self.director, self.palette)
 
-        # plugin qt elements
-        self._ui_coverage_overview = CoverageOverview(self.director)
+        # the coverage overview widget
+        self._ui_coverage_overview = None
 
         # members for the 'Load Code Coverage' menu entry
         self._icon_id_load     = idaapi.BADADDR
-        self._action_name_load = "lighthouse:load_coverage"
 
         # members for the 'Coverage Overview' menu entry
         self._icon_id_overview     = idaapi.BADADDR
-        self._action_name_overview = "lighthouse:coverage_overview"
 
     #--------------------------------------------------------------------------
     # IDA Plugin Overloads
@@ -147,78 +145,6 @@ class Lighthouse(plugin_t):
         self._install_load_file_dialog()
         self._install_open_coverage_overview()
 
-    def _install_load_file_dialog(self):
-        """
-        Install the 'File->Load->Code Coverage File(s)...' menu entry.
-        """
-
-        # create a custom IDA icon
-        self._icon_id_load = idaapi.load_custom_icon(
-            data=str(open(plugin_resource("icons/load.png"), "rb").read())
-        )
-
-        # describe a custom IDA UI action
-        action_desc = idaapi.action_desc_t(
-            self._action_name_load,                   # The action name.
-            "~C~ode Coverage File(s)...",             # The action text.
-            IDACtxEntry(self.load_coverage),          # The action handler.
-            None,                                     # Optional: action shortcut
-            "Load a code coverage file for this IDB", # Optional: tooltip
-            self._icon_id_load                        # Optional: the action icon
-        )
-
-        # register the action with IDA
-        result = idaapi.register_action(action_desc)
-        if not result:
-            RuntimeError("Failed to register load coverage action with IDA")
-
-        # attach the action to the File-> dropdown menu
-        result = idaapi.attach_action_to_menu(
-            "File/Load file/",       # Relative path of where to add the action
-            self._action_name_load,  # The action ID (see above)
-            idaapi.SETMENU_APP       # We want to append the action after ^
-        )
-        if not result:
-            RuntimeError("Failed action attach to 'File/Load file/' dropdown")
-
-        logger.info("Installed the 'Load Code Coverage' menu entry")
-
-    def _install_open_coverage_overview(self):
-        """
-        Install the 'View->Open subviews->Coverage Overview' menu entry.
-        """
-
-        # create a custom IDA icon
-        self._icon_id_overview = idaapi.load_custom_icon(
-            data=str(open(plugin_resource("icons/overview.png"), "rb").read())
-        )
-
-        # describe a custom IDA UI action
-        action_desc = idaapi.action_desc_t(
-            self._action_name_overview,               # The action name.
-            "~C~overage Overview",                    # The action text.
-            IDACtxEntry(self.open_coverage_overview), # The action handler.
-            None,                                     # Optional: action shortcut
-            "Open database code coverage overview",   # Optional: tooltip
-            self._icon_id_overview                    # Optional: the action icon
-        )
-
-        # register the action with IDA
-        result = idaapi.register_action(action_desc)
-        if not result:
-            RuntimeError("Failed to register open coverage overview action with IDA")
-
-        # attach the action to the View-> dropdown menu
-        result = idaapi.attach_action_to_menu(
-            "View/Open subviews/Hex dump", # Relative path of where to add the action
-            self._action_name_overview,    # The action ID (see above)
-            idaapi.SETMENU_INS             # We want to insert the action before ^
-        )
-        if not result:
-            RuntimeError("Failed action attach to 'View/Open subviews' dropdown")
-
-        logger.info("Installed the 'Coverage Overview' menu entry")
-
     #--------------------------------------------------------------------------
     # Termination
     #--------------------------------------------------------------------------
@@ -240,6 +166,85 @@ class Lighthouse(plugin_t):
         self._uninstall_open_coverage_overview()
         self._uninstall_load_file_dialog()
 
+    #--------------------------------------------------------------------------
+    # IDA Actions
+    #--------------------------------------------------------------------------
+
+    ACTION_LOAD_COVERAGE     = "lighthouse:load_coverage"
+    ACTION_COVERAGE_OVERVIEW = "lighthouse:coverage_overview"
+
+    def _install_load_file_dialog(self):
+        """
+        Install the 'File->Load->Code Coverage File(s)...' menu entry.
+        """
+
+        # create a custom IDA icon
+        icon_path = plugin_resource(os.path.join("icons", "load.png"))
+        icon_data = str(open(icon_path, "rb").read())
+        self._icon_id_load = idaapi.load_custom_icon(data=icon_data)
+
+        # describe a custom IDA UI action
+        action_desc = idaapi.action_desc_t(
+            self.ACTION_LOAD_COVERAGE,                # The action name.
+            "~C~ode Coverage File(s)...",             # The action text.
+            IDACtxEntry(self.load_coverage),          # The action handler.
+            None,                                     # Optional: action shortcut
+            "Load a code coverage file for this IDB", # Optional: tooltip
+            self._icon_id_load                        # Optional: the action icon
+        )
+
+        # register the action with IDA
+        result = idaapi.register_action(action_desc)
+        if not result:
+            RuntimeError("Failed to register load coverage action with IDA")
+
+        # attach the action to the File-> dropdown menu
+        result = idaapi.attach_action_to_menu(
+            "File/Load file/",       # Relative path of where to add the action
+            self.ACTION_LOAD_COVERAGE,  # The action ID (see above)
+            idaapi.SETMENU_APP       # We want to append the action after ^
+        )
+        if not result:
+            RuntimeError("Failed action attach to 'File/Load file/' dropdown")
+
+        logger.info("Installed the 'Load Code Coverage' menu entry")
+
+    def _install_open_coverage_overview(self):
+        """
+        Install the 'View->Open subviews->Coverage Overview' menu entry.
+        """
+
+        # create a custom IDA icon
+        icon_path = plugin_resource(os.path.join("icons", "overview.png"))
+        icon_data = str(open(icon_path, "rb").read())
+        self._icon_id_overview = idaapi.load_custom_icon(data=icon_data)
+
+        # describe a custom IDA UI action
+        action_desc = idaapi.action_desc_t(
+            self.ACTION_COVERAGE_OVERVIEW,            # The action name.
+            "~C~overage Overview",                    # The action text.
+            IDACtxEntry(self.open_coverage_overview), # The action handler.
+            None,                                     # Optional: action shortcut
+            "Open database code coverage overview",   # Optional: tooltip
+            self._icon_id_overview                    # Optional: the action icon
+        )
+
+        # register the action with IDA
+        result = idaapi.register_action(action_desc)
+        if not result:
+            RuntimeError("Failed to register open coverage overview action with IDA")
+
+        # attach the action to the View-> dropdown menu
+        result = idaapi.attach_action_to_menu(
+            "View/Open subviews/Hex dump", # Relative path of where to add the action
+            self.ACTION_COVERAGE_OVERVIEW,    # The action ID (see above)
+            idaapi.SETMENU_INS             # We want to insert the action before ^
+        )
+        if not result:
+            RuntimeError("Failed action attach to 'View/Open subviews' dropdown")
+
+        logger.info("Installed the 'Coverage Overview' menu entry")
+
     def _uninstall_load_file_dialog(self):
         """
         Remove the 'File->Load file->Code Coverage File(s)...' menu entry.
@@ -248,13 +253,13 @@ class Lighthouse(plugin_t):
         # remove the entry from the File-> menu
         result = idaapi.detach_action_from_menu(
             "File/Load file/",
-            self._action_name_load
+            self.ACTION_LOAD_COVERAGE
         )
         if not result:
             return False
 
         # unregister the action
-        result = idaapi.unregister_action(self._action_name_load)
+        result = idaapi.unregister_action(self.ACTION_LOAD_COVERAGE)
         if not result:
             return False
 
@@ -272,13 +277,13 @@ class Lighthouse(plugin_t):
         # remove the entry from the View-> menu
         result = idaapi.detach_action_from_menu(
             "View/Open subviews/Hex dump",
-            self._action_name_overview
+            self.ACTION_COVERAGE_OVERVIEW
         )
         if not result:
             return False
 
         # unregister the action
-        result = idaapi.unregister_action(self._action_name_overview)
+        result = idaapi.unregister_action(self.ACTION_COVERAGE_OVERVIEW)
         if not result:
             return False
 
@@ -291,6 +296,13 @@ class Lighthouse(plugin_t):
     #--------------------------------------------------------------------------
     # UI - Actions
     #--------------------------------------------------------------------------
+
+    def open_coverage_overview(self):
+        """
+        Open the 'Coverage Overview' dialog.
+        """
+        self._ui_coverage_overview = CoverageOverview(self.director)
+        self._ui_coverage_overview.show()
 
     def load_coverage(self):
         """
@@ -341,54 +353,67 @@ class Lighthouse(plugin_t):
 
         #
         # at this point the metadata caching is guaranteed to be complete.
-        # the coverage data has been loaded and is ready for mapping.
+        # the coverage data has been loaded and is ready for mapping and
+        # management by the director.
         #
 
         idaapi.replace_wait_box("Normalizing and mapping coverage data...")
 
         #
-        # TODO:
-        #
-        #   I do not hold great confidence in this code yet, so let's wrap
-        #   this in a try/catch so the user doesn't get stuck with a wait
-        #   box they can't close should things go poorly ;P
+        # start a batch coverage data load for better performance incase we
+        # are loading more than one new coverage file / data to the director.
         #
 
-        try:
+        self.director.start_batch()
 
-            for data in coverage_data:
+        # a list to output the names of successfully loaded coverage files
+        loaded = []
+
+        #
+        # loop through the coverage data we have loaded from disk, and begin
+        # the normalization process to translate / filter / flatten it for
+        # insertion into the director (as a list of instruction addresses)
+        #
+
+        for i, data in enumerate(coverage_data, 1):
+
+            # keep the user informed about our progress while loading coverage
+            idaapi.replace_wait_box("Normalizing and mapping coverage %u/%u" % (i, len(coverage_data)))
+
+            # TODO: it would be nice to get rid of this try/catch in the long run
+            try:
 
                 # normalize coverage data to the database
-                name = os.path.basename(data.filepath)
                 addresses = self._normalize_coverage(data, self.director.metadata)
 
                 # enlighten the coverage director to this new runtime data
-                self.director.add_coverage(name, addresses)
+                coverage_name = os.path.basename(data.filepath)
+                self.director.add_coverage(coverage_name, addresses)
 
-            # select the 'first' coverage file loaded
-            self.director.select_coverage(self.director.coverage_names[0])
+                # if we made it this far, the coverage must have loaded okay...
+                loaded.append(coverage_name)
 
-            idaapi.hide_wait_box()
+            except Exception as e:
+                lmsg("Failed to load coverage:")
+                lmsg("- %s" % e)
+                logger.error("Error details:")
+                continue
 
-        # 'something happened :('
-        except Exception as e:
-            idaapi.hide_wait_box()
-            lmsg("Failed to load coverage:")
-            lmsg("- %s" % e)
-            logger.exception(e)
-            return
+        # collapse the batch job to recompute the director's aggregate coverage set
+        self.director.end_batch()
+
+        # select the 'first' coverage file loaded from this round
+        if loaded:
+            self.director.select_coverage(loaded[0])
+
+        # all done, hide the IDA wait box
+        idaapi.hide_wait_box()
 
         # print a success message to the output window
-        lmsg("loaded %u coverage file(s)..." % len(coverage_data))
+        lmsg("loaded %u coverage file(s)..." % len(loaded))
 
         # show the coverage overview
         self.open_coverage_overview()
-
-    def open_coverage_overview(self):
-        """
-        Open the 'Coverage Overview' dialog.
-        """
-        self._ui_coverage_overview.Show()
 
     def _select_coverage_files(self):
         """
@@ -404,7 +429,7 @@ class Lighthouse(plugin_t):
 
         # log the captured (selected) filenames from the dialog
         logger.debug("Captured filenames from file dialog:")
-        logger.debug(filenames)
+        logger.debug('\n - ' + '\n - '.join(filenames))
 
         # return the captured filenames
         return filenames
@@ -412,6 +437,26 @@ class Lighthouse(plugin_t):
     #--------------------------------------------------------------------------
     # Misc
     #--------------------------------------------------------------------------
+    #
+    #   NOTE / FUTURE / TODO
+    #
+    #    In my vision for Lighthouse, I always imagined that it would be
+    #    able to dynamically detect and load coverage data from a variety of
+    #    different coverage sources and formats (DR, PIN, an inst trace, etc)
+    #
+    #    The dream was that Lighthouse would have a folder of loaders to parse
+    #    and normalize their data to the database / loaded executable so that
+    #    they can be injected into the director for exploration.
+    #
+    #    I would still like to do this, but really haven't heard many people
+    #    asking for additional coverage source support yet... so this feature
+    #    keeps getting pushed back.
+    #
+    #    ...
+    #
+    #    In the mean time, we have a few random functions that are hardcoded
+    #    here to load DrCov files and normalize them to the current databasae.
+    #
 
     def _load_coverage_files(self, filenames):
         """
@@ -422,23 +467,12 @@ class Lighthouse(plugin_t):
     def _load_coverage_file(self, filename):
         """
         Load a single code coverage file from disk.
-
-        TODO: Add other formats. Only drcov logs supported for now.
         """
         return DrcovData(filename)
 
     def _normalize_coverage(self, coverage_data, metadata):
         """
-        Normalize loaded coverage data to the database metadata.
-
-        TODO:
-
-          This will probably be moved out and turn into a layer for each unique
-          lighthouse coverage parser/loader to implement.
-
-          for example, this effectively translate the DrcovData log to a more
-          general / universal format for the director.
-
+        Normalize loaded DrCov data to the database metadata.
         """
 
         # extract the coverage relevant to this IDB (well, the root binary)
@@ -449,6 +483,9 @@ class Lighthouse(plugin_t):
         base = idaapi.get_imagebase()
         rebased_blocks = rebase_blocks(base, coverage_blocks)
 
-        # flatten the basic blocks into individual instructions or addresses
-        return metadata.flatten_blocks(rebased_blocks)
+        # coalesce the blocks into larger contiguous blobs
+        condensed_blocks = coalesce_blocks(rebased_blocks)
+
+        # flatten the blobs into individual instructions or addresses
+        return metadata.flatten_blocks(condensed_blocks)
 

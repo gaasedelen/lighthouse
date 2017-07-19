@@ -1,4 +1,6 @@
 REM - Clean up an existing or past 'test session' 
+taskkill /F /IM "ida.exe"
+taskkill /F /IM "ida64.exe"
 taskkill /F /IM "idaq.exe"
 taskkill /F /IM "idaq64.exe"
 timeout 1

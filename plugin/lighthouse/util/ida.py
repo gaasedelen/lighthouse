@@ -4,7 +4,7 @@ import logging
 import functools
 
 import idaapi
-from qtshim import using_pyqt5, QtCore, QtGui, QtWidgets
+from .shims import using_ida7api, using_pyqt5, QtCore, QtGui, QtWidgets
 
 logger = logging.getLogger("Lighthouse.Util.IDA")
 
@@ -201,6 +201,40 @@ def get_disas_bg_color():
 
     PS: please expose the get_graph_color(...) palette accessor, Ilfak ;_;
     """
+    if using_ida7api:
+        return get_disas_bg_color_ida7()
+    else:
+        return get_disas_bg_color_ida6()
+
+def get_disas_bg_color_ida7():
+    """
+    Get the background color of an IDA disassembly view. (IDA 7+)
+    """
+    import sip
+
+    # find a widget (eg, IDA view) to steal a pixel from
+    for i in xrange(5):
+        twidget = idaapi.find_widget("IDA View-%c" % chr(ord('A') + i))
+        if twidget:
+            break
+    else:
+        raise RuntimeError("Failed to find donor IDA View")
+
+    # take 2px tall screenshot of the widget
+    widget = sip.wrapinstance(long(twidget), QtWidgets.QWidget) # NOTE: LOL
+    pixmap = widget.grab(QtCore.QRect(0, 0, widget.width(), 2))
+
+    # extract 1 pixel like a pleb (hopefully a background pixel :|)
+    img   = QtGui.QImage(pixmap.toImage())
+    color = QtGui.QColor(img.pixel(img.width()/2,1))
+
+    # return the color of the pixel we extracted
+    return color
+
+def get_disas_bg_color_ida6():
+    """
+    Get the background color of an IDA disassembly view. (IDA 6.x)
+    """
 
     # find a form (eg, IDA view) to steal a pixel from
     for i in xrange(5):
@@ -211,7 +245,7 @@ def get_disas_bg_color():
         raise RuntimeError("Failed to find donor IDA View")
 
     # locate the Qt Widget for an IDA View form and take 2px tall screenshot
-    if using_pyqt5():
+    if using_pyqt5:
         widget = idaapi.PluginForm.FormToPyQtWidget(form)
         pixmap = widget.grab(QtCore.QRect(0, 0, widget.width(), 2))
     else:
@@ -220,8 +254,8 @@ def get_disas_bg_color():
         pixmap = QtGui.QPixmap.grabWidget(widget, region)
 
     # extract 1 pixel like a pleb (hopefully a background pixel :|)
-    img    = QtGui.QImage(pixmap.toImage())
-    color  = QtGui.QColor(img.pixel(img.width()/2,1))
+    img   = QtGui.QImage(pixmap.toImage())
+    color = QtGui.QColor(img.pixel(img.width()/2,1))
 
     # return the color of the pixel we extracted
     return color
@@ -263,7 +297,10 @@ def idawrite(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
+        if idaapi.is_main_thread():
+            return ff()
+        else:
+            return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
     return wrapper
 
 def idaread(f):
@@ -275,7 +312,10 @@ def idaread(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_READ)
+        if idaapi.is_main_thread():
+            return ff()
+        else:
+            return idaapi.execute_sync(ff, idaapi.MFF_READ)
     return wrapper
 
 def mainthread(f):
@@ -308,8 +348,13 @@ def execute_sync(sync_flags=idaapi.MFF_FAST):
                 output[0] = function(*args, **kwargs)
                 return 1
 
+            # already in the target (main) thread, execute thunk now
+            if idaapi.is_main_thread():
+                thunk()
+
             # send the synchronization request to IDA
-            idaapi.execute_sync(thunk, sync_flags)
+            else:
+                idaapi.execute_sync(thunk, sync_flags)
 
             # return the output of the synchronized function
             return output[0]
