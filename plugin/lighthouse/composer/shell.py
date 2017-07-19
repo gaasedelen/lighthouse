@@ -434,7 +434,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._table.selectRow(self._model.func2row[function_address])
         self._table.scrollTo(
             self._table.currentIndex(),
-            QtGui.QAbstractItemView.PositionAtCenter
+            QtWidgets.QAbstractItemView.PositionAtCenter
         )
 
     def _highlight_jump(self):
