@@ -54,19 +54,12 @@ struct ThreadData {
 };
 
 class ToolContext {
-private:
+public:
     ToolContext()
     {
         PIN_InitLock(&m_loaded_images_lock);
         PIN_InitLock(&m_thread_lock);
         m_tls_key = PIN_CreateThreadDataKey(nullptr);
-    }
-
-public:
-    static ToolContext& instance()
-    {
-        static ToolContext context;
-        return context;
     }
 
     ThreadData* GetThreadLocalData(THREADID tid)
@@ -269,35 +262,35 @@ int main(int argc, char* argv[])
     }
 
     // Initialize the tool context.
-    auto& context = ToolContext::instance();
+    ToolContext *context = new ToolContext();
 
     // Create a an image manager that keeps track of the loaded/unloaded images.
-    context.m_images = new ImageManager();
+    context->m_images = new ImageManager();
     for (unsigned i = 0; i < KnobModuleWhitelist.NumberOfValues(); ++i) {
         cout << "White-listing image: " << KnobModuleWhitelist.Value(i) << endl;
-        context.m_images->addWhiteListedImage(KnobModuleWhitelist.Value(i));
+        context->m_images->addWhiteListedImage(KnobModuleWhitelist.Value(i));
 
         // We will only enable tracing when any of the whitelisted images gets loaded.
-        context.m_tracing_enabled = false;
+        context->m_tracing_enabled = false;
     }
 
     // Create a trace file.
     cout << "Logging code coverage information to: " << KnobLogFile.ValueString() << endl;
-    context.m_trace = new TraceFile(KnobLogFile.ValueString());
+    context->m_trace = new TraceFile(KnobLogFile.ValueString());
 
     // Handlers for thread creation and destruction.
-    PIN_AddThreadStartFunction(OnThreadStart, &context);
-    PIN_AddThreadFiniFunction(OnThreadFini, &context);
+    PIN_AddThreadStartFunction(OnThreadStart, context);
+    PIN_AddThreadFiniFunction(OnThreadFini, context);
 
     // Handlers for image loading and unloading.
-    IMG_AddInstrumentFunction(OnImageLoad, &context);
-    IMG_AddUnloadFunction(OnImageUnload, &context);
+    IMG_AddInstrumentFunction(OnImageLoad, context);
+    IMG_AddUnloadFunction(OnImageUnload, context);
 
     // Handlers for instrumentation events.
-    TRACE_AddInstrumentFunction(OnTrace, &context);
+    TRACE_AddInstrumentFunction(OnTrace, context);
 
     // Handler for program exits.
-    PIN_AddFiniFunction(OnFini, &context);
+    PIN_AddFiniFunction(OnFini, context);
 
     PIN_StartProgram();
     return 0;
