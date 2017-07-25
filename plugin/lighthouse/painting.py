@@ -81,8 +81,13 @@ class CoveragePainter(object):
 
         NOTE: This is called when the ui_ready_to_run event fires.
         """
+        result = False
+
         if idaapi.init_hexrays_plugin():
-            idaapi.install_hexrays_callback(self._hxe_callback)
+            logger.debug("HexRays present, installing hooks...")
+            result = idaapi.install_hexrays_callback(self._hxe_callback)
+
+        logger.debug("HexRays hooked: %r" % result)
 
         #
         # we only use self._hooks (UI_Hooks) to install our hexrays hooks.
@@ -306,6 +311,9 @@ class CoveragePainter(object):
         """
         Paint decompilation text for the given HexRays Window.
         """
+        logger.debug("Painting Hexrays for 0x%X" % cfunc.entry_ea)
+
+        # more code-friendly, readable aliases
         database_metadata = database_coverage._metadata
         decompilation_text = cfunc.get_pseudocode()
 
@@ -324,6 +332,7 @@ class CoveragePainter(object):
         #
 
         line2citem = map_line2citem(decompilation_text)
+        logger.debug(line2citem)
 
         #
         # now that we have some understanding of how citems contribute to each
@@ -332,6 +341,7 @@ class CoveragePainter(object):
         #
 
         line2node = map_line2node(cfunc, database_metadata, line2citem)
+        logger.debug(line2node)
 
         # great, now we have all the information we need to paint
 
@@ -367,6 +377,7 @@ class CoveragePainter(object):
 
         # if there was nothing painted yet, there's no point in continuing...
         if not lines_painted:
+            logger.debug("No HexRays output was painted...")
             return
 
         #
@@ -379,6 +390,8 @@ class CoveragePainter(object):
             decompilation_text[line_number].bgcolor = self.palette.ida_coverage
             lines_painted += 1
 
+        logger.debug("Done painting HexRays request...")
+
         # finally, refresh the view
         idaapi.refresh_idaview_anyway()
 
@@ -389,8 +402,12 @@ class CoveragePainter(object):
 
         # decompilation text generation is complete and it is about to be shown
         if event == idaapi.hxe_text_ready:
+
+            # more code-friendly, readable aliases
             vdui = args[0]
             cfunc = vdui.cfunc
+
+            logger.debug("Caught HexRays 'Text Ready' event for 0x%X" % cfunc.entry_ea)
 
             # if there's no coverage data for this function, there's nothing to do
             if not cfunc.entry_ea in self._director.coverage.functions:
