@@ -55,7 +55,6 @@ class CoveragePainter(object):
             target=self._async_database_painter,
             name="DatabasePainter"
         )
-        self._painting_worker.daemon = True
         self._painting_worker.start()
 
         #----------------------------------------------------------------------
@@ -70,6 +69,13 @@ class CoveragePainter(object):
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
         self._director.coverage_modified(self.repaint)
+
+    def terminate(self):
+        """
+        Cleanup & terminate the painter.
+        """
+        self._repaint_queue.put(False)
+        self._painting_worker.join()
 
     #--------------------------------------------------------------------------
     # Initialization
@@ -528,8 +534,16 @@ class CoveragePainter(object):
         # Asynchronous Database Painting Loop
         #
 
-        # block until a paint has been requested
-        while self._repaint_queue.get():
+        while True:
+
+            # block until a paint has been requested (a bool)
+            repaint_request = self._repaint_queue.get()
+
+            # signal to stop
+            if not repaint_request:
+                break
+
+            # more code-friendly, readable aliases
             database_coverage = self._director.coverage
             database_metadata = self._director.metadata
 

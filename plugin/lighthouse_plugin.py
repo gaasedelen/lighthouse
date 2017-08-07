@@ -154,10 +154,7 @@ class Lighthouse(plugin_t):
         Cleanup & uninstall the plugin from IDA.
         """
         self._uninstall_ui()
-
-    #--------------------------------------------------------------------------
-    # Termination - UI
-    #--------------------------------------------------------------------------
+        self._cleanup()
 
     def _uninstall_ui(self):
         """
@@ -165,6 +162,13 @@ class Lighthouse(plugin_t):
         """
         self._uninstall_open_coverage_overview()
         self._uninstall_load_file_dialog()
+
+    def _cleanup(self):
+        """
+        Signal threads to exit and wait.
+        """
+        self.director.terminate()
+        self.painter.terminate()
 
     #--------------------------------------------------------------------------
     # IDA Actions

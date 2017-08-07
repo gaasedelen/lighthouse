@@ -276,7 +276,7 @@ class DatabaseMetadata(object):
 
         return result_queue
 
-    def abort_refresh(self):
+    def abort_refresh(self, join=False):
         """
         Abort a running refresh.
 
@@ -308,6 +308,10 @@ class DatabaseMetadata(object):
 
         # signal the worker thread to stop
         self._stop_threads = True
+
+        # if requested, don't return until the worker thread has stopped...
+        if join:
+            worker.join()
 
     def _async_refresh(self, result_queue, function_addresses, progress_callback):
         """

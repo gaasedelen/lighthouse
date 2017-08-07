@@ -157,7 +157,6 @@ class CoverageDirector(object):
             target=self._async_evaluate_ast,
             name="EvaluateAST"
         )
-        self._composition_worker.daemon = True
         self._composition_worker.start()
 
         #----------------------------------------------------------------------
@@ -177,6 +176,18 @@ class CoverageDirector(object):
         self._coverage_modified_callbacks = []
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
+
+    def terminate(self):
+        """
+        Cleanup & terminate the director.
+        """
+
+        # stop the composition worker
+        self._ast_queue.put(None)
+        self._composition_worker.join()
+
+        # stop any ongoing metadata refresh
+        self.metadata.abort_refresh(join=True)
 
     #--------------------------------------------------------------------------
     # Properties
