@@ -39,26 +39,6 @@ class Lighthouse(plugin_t):
     wanted_name = "Lighthouse"
     wanted_hotkey = ""
 
-    def __init__(self):
-
-        # plugin color palette
-        self.palette = LighthousePalette()
-
-        # the coverage engine
-        self.director = CoverageDirector(self.palette)
-
-        # the coverage painter
-        self.painter = CoveragePainter(self.director, self.palette)
-
-        # the coverage overview widget
-        self._ui_coverage_overview = None
-
-        # members for the 'Load Code Coverage' menu entry
-        self._icon_id_load     = idaapi.BADADDR
-
-        # members for the 'Coverage Overview' menu entry
-        self._icon_id_overview     = idaapi.BADADDR
-
     #--------------------------------------------------------------------------
     # IDA Plugin Overloads
     #--------------------------------------------------------------------------
@@ -114,7 +94,40 @@ class Lighthouse(plugin_t):
         """
         Initialize & integrate the plugin into IDA.
         """
+        self._init()
         self._install_ui()
+
+    def _init(self):
+        """
+        Initialize plugin members.
+        """
+
+        # plugin color palette
+        self.palette = LighthousePalette()
+
+        # the coverage engine
+        self.director = CoverageDirector(self.palette)
+
+        # the coverage painter
+        self.painter = CoveragePainter(self.director, self.palette)
+
+        # the coverage overview widget
+        self._ui_coverage_overview = None
+
+        # members for the 'Load Code Coverage' menu entry
+        self._icon_id_load = idaapi.BADADDR
+
+        # members for the 'Coverage Overview' menu entry
+        self._icon_id_overview = idaapi.BADADDR
+
+    def _install_ui(self):
+        """
+        Initialize & integrate all UI elements.
+        """
+
+        # install the 'Load Coverage' file dialog
+        self._install_load_file_dialog()
+        self._install_open_coverage_overview()
 
     def print_banner(self):
         """
@@ -131,19 +144,6 @@ class Lighthouse(plugin_t):
         lmsg("---[ %s" % banner_title)
         lmsg("-"*75)
         lmsg("")
-
-    #--------------------------------------------------------------------------
-    # Initialization - UI
-    #--------------------------------------------------------------------------
-
-    def _install_ui(self):
-        """
-        Initialize & integrate all UI elements.
-        """
-
-        # install the 'Load Coverage' file dialog
-        self._install_load_file_dialog()
-        self._install_open_coverage_overview()
 
     #--------------------------------------------------------------------------
     # Termination
