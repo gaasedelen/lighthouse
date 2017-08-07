@@ -63,7 +63,7 @@ class CoveragePainter(object):
 
         # hook hexrays on startup
         self._hooks = PainterHooks()
-        self._hooks.ready_to_run = self._init_hexrays_hooks
+        self._hooks.auto_queue_empty = self._init_hexrays_hooks
         self._hooks.hook()
 
         # register for cues from the director
@@ -81,11 +81,19 @@ class CoveragePainter(object):
     # Initialization
     #--------------------------------------------------------------------------
 
-    def _init_hexrays_hooks(self):
+    def _init_hexrays_hooks(self, _=None):
         """
         Install Hex-Rrays hooks (when available).
 
-        NOTE: This is called when the ui_ready_to_run event fires.
+        NOTE:
+
+          This is called when the auto_empty_queue event fires. The
+          use of auto_queue_empty is somewhat arbitrary. It is simply an
+          event that fires at least once after things seem mostly setup.
+
+          We were using UI_Hooks.ready_to_run previously, but it appears
+          that fires *before* this plugin is loaded on some builds of IDA.
+
         """
         result = False
 
@@ -96,12 +104,13 @@ class CoveragePainter(object):
         logger.debug("HexRays hooked: %r" % result)
 
         #
-        # we only use self._hooks (UI_Hooks) to install our hexrays hooks.
+        # we only use self._hooks (IDP_Hooks) to install our hexrays hooks.
         # since this 'init' function should only ever be called once, remove
-        # our UI_Hooks now to clean up after ourselves.
+        # our IDP_Hooks now to clean up after ourselves.
         #
 
         self._hooks.unhook()
+        return 0
 
     #------------------------------------------------------------------------------
     # Painting
@@ -615,7 +624,7 @@ class CoveragePainter(object):
 # Painter Hooks
 #------------------------------------------------------------------------------
 
-class PainterHooks(idaapi.UI_Hooks):
+class PainterHooks(idaapi.IDP_Hooks):
     """
     This is a concrete stub of IDA's UI_Hooks.
     """
