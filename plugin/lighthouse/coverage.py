@@ -347,15 +347,14 @@ class DatabaseCoverage(object):
             address = addresses_to_map.popleft()
 
             # get the node (basic block) that contains this address
-            try:
-                node_metadata = self._metadata.get_node(address)
+            node_metadata = self._metadata.get_node(address)
 
             #
             # failed to locate the node (basic block) for this address.
             # this address must not fall inside of a defined function...
             #
 
-            except ValueError:
+            if not node_metadata:
                 continue
 
             #

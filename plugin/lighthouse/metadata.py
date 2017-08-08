@@ -104,7 +104,7 @@ class DatabaseMetadata(object):
         target address.
 
         If the target address falls within the probed node, the node's
-        metadata is returned. Otherwise, a ValueError is raised.
+        metadata is returned. Failure returns None.
         """
 
         #
@@ -149,20 +149,13 @@ class DatabaseMetadata(object):
         # if the identified node contains our target address, it is a match
         #
 
-        try:
-            node = self.nodes[self._node_addresses[node_index]]
-            if address in node:
-                self._last_node = node
-                return node
-        except (IndexError, KeyError):
-            pass
+        node = self.nodes.get(self._node_addresses[node_index], None)
+        if node and address in node:
+            self._last_node = node
+            return node
 
-        #
-        # if the selected node was not a match, there are no second chances.
-        # the address simply does not exist within a defined node.
-        #
-
-        raise ValueError("Given address does not fall within a known node")
+        # node not found...
+        return None
 
     def get_function(self, address):
         """
@@ -171,9 +164,15 @@ class DatabaseMetadata(object):
         See get_node() for more information.
 
         If the target address falls within a function, the function's
-        metadata is returned. Otherwise, a ValueError is raised.
+        metadata is returned. Failure returns None.
         """
+
+        # locate the node the given address falls within
         node_metadata = self.get_node(address)
+        if not node_metadata:
+            return None
+
+        # return the function metadata corresponding to this node.
         return node_metadata.function
 
     def get_function_by_name(self, function_name):

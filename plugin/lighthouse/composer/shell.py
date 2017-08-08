@@ -386,36 +386,27 @@ class ComposingShell(QtWidgets.QWidget):
         # to its corresponding function address validated by the director
         #
 
-        try:
-
-            address = int(text, 16)
-            function_metadata = self._director.metadata.get_function(address)
+        address = int(text, 16)
+        function_metadata = self._director.metadata.get_function(address)
+        if function_metadata:
             return function_metadata.address
 
         #
         # the user string did not translate to a parsable hex number (address)
         # or the function it falls within could not be found in the director.
         #
-
-        except ValueError:
-            pass
-
-        #
         # attempt to convert the user input from a function name eg
         # 'sub_1400016F0' to a function address validated by the director
         #
 
-        try:
-            function_metadata = self._director.metadata.get_function_by_name(text)
+        function_metadata = self._director.metadata.get_function_by_name(text)
+        if function_metadata:
             return function_metadata.address
 
         #
         # the user string did not translate to a function name that could
         # be found in the director.
         #
-
-        except ValueError:
-            pass
 
         # failure, the user input (text) isn't a jump ...
         return 0
