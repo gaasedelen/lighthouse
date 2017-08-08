@@ -4,6 +4,7 @@ import bisect
 import ctypes
 import logging
 import threading
+import collections
 
 import idaapi
 import idautils
@@ -495,10 +496,12 @@ class FunctionMetadata(object):
 
         # node metadata
         self.nodes = {}
+        self.edges = []
 
         # fixed/baked/computed metrics
         self.size = 0
         self.node_count = 0
+        self.edge_count = 0
         self.instruction_count = 0
 
         # collect metdata from the underlying database
@@ -597,12 +600,32 @@ class FunctionMetadata(object):
             node_metadata.function = function_metadata
             function_metadata.nodes[start_ea] = node_metadata
 
+            #
+            # enumerate the edges produced by this node with a destination
+            # that falls within this function.
+            #
+
+            edge_src = next(reversed(node_metadata.instructions))
+
+            # NOTE/COMPAT: we do a single api check *outside* the loop for perf
+            if using_ida7api:
+                for edge_dst in idautils.CodeRefsFrom(edge_src, True):
+                    edge_function = idaapi.get_func(edge_dst)
+                    if edge_function and edge_function.start_ea == function.startEA:  # NOTE: start_ea vs startEA
+                        function_metadata.edges.append((edge_src, edge_dst))
+            else:
+                for edge_dst in idautils.CodeRefsFrom(edge_src, True):
+                    edge_function = idaapi.get_func(edge_dst)
+                    if edge_function and edge_function.startEA == function.startEA:   # NOTE: startEA vs start_ea
+                        function_metadata.edges.append((edge_src, edge_dst))
+
     def _finalize(self):
         """
         Finalize function metadata for use.
         """
         self.size = sum(node.size for node in self.nodes.itervalues())
         self.node_count = len(self.nodes)
+        self.edge_count = len(self.edges)
         self.instruction_count = sum(node.instruction_count for node in self.nodes.itervalues())
 
     #--------------------------------------------------------------------------
@@ -657,7 +680,7 @@ class NodeMetadata(object):
         self.function = None
 
         # maps instruction_address --> instruction_metadata
-        self.instructions = {}
+        self.instructions = collections.OrderedDict()
 
         #----------------------------------------------------------------------
 
