@@ -120,6 +120,9 @@ class Lighthouse(plugin_t):
         # members for the 'Coverage Overview' menu entry
         self._icon_id_overview = idaapi.BADADDR
 
+        # the directory to start the coverage file dialog in
+        self._last_directory = os.path.dirname(idaapi.cvar.database_idb) + os.sep
+
     def _install_ui(self):
         """
         Initialize & integrate all UI elements.
@@ -425,11 +428,24 @@ class Lighthouse(plugin_t):
         """
 
         # create & configure a Qt File Dialog for immediate use
-        file_dialog = QtWidgets.QFileDialog(None, 'Open Code Coverage File(s)')
+        file_dialog = QtWidgets.QFileDialog(
+            None,
+            'Open Code Coverage File(s)',
+            self._last_directory,
+            'All Files (*.*)'
+        )
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
 
         # prompt the user with the file dialog, and await filename(s)
         filenames, _ = file_dialog.getOpenFileNames()
+
+        #
+        # remember the last directory we were in (parsed from a selected file)
+        # for the next time the user comes to load coverage files
+        #
+
+        if filenames:
+            self._last_directory = os.path.dirname(filenames[0]) + os.sep
 
         # log the captured (selected) filenames from the dialog
         logger.debug("Captured filenames from file dialog:")
