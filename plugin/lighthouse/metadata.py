@@ -575,11 +575,11 @@ class FunctionMetadata(object):
 
             # NOTE/COMPAT:
             if using_ida7api:
-                start_ea = node.start_ea
-                end_ea = node.end_ea
+                node_start = node.start_ea
+                node_end   = node.end_ea
             else:
-                start_ea = node.startEA
-                end_ea = node.endEA
+                node_start = node.startEA
+                node_end   = node.endEA
 
             #
             # the node size as this flowchart sees it is 'zero'. This means
@@ -587,11 +587,11 @@ class FunctionMetadata(object):
             # ignore it.
             #
 
-            if start_ea == end_ea:
+            if node_start == node_end:
                 continue
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(start_ea, end_ea, node_id)
+            node_metadata = NodeMetadata(node_start, node_end, node_id)
 
             #
             # establish a relationship between this node (basic block) and
@@ -599,7 +599,7 @@ class FunctionMetadata(object):
             #
 
             node_metadata.function = function_metadata
-            function_metadata.nodes[start_ea] = node_metadata
+            function_metadata.nodes[node_start] = node_metadata
 
             #
             # enumerate the edges produced by this node with a destination
