@@ -536,6 +536,17 @@ class FunctionMetadata(object):
         else:
             self.name = idaapi.get_func_name2(self.address)
 
+        #
+        # the replace is sort of a 'special case' for the 'Prefix' IDA
+        # plugin: https://github.com/gaasedelen/prefix
+        #
+        # % signs are used as a marker byte for the prefix. we simply
+        # replace the % signs with a '_' before displaying them. this
+        # technically mirrors the behavior of IDA's functions view
+        #
+
+        self.name = self.name.replace("%", "_")
+
     def _refresh_nodes(self):
         """
         Refresh the function nodes against the open database.
