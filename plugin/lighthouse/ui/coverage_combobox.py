@@ -55,8 +55,8 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.setFont(self._font)
 
         # create the underlying model & table to power the combobox dropwdown
-        self.setModel(CoverageComboBoxModel(self._director))
-        self.setView(CoverageComboBoxView(self.model()))
+        self.setModel(CoverageComboBoxModel(self._director, self))
+        self.setView(CoverageComboBoxView(self.model(), self))
 
         #
         # the combobox will pick a size based on its contents when it is first
@@ -356,7 +356,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
     """
 
     def __init__(self, director, parent=None):
-        super(CoverageComboBoxModel, self).__init__()
+        super(CoverageComboBoxModel, self).__init__(parent)
         self.setObjectName(self.__class__.__name__)
         self._director = director
 

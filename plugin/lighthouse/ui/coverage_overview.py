@@ -61,7 +61,7 @@ class CoverageOverview(DockableShim):
 
         # internal
         self._director = director
-        self._model = CoverageModel(director)
+        self._model = CoverageModel(director, self._widget)
 
         # initialize the plugin UI
         self._ui_init()
