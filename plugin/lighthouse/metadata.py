@@ -503,6 +503,7 @@ class FunctionMetadata(object):
         self.node_count = 0
         self.edge_count = 0
         self.instruction_count = 0
+        self.cyclomatic_complexity = 0
 
         # collect metdata from the underlying database
         self._build_metadata()
@@ -627,6 +628,7 @@ class FunctionMetadata(object):
         self.node_count = len(self.nodes)
         self.edge_count = len(self.edges)
         self.instruction_count = sum(node.instruction_count for node in self.nodes.itervalues())
+        self.cyclomatic_complexity = self.edge_count - self.node_count + 2
 
     #--------------------------------------------------------------------------
     # Signal Handlers

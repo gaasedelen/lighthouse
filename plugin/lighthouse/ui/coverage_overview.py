@@ -23,6 +23,7 @@ FUNC_ADDR    = 2
 BLOCKS_HIT   = 3
 INST_HIT     = 4
 FUNC_SIZE    = 5
+COMPLEXITY   = 6
 FINAL_COLUMN = 7
 
 # column -> field name mapping
@@ -33,7 +34,8 @@ COLUMN_TO_FIELD = \
     FUNC_ADDR:    "address",
     BLOCKS_HIT:   "nodes_executed",
     INST_HIT:     "instructions_executed",
-    FUNC_SIZE:    "size"
+    FUNC_SIZE:    "size",
+    COMPLEXITY:   "cyclomatic_complexity"
 }
 
 # column headers of the table
@@ -44,6 +46,8 @@ SAMPLE_CONTENTS = \
     " 0x140001b20 ",
     " 100 / 100 ",
     " 1000 / 1000 ",
+    " 10000000 ",
+    " 1000000 "
 ]
 
 #------------------------------------------------------------------------------
@@ -324,6 +328,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
             BLOCKS_HIT:   "Blocks Hit",
             INST_HIT:     "Instructions Hit",
             FUNC_SIZE:    "Function Size",
+            COMPLEXITY:   "Complexity",
             FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
         }
 
@@ -445,11 +450,15 @@ class CoverageModel(QtCore.QAbstractTableModel):
             # Instructions Hit
             elif column == INST_HIT:
                 return "%4u / %-4u" % (function_coverage.instructions_executed,
-                                     function_metadata.instruction_count)
+                                       function_metadata.instruction_count)
 
             # Function Size
             elif column == FUNC_SIZE:
                 return "%u" % function_metadata.size
+
+            # Cyclomatic Complexity
+            elif column == COMPLEXITY:
+                return "%u" % function_metadata.cyclomatic_complexity
 
         # cell background color request
         elif role == QtCore.Qt.BackgroundRole:
@@ -504,7 +513,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         #
 
         # sort the table entries by a function metadata attribute
-        if column in [FUNC_NAME, FUNC_ADDR, FUNC_SIZE]:
+        if column in [FUNC_NAME, FUNC_ADDR, FUNC_SIZE, COMPLEXITY]:
             sorted_functions = sorted(
                 self._visible_metadata.itervalues(),
                 key=attrgetter(sort_field),
