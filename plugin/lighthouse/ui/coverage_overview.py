@@ -1,6 +1,8 @@
-import idaapi
+import string
 import logging
 from operator import itemgetter, attrgetter
+
+import idaapi
 
 from lighthouse.util import *
 from .coverage_combobox import CoverageComboBox
@@ -632,6 +634,18 @@ class CoverageModel(QtCore.QAbstractTableModel):
         coverage = self._director.coverage
 
         #
+        # if the search string is all lowercase, then we are going to perform
+        # a case insensitive search/filter.
+        #
+        # that means we we want to 'normalize' all the function names by
+        # making them lowercase before searching for our needle (search str)
+        #
+
+        normalize = lambda x: x
+        if not (set(self._search_string) & set(string.ascii_uppercase)):
+            normalize = lambda x: string.lower(x)
+
+        #
         # it's time to rebuild the list of coverage items to make visible in
         # the coverage overview list. during this process, we filter out entries
         # that do not meet the criteria as specified by the user.
@@ -649,7 +663,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
                 continue
 
             # OPTIONS: ignore items that do not match the search string
-            if not self._search_string in metadata.functions[function_address].name:
+            if not self._search_string in normalize(metadata.functions[function_address].name):
                 continue
 
             #------------------------------------------------------------------
