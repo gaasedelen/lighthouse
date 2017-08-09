@@ -349,7 +349,10 @@ class Lighthouse(idaapi.plugin_t):
         # load the selected coverage files from disk
         #
 
-        coverage_data = self._load_coverage_files(filenames)
+        loaded_coverage = self._load_coverage_files(filenames)
+        if not loaded_coverage:
+            self.director.metadata.abort_refresh()
+            return
 
         #
         # refresh the theme aware color palette for lighthouse
@@ -381,8 +384,8 @@ class Lighthouse(idaapi.plugin_t):
 
         self.director.start_batch()
 
-        # a list to output the names of successfully loaded coverage files
-        loaded = []
+        # a list to output the names of successfully mapped coverage files
+        mapped_coverage = []
 
         #
         # loop through the coverage data we have loaded from disk, and begin
@@ -390,10 +393,10 @@ class Lighthouse(idaapi.plugin_t):
         # insertion into the director (as a list of instruction addresses)
         #
 
-        for i, data in enumerate(coverage_data, 1):
+        for i, data in enumerate(loaded_coverage, 1):
 
             # keep the user informed about our progress while loading coverage
-            idaapi.replace_wait_box("Normalizing and mapping coverage %u/%u" % (i, len(coverage_data)))
+            idaapi.replace_wait_box("Normalizing and mapping coverage %u/%u" % (i, len(loaded_coverage)))
 
             # TODO: it would be nice to get rid of this try/catch in the long run
             try:
@@ -406,26 +409,26 @@ class Lighthouse(idaapi.plugin_t):
                 self.director.add_coverage(coverage_name, addresses)
 
                 # if we made it this far, the coverage must have loaded okay...
-                loaded.append(coverage_name)
+                mapped_coverage.append(coverage_name)
 
             except Exception as e:
-                lmsg("Failed to load coverage:")
+                lmsg("Failed to map coverage %s" % data.filepath)
                 lmsg("- %s" % e)
-                logger.error("Error details:")
+                logger.exception("Error details:")
                 continue
 
         # collapse the batch job to recompute the director's aggregate coverage set
         self.director.end_batch()
 
-        # select the 'first' coverage file loaded from this round
-        if loaded:
-            self.director.select_coverage(loaded[0])
+        # select the 'first' coverage file loaded and mapped from this round
+        if mapped_coverage:
+            self.director.select_coverage(mapped_coverage[0])
 
         # all done, hide the IDA wait box
         idaapi.hide_wait_box()
 
         # print a success message to the output window
-        lmsg("loaded %u coverage file(s)..." % len(loaded))
+        lmsg("Successfully loaded %u coverage file(s)..." % len(mapped_coverage))
 
         # show the coverage overview
         self.open_coverage_overview()
@@ -490,7 +493,30 @@ class Lighthouse(idaapi.plugin_t):
         """
         Load multiple code coverage files from disk.
         """
-        return [self._load_coverage_file(filename) for filename in filenames]
+        loaded_coverage = []
+
+        #
+        # loop through each of the given filenames and attempt to load/parse
+        # their coverage data from disk
+        #
+
+        for filename in filenames:
+
+            # attempt to load/parse a single coverage data file from disk
+            try:
+                coverage_data = self._load_coverage_file(filename)
+
+            # catch all for parse errors / bad input / malformed files
+            except Exception as e:
+                lmsg("Failed to load coverage %s" % filename)
+                logger.exception("Error details:")
+                continue
+
+            # save the loaded coverage data to the output list
+            loaded_coverage.append(coverage_data)
+
+        # return all the succesfully loaded coverage files
+        return loaded_coverage
 
     def _load_coverage_file(self, filename):
         """
