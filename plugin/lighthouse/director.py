@@ -408,17 +408,17 @@ class CoverageDirector(object):
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
-    def add_coverage(self, coverage_name, coverage_data):
+    def create_coverage(self, coverage_name, coverage_data):
         """
-        Add new coverage to the director.
+        Create a new coverage object maintained by the director.
 
         This is effectively an alias of self.update_coverage
         """
-        self.update_coverage(coverage_name, coverage_data)
+        return self.update_coverage(coverage_name, coverage_data)
 
     def update_coverage(self, coverage_name, coverage_data):
         """
-        Add or update coverage maintained by the director.
+        Create or update a coverage object.
         """
         assert not (coverage_name in RESERVED_NAMES)
         updating_coverage = coverage_name in self.coverage_names
@@ -431,8 +431,11 @@ class CoverageDirector(object):
         # create & map a new database coverage object using the given data
         new_coverage = self._build_coverage(coverage_data)
 
+        #
         # coverage mapping complete, looks like we're good. add the new
         # coverage to the director's coverage table and surface it for use.
+        #
+
         self._update_coverage(coverage_name, new_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
@@ -444,6 +447,9 @@ class CoverageDirector(object):
             self._notify_coverage_modified()
         else:
             self._notify_coverage_created()
+
+        # return the created/updated coverage
+        return new_coverage
 
     def _update_coverage(self, coverage_name, new_coverage):
         """

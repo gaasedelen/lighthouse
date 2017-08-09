@@ -406,7 +406,7 @@ class Lighthouse(idaapi.plugin_t):
 
                 # enlighten the coverage director to this new runtime data
                 coverage_name = os.path.basename(data.filepath)
-                self.director.add_coverage(coverage_name, addresses)
+                self.director.create_coverage(coverage_name, addresses)
 
                 # if we made it this far, the coverage must have loaded okay...
                 mapped_coverage.append(coverage_name)
