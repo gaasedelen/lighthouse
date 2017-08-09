@@ -6,7 +6,7 @@ import idc
 import idaapi
 import idautils
 
-from lighthouse.util import chunks
+from lighthouse.util import chunks, using_ida7api
 from lighthouse.util.ida import *
 
 logger = logging.getLogger("Lighthouse.Painting")
@@ -61,10 +61,15 @@ class CoveragePainter(object):
         # Callbacks
         #----------------------------------------------------------------------
 
-        # hook hexrays on startup
-        self._hooks = PainterHooks()
-        self._hooks.auto_queue_empty = self._init_hexrays_hooks
-        self._hooks.hook()
+        # NOTE/COMPAT: hook hexrays on startup
+        if using_ida7api:
+            self._hooks = PainterHooks7()
+            self._hooks.ready_to_run = self._init_hexrays_hooks
+            self._hooks.hook()
+        else:
+            self._hooks = PainterHooks6()
+            self._hooks.auto_queue_empty = self._init_hexrays_hooks
+            self._hooks.hook()
 
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
@@ -624,7 +629,13 @@ class CoveragePainter(object):
 # Painter Hooks
 #------------------------------------------------------------------------------
 
-class PainterHooks(idaapi.IDP_Hooks):
+class PainterHooks6(idaapi.IDP_Hooks):
+    """
+    This is a concrete stub of IDA's IDP_Hooks.
+    """
+    pass
+
+class PainterHooks7(idaapi.UI_Hooks):
     """
     This is a concrete stub of IDA's UI_Hooks.
     """

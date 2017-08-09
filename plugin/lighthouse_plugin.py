@@ -1,6 +1,7 @@
 import os
 
-from idaapi import plugin_t
+import idaapi
+import idautils
 
 from lighthouse.ui import *
 from lighthouse.util import *
@@ -28,7 +29,7 @@ def PLUGIN_ENTRY():
     """
     return Lighthouse()
 
-class Lighthouse(plugin_t):
+class Lighthouse(idaapi.plugin_t):
     """
     The Lighthouse IDA Plugin.
     """
@@ -121,7 +122,7 @@ class Lighthouse(plugin_t):
         self._icon_id_overview = idaapi.BADADDR
 
         # the directory to start the coverage file dialog in
-        self._last_directory = os.path.dirname(idaapi.cvar.database_idb) + os.sep
+        self._last_directory = idautils.GetIdbDir()
 
     def _install_ui(self):
         """
