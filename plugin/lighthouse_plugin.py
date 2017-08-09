@@ -117,6 +117,7 @@ class Lighthouse(idaapi.plugin_t):
 
         # menu entry icons
         self._icon_id_file = idaapi.BADADDR
+        self._icon_id_batch = idaapi.BADADDR
         self._icon_id_overview = idaapi.BADADDR
 
         # the directory to start the coverage file dialog in
@@ -127,6 +128,7 @@ class Lighthouse(idaapi.plugin_t):
         Initialize & integrate all UI elements.
         """
         self._install_load_file()
+        self._install_load_batch()
         self._install_open_coverage_overview()
 
     def print_banner(self):
@@ -161,6 +163,7 @@ class Lighthouse(idaapi.plugin_t):
         Cleanup & uninstall the plugin UI from IDA.
         """
         self._uninstall_open_coverage_overview()
+        self._uninstall_load_batch()
         self._uninstall_load_file()
 
     def _cleanup(self):
@@ -175,6 +178,7 @@ class Lighthouse(idaapi.plugin_t):
     #--------------------------------------------------------------------------
 
     ACTION_LOAD_FILE         = "lighthouse:load_file"
+    ACTION_LOAD_BATCH        = "lighthouse:load_batch"
     ACTION_COVERAGE_OVERVIEW = "lighthouse:coverage_overview"
 
     def _install_load_file(self):
@@ -213,6 +217,41 @@ class Lighthouse(idaapi.plugin_t):
 
         logger.info("Installed the 'Code coverage file' menu entry")
 
+    def _install_load_batch(self):
+        """
+        Install the 'File->Load->Code coverage batch...' menu entry.
+        """
+
+        # create a custom IDA icon
+        icon_path = plugin_resource(os.path.join("icons", "load.png")) # TODO
+        icon_data = str(open(icon_path, "rb").read())
+        self._icon_id_batch = idaapi.load_custom_icon(data=icon_data)
+
+        # describe a custom IDA UI action
+        action_desc = idaapi.action_desc_t(
+            self.ACTION_LOAD_BATCH,                   # The action name.
+            "~C~ode coverage batch...",               # The action text.
+            IDACtxEntry(self.interactive_load_batch), # The action handler.
+            None,                                     # Optional: action shortcut
+            "Load and aggregate code coverage files", # Optional: tooltip
+            self._icon_id_batch                       # Optional: the action icon
+        )
+
+        # register the action with IDA
+        result = idaapi.register_action(action_desc)
+        if not result:
+            RuntimeError("Failed to register load_batch action with IDA")
+
+        # attach the action to the File-> dropdown menu
+        result = idaapi.attach_action_to_menu(
+            "File/Load file/",          # Relative path of where to add the action
+            self.ACTION_LOAD_BATCH,     # The action ID (see above)
+            idaapi.SETMENU_APP          # We want to append the action after ^
+        )
+        if not result:
+            RuntimeError("Failed action attach load_batch")
+
+        logger.info("Installed the 'Code coverage batch' menu entry")
 
     def _install_open_coverage_overview(self):
         """
@@ -340,6 +379,11 @@ class Lighthouse(idaapi.plugin_t):
         self._ui_coverage_overview = CoverageOverview(self.director)
         self._ui_coverage_overview.show()
 
+    def interactive_load_batch(self):
+        """
+        TODO
+        """
+        print "hello world"
     def interactive_load_file(self):
         """
         An interactive file dialog flow for loading code coverage files.
