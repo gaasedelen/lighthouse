@@ -293,11 +293,7 @@ class DatabaseCoverage(object):
         # current implementation of things
         #
 
-        self._unmap_all()
-
-    #--------------------------------------------------------------------------
-    # Coverage Operations
-    #--------------------------------------------------------------------------
+        self.unmap_all()
 
     def mask_data(self, coverage_mask):
         """
@@ -495,7 +491,7 @@ class DatabaseCoverage(object):
         # done
         return dirty_functions
 
-    def _unmap_all(self):
+    def unmap_all(self):
         """
         Unmap all mapped data.
         """
