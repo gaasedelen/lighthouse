@@ -309,6 +309,13 @@ class Lighthouse(idaapi.plugin_t):
         """
         Open the 'Coverage Overview' dialog.
         """
+
+        # the coverage overview is already open & visible, simply refresh it
+        if self._ui_coverage_overview and self._ui_coverage_overview.visible():
+            self._ui_coverage_overview.refresh()
+            return
+
+        # create a new coverage overview if there is not one visible
         self._ui_coverage_overview = CoverageOverview(self.director)
         self._ui_coverage_overview.show()
 

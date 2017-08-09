@@ -82,6 +82,12 @@ class CoverageOverview(DockableShim):
         self.refresh()
         super(CoverageOverview, self).show()
 
+    def visible(self):
+        """
+        Widget visibility status.
+        """
+        return self._widget.isVisible()
+
     #--------------------------------------------------------------------------
     # Initialization - UI
     #--------------------------------------------------------------------------
