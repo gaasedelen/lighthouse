@@ -245,6 +245,25 @@ class DatabaseCoverage(object):
         # mark these touched addresses as dirty
         self._unmapped_data |= data.viewkeys()
 
+    def add_addresses(self, addresses, update=True):
+        """
+        Add a list of instruction addresses to this mapping (eg, a trace).
+        """
+
+        # increment the hit count for an address
+        for address in addresses:
+            self._hitmap[address] += 1
+
+        # do not update other internal structures if requested
+        if not update:
+            return
+
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
+
+        # mark these touched addresses as dirty
+        self._unmapped_data |= set(addresses)
+
     def subtract_data(self, data):
         """
         Subtract runtime data from this mapping.
