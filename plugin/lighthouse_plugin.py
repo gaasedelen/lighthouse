@@ -115,10 +115,8 @@ class Lighthouse(idaapi.plugin_t):
         # the coverage overview widget
         self._ui_coverage_overview = None
 
-        # members for the 'Load Code Coverage' menu entry
-        self._icon_id_load = idaapi.BADADDR
-
-        # members for the 'Coverage Overview' menu entry
+        # menu entry icons
+        self._icon_id_file = idaapi.BADADDR
         self._icon_id_overview = idaapi.BADADDR
 
         # the directory to start the coverage file dialog in
@@ -128,9 +126,7 @@ class Lighthouse(idaapi.plugin_t):
         """
         Initialize & integrate all UI elements.
         """
-
-        # install the 'Load Coverage' file dialog
-        self._install_load_file_dialog()
+        self._install_load_file()
         self._install_open_coverage_overview()
 
     def print_banner(self):
@@ -165,7 +161,7 @@ class Lighthouse(idaapi.plugin_t):
         Cleanup & uninstall the plugin UI from IDA.
         """
         self._uninstall_open_coverage_overview()
-        self._uninstall_load_file_dialog()
+        self._uninstall_load_file()
 
     def _cleanup(self):
         """
@@ -178,44 +174,45 @@ class Lighthouse(idaapi.plugin_t):
     # IDA Actions
     #--------------------------------------------------------------------------
 
-    ACTION_LOAD_COVERAGE     = "lighthouse:load_coverage"
+    ACTION_LOAD_FILE         = "lighthouse:load_file"
     ACTION_COVERAGE_OVERVIEW = "lighthouse:coverage_overview"
 
-    def _install_load_file_dialog(self):
+    def _install_load_file(self):
         """
-        Install the 'File->Load->Code Coverage File(s)...' menu entry.
+        Install the 'File->Load->Code coverage file...' menu entry.
         """
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "load.png"))
         icon_data = str(open(icon_path, "rb").read())
-        self._icon_id_load = idaapi.load_custom_icon(data=icon_data)
+        self._icon_id_file = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
         action_desc = idaapi.action_desc_t(
-            self.ACTION_LOAD_COVERAGE,                # The action name.
-            "~C~ode Coverage File(s)...",             # The action text.
-            IDACtxEntry(self.load_coverage),          # The action handler.
-            None,                                     # Optional: action shortcut
-            "Load a code coverage file for this IDB", # Optional: tooltip
-            self._icon_id_load                        # Optional: the action icon
+            self.ACTION_LOAD_FILE,                     # The action name.
+            "~C~ode coverage file...",                 # The action text.
+            IDACtxEntry(self.interactive_load_file),   # The action handler.
+            None,                                      # Optional: action shortcut
+            "Load individual code coverage file(s)",   # Optional: tooltip
+            self._icon_id_file                         # Optional: the action icon
         )
 
         # register the action with IDA
         result = idaapi.register_action(action_desc)
         if not result:
-            RuntimeError("Failed to register load coverage action with IDA")
+            RuntimeError("Failed to register load_file action with IDA")
 
         # attach the action to the File-> dropdown menu
         result = idaapi.attach_action_to_menu(
             "File/Load file/",       # Relative path of where to add the action
-            self.ACTION_LOAD_COVERAGE,  # The action ID (see above)
+            self.ACTION_LOAD_FILE,   # The action ID (see above)
             idaapi.SETMENU_APP       # We want to append the action after ^
         )
         if not result:
-            RuntimeError("Failed action attach to 'File/Load file/' dropdown")
+            RuntimeError("Failed action attach load_file")
 
-        logger.info("Installed the 'Load Code Coverage' menu entry")
+        logger.info("Installed the 'Code coverage file' menu entry")
+
 
     def _install_open_coverage_overview(self):
         """
@@ -253,29 +250,53 @@ class Lighthouse(idaapi.plugin_t):
 
         logger.info("Installed the 'Coverage Overview' menu entry")
 
-    def _uninstall_load_file_dialog(self):
+    def _uninstall_load_file(self):
         """
-        Remove the 'File->Load file->Code Coverage File(s)...' menu entry.
+        Remove the 'File->Load file->Code coverage file...' menu entry.
         """
 
         # remove the entry from the File-> menu
         result = idaapi.detach_action_from_menu(
             "File/Load file/",
-            self.ACTION_LOAD_COVERAGE
+            self.ACTION_LOAD_FILE
         )
         if not result:
             return False
 
         # unregister the action
-        result = idaapi.unregister_action(self.ACTION_LOAD_COVERAGE)
+        result = idaapi.unregister_action(self.ACTION_LOAD_FILE)
         if not result:
             return False
 
         # delete the entry's icon
-        idaapi.free_custom_icon(self._icon_id_load)
-        self._icon_id_load = idaapi.BADADDR
+        idaapi.free_custom_icon(self._icon_id_file)
+        self._icon_id_file = idaapi.BADADDR
 
-        logger.info("Uninstalled the 'Load Code Coverage' menu entry")
+        logger.info("Uninstalled the 'Code coverage file' menu entry")
+
+    def _uninstall_load_batch(self):
+        """
+        Remove the 'File->Load file->Code coverage batch...' menu entry.
+        """
+
+        # remove the entry from the File-> menu
+        result = idaapi.detach_action_from_menu(
+            "File/Load file/",
+            self.ACTION_LOAD_BATCH
+        )
+        if not result:
+            return False
+
+        # unregister the action
+        result = idaapi.unregister_action(self.ACTION_LOAD_BATCH)
+        if not result:
+            return False
+
+        # delete the entry's icon
+        idaapi.free_custom_icon(self._icon_id_batch)
+        self._icon_id_batch = idaapi.BADADDR
+
+        logger.info("Uninstalled the 'Code coverage batch' menu entry")
 
     def _uninstall_open_coverage_overview(self):
         """
@@ -319,7 +340,7 @@ class Lighthouse(idaapi.plugin_t):
         self._ui_coverage_overview = CoverageOverview(self.director)
         self._ui_coverage_overview.show()
 
-    def load_coverage(self):
+    def interactive_load_file(self):
         """
         An interactive file dialog flow for loading code coverage files.
         """
@@ -441,7 +462,7 @@ class Lighthouse(idaapi.plugin_t):
         # create & configure a Qt File Dialog for immediate use
         file_dialog = QtWidgets.QFileDialog(
             None,
-            'Open Code Coverage File(s)',
+            'Open code coverage file',
             self._last_directory,
             'All Files (*.*)'
         )
