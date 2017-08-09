@@ -103,11 +103,10 @@ def map_line2node(cfunc, metadata, line2citem):
                 continue
 
             # find the graph node (eg, basic block) that generated this citem
-            try:
-                node = metadata.get_node(address)
+            node = metadata.get_node(address)
 
             # address not mapped to a node... weird. continue to the next citem
-            except ValueError:
+            if not node:
                 #logger.warning("Failed to map node to basic block")
                 continue
 
