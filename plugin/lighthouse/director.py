@@ -341,7 +341,13 @@ class CoverageDirector(object):
                     continue
 
                 # call the object instance callback
-                callback(obj)
+                try:
+                    callback(obj)
+
+                # assume a Qt cleanup/deletion occured
+                except RuntimeError as e:
+                    cleanup.append(callback_ref)
+                    continue
 
             # if the callback is a static method...
             else:
