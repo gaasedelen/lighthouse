@@ -9,6 +9,7 @@ from lighthouse.parsers import *
 from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
+from lighthouse.coverage import DatabaseCoverage
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 
 # start the global logger *once*
@@ -381,9 +382,80 @@ class Lighthouse(idaapi.plugin_t):
 
     def interactive_load_batch(self):
         """
-        TODO
+        Interactive batch coverage load.
         """
-        print "hello world"
+
+        # select and load coverage files from disk
+        loaded_files = self._select_while_refresh()
+        if not loaded_files:
+            return
+
+        # aggregate all the selected files into one new coverage set
+        new_coverage = self._aggregate_batch(loaded_files)
+
+        self.palette.refresh_colors()
+
+        # prompt the user to name the new coverage aggregate
+        default_name = "BATCH_%s" % self.director.peek_shorthand()
+        coverage_name = idaapi.askstr(0, default_name, "Batch name")
+        if not coverage_name:
+            lmsg("No batch name provided. Aborting load...")
+            return
+
+        # inject the the aggregated coverage set
+        self.director.create_coverage(coverage_name, new_coverage.data)
+
+        # select the newly created batch coverage
+        self.director.select_coverage(coverage_name)
+
+        # print a success message to the output window
+        lmsg("Successfully loaded batch %s..." % coverage_name)
+
+        # show the coverage overview
+        self.open_coverage_overview()
+
+    def _aggregate_batch(self, loaded_files):
+        """
+        Aggregate the given loaded_files data into a single coverage object.
+        """
+        idaapi.show_wait_box("Aggregating coverage batch...")
+
+        # create a new coverage set to manually aggregate data into
+        coverage = DatabaseCoverage({}, self.palette)
+
+        #
+        # loop through the coverage data we have loaded from disk, and begin
+        # the normalization process to translate / filter / flatten it for
+        # insertion into the director (as a list of instruction addresses)
+        #
+
+        for i, data in enumerate(loaded_files, 1):
+
+            # keep the user informed about our progress while loading coverage
+            idaapi.replace_wait_box(
+                "Aggregating batch data %u/%u" % (i, len(loaded_files))
+            )
+
+            # normalize coverage data to the database
+            try:
+                addresses = self._normalize_coverage(data, self.director.metadata)
+
+            # normalization failed, print & log it
+            except Exception as e:
+                lmsg("Failed to map coverage %s" % data.filepath)
+                lmsg("- %s" % e)
+                logger.exception("Error details:")
+                continue
+
+            # aggregate the addresses into the output coverage object
+            coverage.add_addresses(addresses, False)
+
+        # all done, hide the IDA wait box
+        idaapi.hide_wait_box()
+
+        # return the created coverage name
+        return coverage
+
     def interactive_load_file(self):
         """
         An interactive file dialog flow for loading code coverage files.
@@ -497,6 +569,65 @@ class Lighthouse(idaapi.plugin_t):
 
         # show the coverage overview
         self.open_coverage_overview()
+
+    def _select_while_refresh(self):
+        """
+        Interactive file selection with asynchronous metadata refresh.
+        """
+
+        #
+        # kick off an asynchronous metadata refresh. this collects underlying
+        # database metadata while the user will be busy selecting coverage files.
+        #
+        # the collected metadata enables the director to process, map, and
+        # manipulate loaded coverage data in a performant, asynchronous manner.
+        #
+
+        future = self.director.metadata.refresh(progress_callback=metadata_progress)
+
+        #
+        # we will now prompt the user with an interactive file dialog so they
+        # can select the coverage files they would like to load from disk.
+        #
+
+        loaded_files = self._select_and_load_coverage_files()
+
+        # if no valid coveragee files were selected (and loaded), bail
+        if not loaded_files:
+            self.director.metadata.abort_refresh()
+            return
+
+        #
+        # to continue any further, we need the database metadata. hopefully
+        # it has finished with its asynchronous collection, otherwise we will
+        # block until it completes. the user will be shown a progress dialog.
+        #
+
+        idaapi.show_wait_box("Building database metadata...")
+        await_future(future)
+        idaapi.hide_wait_box()
+
+        # return the loaded coverage files
+        return loaded_files
+
+    def _select_and_load_coverage_files(self):
+        """
+        Interactive coverage file selection.
+        """
+
+        #
+        # prompt the user with a QtFileDialog so that they can select any
+        # number of coverage files to load at once.
+        #
+        # if no files are selected, we abort the coverage loading process.
+        #
+
+        filenames = self._select_coverage_files()
+        if not filenames:
+            return None
+
+        # load the selected coverage files from disk and return them
+        return self._load_coverage_files(filenames)
 
     def _select_coverage_files(self):
         """
