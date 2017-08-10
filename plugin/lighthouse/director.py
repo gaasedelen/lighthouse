@@ -617,6 +617,15 @@ class CoverageDirector(object):
         except KeyError:
             return None
 
+    def peek_shorthand(self):
+        """
+        Peek at the next available shorthand symbol.
+        """
+        try:
+            return self._shorthand[0]
+        except IndexError:
+            return None
+
     def _request_shorthand_alias(self, coverage_name):
         """
         Assign the next shorthand A-Z alias to the given coverage.
