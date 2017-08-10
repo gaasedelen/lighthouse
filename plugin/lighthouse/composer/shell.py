@@ -386,10 +386,14 @@ class ComposingShell(QtWidgets.QWidget):
         # to its corresponding function address validated by the director
         #
 
-        address = int(text, 16)
-        function_metadata = self._director.metadata.get_function(address)
-        if function_metadata:
-            return function_metadata.address
+        try:
+            address = int(text, 16)
+        except ValueError:
+            pass
+        else:
+            function_metadata = self._director.metadata.get_function(address)
+            if function_metadata:
+                return function_metadata.address
 
         #
         # the user string did not translate to a parsable hex number (address)
