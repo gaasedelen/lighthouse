@@ -1,5 +1,6 @@
 import string
 import logging
+import weakref
 from operator import itemgetter, attrgetter
 
 import idaapi
@@ -51,6 +52,20 @@ SAMPLE_CONTENTS = \
 ]
 
 #------------------------------------------------------------------------------
+# Pseudo Widget Filter
+#------------------------------------------------------------------------------
+
+class EventProxy(QtCore.QObject):
+    def __init__(self, target):
+        super(EventProxy, self).__init__()
+        self._target = target
+
+    def eventFilter(self, source, event):
+        if event.type() == QtCore.QEvent.Destroy:
+            self._target.terminate()
+        return False
+
+#------------------------------------------------------------------------------
 # Coverage Overview
 #------------------------------------------------------------------------------
 
@@ -69,11 +84,20 @@ class CoverageOverview(DockableShim):
         self._director = director
         self._model = CoverageModel(director, self._widget)
 
+        # pseudo widget science
+        self._visible = False
+        self._events = EventProxy(self)
+        self._widget.installEventFilter(self._events)
+
         # initialize the plugin UI
         self._ui_init()
 
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
+
+    #--------------------------------------------------------------------------
+    # Pseudo Widget Functions
+    #--------------------------------------------------------------------------
 
     def show(self):
         """
@@ -81,12 +105,18 @@ class CoverageOverview(DockableShim):
         """
         self.refresh()
         super(CoverageOverview, self).show()
+        self._visible = True
 
-    def visible(self):
+    def terminate(self):
         """
-        Widget visibility status.
+        The CoverageOverview is being hidden / deleted.
         """
-        return self._widget.isVisible()
+        self._visible = False
+        self._model = None
+        self._widget = None
+
+    def isVisible(self):
+        return self._visible
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -202,7 +232,11 @@ class CoverageOverview(DockableShim):
         """
 
         # the composing shell
-        self._shell = ComposingShell(self._director, self._model, self._table)
+        self._shell = ComposingShell(
+            self._director,
+            weakref.proxy(self._model),
+            self._table
+        )
 
         # the coverage combobox
         self._combobox = CoverageComboBox(self._director)

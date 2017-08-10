@@ -311,7 +311,7 @@ class Lighthouse(idaapi.plugin_t):
         """
 
         # the coverage overview is already open & visible, simply refresh it
-        if self._ui_coverage_overview and self._ui_coverage_overview.visible():
+        if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
             self._ui_coverage_overview.refresh()
             return
 
