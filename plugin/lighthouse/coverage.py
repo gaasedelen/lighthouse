@@ -195,6 +195,9 @@ class DatabaseCoverage(object):
         # bake our coverage map
         self._finalize(dirty_nodes, dirty_functions)
 
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
+
         # dump the unmappable coverage data
         #self.dump_unmapped()
 
@@ -230,7 +233,7 @@ class DatabaseCoverage(object):
     # Data Operations
     #--------------------------------------------------------------------------
 
-    def add_data(self, data):
+    def add_data(self, data, update=True):
         """
         Add runtime data to this mapping.
         """
@@ -238,6 +241,10 @@ class DatabaseCoverage(object):
         # add the given runtime data to our data source
         for address, hit_count in data.iteritems():
             self._hitmap[address] += hit_count
+
+        # do not update other internal structures if requested
+        if not update:
+            return
 
         # update the coverage hash incase the hitmap changed
         self._update_coverage_hash()

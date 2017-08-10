@@ -48,6 +48,9 @@ class CoverageDirector(object):
         # database metadata cache
         self._database_metadata = DatabaseMetadata()
 
+        # flag indicating a batch load is in progress
+        self._batch_in_progress = False
+
         #----------------------------------------------------------------------
         # Coverage
         #----------------------------------------------------------------------
@@ -429,7 +432,7 @@ class CoverageDirector(object):
             logger.debug("Adding coverage %s" % coverage_name)
 
         # create & map a new database coverage object using the given data
-        new_coverage = self._build_coverage(coverage_data)
+        new_coverage = self._new_coverage(coverage_data)
 
         #
         # coverage mapping complete, looks like we're good. add the new
@@ -482,7 +485,7 @@ class CoverageDirector(object):
         if not self._batch_in_progress:
             self._refresh_aggregate()
 
-    def _build_coverage(self, coverage_data):
+    def _new_coverage(self, coverage_data):
         """
         Build a new database coverage object from the given data.
         """
