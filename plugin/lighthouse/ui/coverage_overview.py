@@ -81,7 +81,6 @@ class CoverageOverview(DockableShim):
         )
 
         # internal
-        self._director = director
         self._model = CoverageModel(director, self._widget)
 
         # pseudo widget science
@@ -90,7 +89,7 @@ class CoverageOverview(DockableShim):
         self._widget.installEventFilter(self._events)
 
         # initialize the plugin UI
-        self._ui_init()
+        self._ui_init(director)
 
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
@@ -122,7 +121,7 @@ class CoverageOverview(DockableShim):
     # Initialization - UI
     #--------------------------------------------------------------------------
 
-    def _ui_init(self):
+    def _ui_init(self, director):
         """
         Initialize UI elements.
         """
@@ -132,14 +131,14 @@ class CoverageOverview(DockableShim):
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # initialize our ui elements
-        self._ui_init_table()
-        self._ui_init_toolbar()
+        self._ui_init_table(director)
+        self._ui_init_toolbar(director)
         self._ui_init_signals()
 
         # layout the populated ui just before showing it
         self._ui_layout()
 
-    def _ui_init_table(self):
+    def _ui_init_table(self, director):
         """
         Initialize the coverage table.
         """
@@ -147,7 +146,7 @@ class CoverageOverview(DockableShim):
         self._table.setFocusPolicy(QtCore.Qt.NoFocus)
         self._table.setStyleSheet(
             "QTableView { gridline-color: black; } " +
-            "QTableView::item:selected { color: white; background-color: %s; } " % self._director._palette.selection.name()
+            "QTableView::item:selected { color: white; background-color: %s; } " % director._palette.selection.name()
         )
 
         # set these properties so the user can arbitrarily shrink the table
@@ -194,13 +193,13 @@ class CoverageOverview(DockableShim):
         self._table.setSortingEnabled(True)
         hh.setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
-    def _ui_init_toolbar(self):
+    def _ui_init_toolbar(self, director):
         """
         Initialize the coverage toolbar.
         """
 
         # initialize toolbar elements
-        self._ui_init_toolbar_elements()
+        self._ui_init_toolbar_elements(director)
 
         # populate the toolbar
         self._toolbar = QtWidgets.QToolBar()
@@ -226,20 +225,20 @@ class CoverageOverview(DockableShim):
         self._toolbar.addWidget(self._hide_zero_label)
         self._toolbar.addWidget(self._hide_zero_checkbox)
 
-    def _ui_init_toolbar_elements(self):
+    def _ui_init_toolbar_elements(self, director):
         """
         Initialize the coverage toolbar UI elements.
         """
 
         # the composing shell
         self._shell = ComposingShell(
-            self._director,
+            director,
             weakref.proxy(self._model),
             self._table
         )
 
         # the coverage combobox
-        self._combobox = CoverageComboBox(self._director)
+        self._combobox = CoverageComboBox(director)
 
         # the checkbox to hide 0% coverage entries
         self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
