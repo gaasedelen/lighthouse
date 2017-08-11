@@ -224,7 +224,7 @@ class Lighthouse(idaapi.plugin_t):
         """
 
         # create a custom IDA icon
-        icon_path = plugin_resource(os.path.join("icons", "load.png")) # TODO
+        icon_path = plugin_resource(os.path.join("icons", "batch.png"))
         icon_data = str(open(icon_path, "rb").read())
         self._icon_id_batch = idaapi.load_custom_icon(data=icon_data)
 
