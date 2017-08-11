@@ -413,3 +413,24 @@ def flush_ida_sync_requests():
 
     # done
     return True
+
+@mainthread
+def prompt_string(label, title, default=""):
+    """
+    Prompt the user with a dialog to enter a string.
+
+    This does not block the IDA main thread (unlike idaapi.askstr)
+    """
+    dlg = QtWidgets.QInputDialog(None)
+    dlg.setWindowFlags(dlg.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+    dlg.setInputMode(QtWidgets.QInputDialog.TextInput)
+    dlg.setLabelText(label)
+    dlg.setWindowTitle(title)
+    dlg.setTextValue(default)
+    dlg.resize(
+        dlg.fontMetrics().averageCharWidth()*80,
+        dlg.fontMetrics().averageCharWidth()*10
+    )
+    ok = dlg.exec_()
+    text = dlg.textValue()
+    return (ok, text)
