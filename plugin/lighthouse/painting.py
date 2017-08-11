@@ -467,7 +467,7 @@ class CoveragePainter(object):
 
         # determine range of functions to repaint
         func_num = idaapi.get_func_num(target_address)
-        func_num_start = func_num - FUNCTION_BUFFER
+        func_num_start = min(func_num - FUNCTION_BUFFER, 0)
         func_num_end   = func_num + FUNCTION_BUFFER + 1
 
         # we will save the instruction addresses painted by our function paints
@@ -511,7 +511,7 @@ class CoveragePainter(object):
         INSTRUCTION_BUFFER = 200
 
         # determine range of instructions to repaint
-        inst_start = target_address - INSTRUCTION_BUFFER
+        inst_start = min(target_address - INSTRUCTION_BUFFER, 0)
         inst_end   = target_address + INSTRUCTION_BUFFER
         instructions = set(idautils.Heads(inst_start, inst_end))
 
