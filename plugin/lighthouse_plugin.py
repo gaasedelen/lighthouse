@@ -370,6 +370,7 @@ class Lighthouse(idaapi.plugin_t):
         """
         Open the 'Coverage Overview' dialog.
         """
+        self.palette.refresh_colors()
 
         # the coverage overview is already open & visible, simply refresh it
         if self._ui_coverage_overview and self._ui_coverage_overview.visible():
@@ -384,6 +385,7 @@ class Lighthouse(idaapi.plugin_t):
         """
         Interactive loading & aggregation of coverage files.
         """
+        self.palette.refresh_colors()
 
         #
         # kick off an asynchronous metadata refresh. this collects underlying
@@ -487,6 +489,7 @@ class Lighthouse(idaapi.plugin_t):
         """
         Interactive loading of individual coverage files.
         """
+        self.palette.refresh_colors()
         created_coverage = []
 
         #
@@ -581,7 +584,7 @@ class Lighthouse(idaapi.plugin_t):
 
         # all done, hide the IDA wait box
         idaapi.hide_wait_box()
-        lmsg("Successfully loaded %u coverage file(s)..." % len(mapped_coverage))
+        lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
         self.open_coverage_overview()
