@@ -48,6 +48,9 @@ class CoverageDirector(object):
         # database metadata cache
         self._database_metadata = DatabaseMetadata()
 
+        # flag indicating a batch load is in progress
+        self._batch_in_progress = False
+
         #----------------------------------------------------------------------
         # Coverage
         #----------------------------------------------------------------------
@@ -414,17 +417,17 @@ class CoverageDirector(object):
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
-    def add_coverage(self, coverage_name, coverage_data):
+    def create_coverage(self, coverage_name, coverage_data):
         """
-        Add new coverage to the director.
+        Create a new coverage object maintained by the director.
 
         This is effectively an alias of self.update_coverage
         """
-        self.update_coverage(coverage_name, coverage_data)
+        return self.update_coverage(coverage_name, coverage_data)
 
     def update_coverage(self, coverage_name, coverage_data):
         """
-        Add or update coverage maintained by the director.
+        Create or update a coverage object.
         """
         assert not (coverage_name in RESERVED_NAMES)
         updating_coverage = coverage_name in self.coverage_names
@@ -435,10 +438,13 @@ class CoverageDirector(object):
             logger.debug("Adding coverage %s" % coverage_name)
 
         # create & map a new database coverage object using the given data
-        new_coverage = self._build_coverage(coverage_data)
+        new_coverage = self._new_coverage(coverage_data)
 
+        #
         # coverage mapping complete, looks like we're good. add the new
         # coverage to the director's coverage table and surface it for use.
+        #
+
         self._update_coverage(coverage_name, new_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
@@ -450,6 +456,9 @@ class CoverageDirector(object):
             self._notify_coverage_modified()
         else:
             self._notify_coverage_created()
+
+        # return the created/updated coverage
+        return new_coverage
 
     def _update_coverage(self, coverage_name, new_coverage):
         """
@@ -482,7 +491,7 @@ class CoverageDirector(object):
         if not self._batch_in_progress:
             self._refresh_aggregate()
 
-    def _build_coverage(self, coverage_data):
+    def _new_coverage(self, coverage_data):
         """
         Build a new database coverage object from the given data.
         """
@@ -615,6 +624,15 @@ class CoverageDirector(object):
 
         # there doesn't appear to be a shorthand symbol...
         except KeyError:
+            return None
+
+    def peek_shorthand(self):
+        """
+        Peek at the next available shorthand symbol.
+        """
+        try:
+            return self._shorthand[0]
+        except IndexError:
             return None
 
     def _request_shorthand_alias(self, coverage_name):

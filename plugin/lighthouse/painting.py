@@ -61,15 +61,10 @@ class CoveragePainter(object):
         # Callbacks
         #----------------------------------------------------------------------
 
-        # NOTE/COMPAT: hook hexrays on startup
-        if using_ida7api:
-            self._hooks = PainterHooks7()
-            self._hooks.ready_to_run = self._init_hexrays_hooks
-            self._hooks.hook()
-        else:
-            self._hooks = PainterHooks6()
-            self._hooks.auto_queue_empty = self._init_hexrays_hooks
-            self._hooks.hook()
+        self._hooks = PainterHooks()
+        self._hooks.tform_visible  = self._init_hexrays_hooks # IDA 6.x
+        self._hooks.widget_visible = self._init_hexrays_hooks # IDA 7.x
+        self._hooks.hook()
 
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
@@ -86,7 +81,7 @@ class CoveragePainter(object):
     # Initialization
     #--------------------------------------------------------------------------
 
-    def _init_hexrays_hooks(self, _=None):
+    def _init_hexrays_hooks(self, widget, _=None):
         """
         Install Hex-Rrays hooks (when available).
 
@@ -115,7 +110,6 @@ class CoveragePainter(object):
         #
 
         self._hooks.unhook()
-        return 0
 
     #------------------------------------------------------------------------------
     # Painting
@@ -629,15 +623,8 @@ class CoveragePainter(object):
 # Painter Hooks
 #------------------------------------------------------------------------------
 
-class PainterHooks6(idaapi.IDP_Hooks):
-    """
-    This is a concrete stub of IDA's IDP_Hooks.
-    """
-    pass
-
-class PainterHooks7(idaapi.UI_Hooks):
+class PainterHooks(idaapi.UI_Hooks):
     """
     This is a concrete stub of IDA's UI_Hooks.
     """
     pass
-

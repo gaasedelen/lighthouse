@@ -183,7 +183,7 @@ class DatabaseMetadata(object):
             return self.functions[self._name2func[function_name]]
         except (IndexError, KeyError):
             pass
-        raise ValueError("Given function name does not exist")
+        return None
 
     def flatten_blocks(self, basic_blocks):
         """
