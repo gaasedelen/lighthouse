@@ -61,7 +61,7 @@ class EventProxy(QtCore.QObject):
         self._target = target
 
     def eventFilter(self, source, event):
-        if event.type() == QtCore.QEvent.Destroy:
+        if int(event.type()) == 16: # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7?
             self._target.terminate()
         return False
 
