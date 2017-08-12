@@ -4,7 +4,6 @@ import bisect
 import ctypes
 import logging
 import threading
-import collections
 
 import idaapi
 import idautils
@@ -52,7 +51,6 @@ logger = logging.getLogger("Lighthouse.Metadata")
 #    reasonably low cost refresh.
 #
 
-
 #------------------------------------------------------------------------------
 # Database Level Metadata
 #------------------------------------------------------------------------------
@@ -65,7 +63,7 @@ class DatabaseMetadata(object):
     def __init__(self):
 
         # database defined instructions
-        self.instructions = {}
+        self.instructions = []
 
         # database defined nodes (basic blocks)
         self.nodes = {}
@@ -82,6 +80,7 @@ class DatabaseMetadata(object):
         self._name2func = {}
         self._last_node = []           # TODO/HACK: blank iterable for now
         self._node_addresses = []
+        self._function_addresses = []
 
         # asynchrnous metadata collection thread
         self._refresh_worker = None
@@ -90,6 +89,14 @@ class DatabaseMetadata(object):
     #--------------------------------------------------------------------------
     # Providers
     #--------------------------------------------------------------------------
+
+    def get_instructions_slice(self, start_address, end_address):
+        """
+        Get the instructions in the given range of addresses.
+        """
+        index_start = bisect.bisect_left(self.instructions, start_address)
+        index_end   = bisect.bisect_left(self.instructions, end_address)
+        return self.instructions[index_start:index_end]
 
     def get_node(self, address):
         """
@@ -175,6 +182,38 @@ class DatabaseMetadata(object):
         # return the function metadata corresponding to this node.
         return node_metadata.function
 
+    def get_closest_function(self, address):
+        """
+        Get the function metadata for the function closest to the give address.
+        """
+
+        # get the closest insertion point of the given address
+        pos = bisect.bisect_left(self._function_addresses, address)
+
+        # the given address is a min, return the first known function
+        if pos == 0:
+            return self.functions[self._function_addresses[0]]
+
+        # given address is a max, return the last known function
+        if pos == len(self._function_addresses):
+            return self.functions[self._function_addresses[-1]]
+
+        # select the two candidate addresses
+        before = self._function_addresses[pos - 1]
+        after  = self._function_addresses[pos]
+
+        # return the function closest to the given address
+        if after - address < address - before:
+            return self.functions[after]
+        else:
+            return self.functions[before]
+
+    def get_function_num(self, address):
+        """
+        Get the function number for a given address.
+        """
+        return self._function_addresses.index(address)
+
     def get_function_by_name(self, function_name):
         """
         Get the function metadata for a given function name.
@@ -184,6 +223,12 @@ class DatabaseMetadata(object):
         except (IndexError, KeyError):
             pass
         return None
+
+    def get_function_by_num(self, function_num):
+        """
+        Get the function metadata for a given function number.
+        """
+        return self.functions[self._function_addresses[function_num]]
 
     def flatten_blocks(self, basic_blocks):
         """
@@ -202,18 +247,14 @@ class DatabaseMetadata(object):
         """
         output = []
 
+        # sanity check
+        if not basic_blocks:
+            return output
+
         # loop through every given basic block (input)
         for address, size in basic_blocks:
-            end_address = address + size
-
-            # loop through the byte range defined by the basic block
-            while address < end_address:
-
-                # save the current address as an instruction address
-                output.append(address)
-
-                # move forward to the next instruction (or byte) address
-                address += self.instructions.get(address, 1)
+            instructions = self.get_instructions_slice(address, address+size)
+            output.extend(instructions)
 
         # return the list of addresses
         return output
@@ -362,6 +403,7 @@ class DatabaseMetadata(object):
         # update the lookup lists
         self._name2func = { f.name: f.address for f in self.functions.itervalues() }
         self._node_addresses = sorted(self.nodes.keys())
+        self._function_addresses = sorted(self.functions.keys())
 
         # lookup lists are no longer stale, reset the stale flag as such
         self._stale_lookup = False
@@ -403,6 +445,10 @@ class DatabaseMetadata(object):
 
             # sleep some so we don't choke the main IDA thread
             time.sleep(.0015)
+
+        # dedupe and sort the instructions
+        self.instructions = list(set(self.instructions))
+        self.instructions.sort()
 
         # completed normally
         return True
@@ -464,7 +510,7 @@ class DatabaseMetadata(object):
         for function_metadata in delta.itervalues():
             self.nodes.update(function_metadata.nodes)
             for node_metadata in function_metadata.nodes.itervalues():
-                self.instructions.update(node_metadata.instructions)
+                self.instructions.extend(node_metadata.instructions)
 
         #
         # if the function or node count has changed, we will know that
@@ -516,7 +562,7 @@ class FunctionMetadata(object):
         """
         The instruction addresses in this function.
         """
-        return set([ea for node in self.nodes.itervalues() for ea in node.instructions.keys()])
+        return set([ea for node in self.nodes.itervalues() for ea in node.instructions])
 
     #--------------------------------------------------------------------------
     # Metadata Population
@@ -605,7 +651,7 @@ class FunctionMetadata(object):
             # that falls within this function.
             #
 
-            edge_src = next(reversed(node_metadata.instructions))
+            edge_src = node_metadata.instructions[-1]
 
             # NOTE/COMPAT: we do a single api check *outside* the loop for perf
             if using_ida7api:
@@ -680,8 +726,8 @@ class NodeMetadata(object):
         # parent function_metadata
         self.function = None
 
-        # maps instruction_address --> instruction_metadata
-        self.instructions = collections.OrderedDict()
+        # instruction addresses
+        self.instructions = []
 
         #----------------------------------------------------------------------
 
@@ -706,7 +752,7 @@ class NodeMetadata(object):
 
         while current_address < node_end:
             instruction_size = idaapi.get_item_end(current_address) - current_address
-            self.instructions[current_address] = instruction_size
+            self.instructions.append(current_address)
             current_address += instruction_size
 
         # save the number of instructions in this block
