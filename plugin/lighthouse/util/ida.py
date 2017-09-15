@@ -390,14 +390,14 @@ def idafast(f):
             return idaapi.execute_sync(ff, idaapi.MFF_FAST)
     return wrapper
 
-def idanowait(f):
+def idawrite_async(f):
     """
     Decorator for marking a function as completely async.
     """
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT)
+        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
     return wrapper
 
 def idawrite(f):
@@ -503,7 +503,7 @@ def await_future(future, block=True, timeout=1.0):
         #
 
         except Queue.Empty as e:
-            logger.debug("Flushing execute_sync requests")
+            logger.debug("Flushing future...")
             flush_ida_sync_requests()
 
 @mainthread

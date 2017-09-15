@@ -169,10 +169,10 @@ class Lighthouse(idaapi.plugin_t):
 
     def _cleanup(self):
         """
-        Signal threads to exit and wait.
+        IDB closing event, last chance to spin down threaded workers.
         """
-        self.director.terminate()
         self.painter.terminate()
+        self.director.terminate()
 
     #--------------------------------------------------------------------------
     # IDA Actions

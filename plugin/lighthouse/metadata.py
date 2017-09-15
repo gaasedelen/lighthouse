@@ -187,6 +187,10 @@ class DatabaseMetadata(object):
         Get the function metadata for the function closest to the give address.
         """
 
+        # sanity check
+        if not self._function_addresses:
+            return None
+
         # get the closest insertion point of the given address
         pos = bisect.bisect_left(self._function_addresses, address)
 
