@@ -71,10 +71,6 @@ class DatabaseMetadata(object):
         # database defined functions
         self.functions = {}
 
-        # TODO: database defined segments
-        #self.segments = {}
-        #self._segment_addresses = {}
-
         # lookup list members
         self._stale_lookup = False
         self._name2func = {}
@@ -803,21 +799,6 @@ class NodeMetadata(object):
         return result
 
 #------------------------------------------------------------------------------
-# Instruction Level Metadata
-#------------------------------------------------------------------------------
-# TODO: unused for now
-
-class InstructionMetadata(ctypes.Structure):
-    """
-    Fast access instruction level metadata cache.
-    """
-    _fields_ = \
-    [
-        ("address", ctypes.c_ulonglong),
-        ("size",    ctypes.c_size_t)
-    ]
-
-#------------------------------------------------------------------------------
 # Metadata Helpers
 #------------------------------------------------------------------------------
 
@@ -961,7 +942,7 @@ class MetadataDelta(object):
         self._dirty_functions = set()
 
     #--------------------------------------------------------------------------
-    # Informational / Debug - TODO: REMOVE
+    # Informational / DEBUG
     #--------------------------------------------------------------------------
 
     def dump_delta(self):

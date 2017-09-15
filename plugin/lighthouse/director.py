@@ -48,8 +48,8 @@ class CoverageDirector(object):
         # database metadata cache
         self._database_metadata = DatabaseMetadata()
 
-        # flag indicating a batch load is in progress
-        self._batch_in_progress = False
+        # flag to suspend/resume the automatic coverage aggregation
+        self._aggregation_suspended = False
 
         #----------------------------------------------------------------------
         # Coverage
@@ -371,19 +371,23 @@ class CoverageDirector(object):
     # Batch Loading
     #----------------------------------------------------------------------
 
-    def start_batch(self):
+    def suspend_aggregation(self):
         """
-        Gate the start of a batch coverage load.
-        """
-        self._batch_in_progress = True
+        Suspend the aggregate computation for any newly added coverage.
 
-    def end_batch(self):
+        It is performant to suspend/resume aggregation if loading a number
+        of individual coverage files. This will prevent the aggregate
+        coverage set from being re-computed multiple times.
         """
-        Gate the end of a batch coverage load.
+        self._aggregation_suspended = True
+
+    def resume_aggregation(self):
         """
-        assert self._batch_in_progress
+        Resume the aggregate computation.
+        """
+        assert self._aggregation_suspended
         self._refresh_aggregate()
-        self._batch_in_progress = False
+        self._aggregation_suspended = False
 
     #----------------------------------------------------------------------
     # Coverage
@@ -476,7 +480,7 @@ class CoverageDirector(object):
         if coverage_name in self.coverage_names:
             old_coverage = self._database_coverage[coverage_name]
             self.aggregate.subtract_data(old_coverage.data)
-            if not self._batch_in_progress:
+            if not self._aggregation_suspended:
                 self._refresh_aggregate()
 
         #
@@ -488,7 +492,7 @@ class CoverageDirector(object):
 
         # (re)-add the newly loaded/updated coverage to the aggregate set
         self.aggregate.add_data(new_coverage.data)
-        if not self._batch_in_progress:
+        if not self._aggregation_suspended:
             self._refresh_aggregate()
 
     def _new_coverage(self, coverage_data):
@@ -522,7 +526,7 @@ class CoverageDirector(object):
         # TODO: check if there's any references to the coverage object here...
 
         self.aggregate.subtract_data(coverage.data)
-        if not self._batch_in_progress:
+        if not self._aggregation_suspended:
             self._refresh_aggregate()
 
         # notify any listeners that we have deleted coverage

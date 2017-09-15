@@ -526,7 +526,7 @@ class Lighthouse(idaapi.plugin_t):
         # into the director.
         #
 
-        self.director.start_batch() # TODO rename
+        self.director.suspend_aggregation()
 
         #
         # loop through the coverage data we have loaded from disk, and begin
@@ -567,7 +567,7 @@ class Lighthouse(idaapi.plugin_t):
         #
 
         idaapi.replace_wait_box("Recomputing coverage aggregate...")
-        self.director.end_batch()
+        self.director.resume_aggregation()
 
         # if nothing was mapped, then there's nothing else to do
         if not created_coverage:
