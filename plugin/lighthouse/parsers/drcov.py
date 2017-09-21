@@ -170,7 +170,10 @@ class DrcovData(object):
            eg: (Not present)
 
         Format used in DynamoRIO v7.0.0-RC1 (and hopefully above)
-           eg: 'Columns: id, base, end, entry, checksum, timestamp, path'
+           Windows:
+             'Columns: id, base, end, entry, checksum, timestamp, path'
+           Mac/Linux:
+             'Columns: id, base, end, entry, path'
 
         """
 
@@ -185,10 +188,9 @@ class DrcovData(object):
         #assert field_name == "Columns"
 
         # seperate column names
-        #   eg: id, base, end, entry, checksum, timestamp, path
+        #   Windows:   id, base, end, entry, checksum, timestamp, path
+        #   Mac/Linux: id, base, end, entry, path
         columns = field_data.split(", ")
-        #if self.module_table_version == 2:
-            #assert columns == ["id", "base", "end", "entry", "checksum", "timestamp", "path"]
 
     def _parse_module_table_modules(self, f):
         """
@@ -304,9 +306,10 @@ class DrcovModule(object):
         self.base      = int(data[1], 16)
         self.end       = int(data[2], 16)
         self.entry     = int(data[3], 16)
-        self.checksum  = int(data[4], 16)
-        self.timestamp = int(data[5], 16)
-        self.path      = str(data[6])
+        if len(data) == 7: # Windows Only
+            self.checksum  = int(data[4], 16)
+            self.timestamp = int(data[5], 16)
+        self.path      = str(data[-1])
         self.size      = self.end-self.base
         self.filename  = os.path.basename(self.path)
 

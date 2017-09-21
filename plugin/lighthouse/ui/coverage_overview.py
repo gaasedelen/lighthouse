@@ -1,6 +1,9 @@
-import idaapi
+import string
 import logging
+import weakref
 from operator import itemgetter, attrgetter
+
+import idaapi
 
 from lighthouse.util import *
 from .coverage_combobox import CoverageComboBox
@@ -21,6 +24,7 @@ FUNC_ADDR    = 2
 BLOCKS_HIT   = 3
 INST_HIT     = 4
 FUNC_SIZE    = 5
+COMPLEXITY   = 6
 FINAL_COLUMN = 7
 
 # column -> field name mapping
@@ -31,7 +35,8 @@ COLUMN_TO_FIELD = \
     FUNC_ADDR:    "address",
     BLOCKS_HIT:   "nodes_executed",
     INST_HIT:     "instructions_executed",
-    FUNC_SIZE:    "size"
+    FUNC_SIZE:    "size",
+    COMPLEXITY:   "cyclomatic_complexity"
 }
 
 # column headers of the table
@@ -42,7 +47,23 @@ SAMPLE_CONTENTS = \
     " 0x140001b20 ",
     " 100 / 100 ",
     " 1000 / 1000 ",
+    " 10000000 ",
+    " 1000000 "
 ]
+
+#------------------------------------------------------------------------------
+# Pseudo Widget Filter
+#------------------------------------------------------------------------------
+
+class EventProxy(QtCore.QObject):
+    def __init__(self, target):
+        super(EventProxy, self).__init__()
+        self._target = target
+
+    def eventFilter(self, source, event):
+        if int(event.type()) == 16: # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7?
+            self._target.terminate()
+        return False
 
 #------------------------------------------------------------------------------
 # Coverage Overview
@@ -60,14 +81,22 @@ class CoverageOverview(DockableShim):
         )
 
         # internal
-        self._director = director
-        self._model = CoverageModel(director)
+        self._model = CoverageModel(director, self._widget)
+
+        # pseudo widget science
+        self._visible = False
+        self._events = EventProxy(self)
+        self._widget.installEventFilter(self._events)
 
         # initialize the plugin UI
-        self._ui_init()
+        self._ui_init(director)
 
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
+
+    #--------------------------------------------------------------------------
+    # Pseudo Widget Functions
+    #--------------------------------------------------------------------------
 
     def show(self):
         """
@@ -75,12 +104,24 @@ class CoverageOverview(DockableShim):
         """
         self.refresh()
         super(CoverageOverview, self).show()
+        self._visible = True
+
+    def terminate(self):
+        """
+        The CoverageOverview is being hidden / deleted.
+        """
+        self._visible = False
+        self._model = None
+        self._widget = None
+
+    def isVisible(self):
+        return self._visible
 
     #--------------------------------------------------------------------------
     # Initialization - UI
     #--------------------------------------------------------------------------
 
-    def _ui_init(self):
+    def _ui_init(self, director):
         """
         Initialize UI elements.
         """
@@ -90,14 +131,14 @@ class CoverageOverview(DockableShim):
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # initialize our ui elements
-        self._ui_init_table()
-        self._ui_init_toolbar()
+        self._ui_init_table(director)
+        self._ui_init_toolbar(director)
         self._ui_init_signals()
 
         # layout the populated ui just before showing it
         self._ui_layout()
 
-    def _ui_init_table(self):
+    def _ui_init_table(self, director):
         """
         Initialize the coverage table.
         """
@@ -105,7 +146,7 @@ class CoverageOverview(DockableShim):
         self._table.setFocusPolicy(QtCore.Qt.NoFocus)
         self._table.setStyleSheet(
             "QTableView { gridline-color: black; } " +
-            "QTableView::item:selected { color: white; background-color: %s; } " % self._director._palette.selection.name()
+            "QTableView::item:selected { color: white; background-color: %s; } " % director._palette.selection.name()
         )
 
         # set these properties so the user can arbitrarily shrink the table
@@ -152,13 +193,13 @@ class CoverageOverview(DockableShim):
         self._table.setSortingEnabled(True)
         hh.setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
-    def _ui_init_toolbar(self):
+    def _ui_init_toolbar(self, director):
         """
         Initialize the coverage toolbar.
         """
 
         # initialize toolbar elements
-        self._ui_init_toolbar_elements()
+        self._ui_init_toolbar_elements(director)
 
         # populate the toolbar
         self._toolbar = QtWidgets.QToolBar()
@@ -184,16 +225,20 @@ class CoverageOverview(DockableShim):
         self._toolbar.addWidget(self._hide_zero_label)
         self._toolbar.addWidget(self._hide_zero_checkbox)
 
-    def _ui_init_toolbar_elements(self):
+    def _ui_init_toolbar_elements(self, director):
         """
         Initialize the coverage toolbar UI elements.
         """
 
         # the composing shell
-        self._shell = ComposingShell(self._director, self._model, self._table)
+        self._shell = ComposingShell(
+            director,
+            weakref.proxy(self._model),
+            self._table
+        )
 
         # the coverage combobox
-        self._combobox = CoverageComboBox(self._director)
+        self._combobox = CoverageComboBox(director)
 
         # the checkbox to hide 0% coverage entries
         self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
@@ -322,6 +367,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
             BLOCKS_HIT:   "Blocks Hit",
             INST_HIT:     "Instructions Hit",
             FUNC_SIZE:    "Function Size",
+            COMPLEXITY:   "Complexity",
             FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
         }
 
@@ -443,11 +489,15 @@ class CoverageModel(QtCore.QAbstractTableModel):
             # Instructions Hit
             elif column == INST_HIT:
                 return "%4u / %-4u" % (function_coverage.instructions_executed,
-                                     function_metadata.instruction_count)
+                                       function_metadata.instruction_count)
 
             # Function Size
             elif column == FUNC_SIZE:
                 return "%u" % function_metadata.size
+
+            # Cyclomatic Complexity
+            elif column == COMPLEXITY:
+                return "%u" % function_metadata.cyclomatic_complexity
 
         # cell background color request
         elif role == QtCore.Qt.BackgroundRole:
@@ -502,7 +552,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         #
 
         # sort the table entries by a function metadata attribute
-        if column in [FUNC_NAME, FUNC_ADDR, FUNC_SIZE]:
+        if column in [FUNC_NAME, FUNC_ADDR, FUNC_SIZE, COMPLEXITY]:
             sorted_functions = sorted(
                 self._visible_metadata.itervalues(),
                 key=attrgetter(sort_field),
@@ -632,6 +682,18 @@ class CoverageModel(QtCore.QAbstractTableModel):
         coverage = self._director.coverage
 
         #
+        # if the search string is all lowercase, then we are going to perform
+        # a case insensitive search/filter.
+        #
+        # that means we we want to 'normalize' all the function names by
+        # making them lowercase before searching for our needle (search str)
+        #
+
+        normalize = lambda x: x
+        if not (set(self._search_string) & set(string.ascii_uppercase)):
+            normalize = lambda x: string.lower(x)
+
+        #
         # it's time to rebuild the list of coverage items to make visible in
         # the coverage overview list. during this process, we filter out entries
         # that do not meet the criteria as specified by the user.
@@ -649,7 +711,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
                 continue
 
             # OPTIONS: ignore items that do not match the search string
-            if not self._search_string in metadata.functions[function_address].name:
+            if not self._search_string in normalize(metadata.functions[function_address].name):
                 continue
 
             #------------------------------------------------------------------

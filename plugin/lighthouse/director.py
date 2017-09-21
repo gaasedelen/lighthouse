@@ -48,6 +48,9 @@ class CoverageDirector(object):
         # database metadata cache
         self._database_metadata = DatabaseMetadata()
 
+        # flag to suspend/resume the automatic coverage aggregation
+        self._aggregation_suspended = False
+
         #----------------------------------------------------------------------
         # Coverage
         #----------------------------------------------------------------------
@@ -157,7 +160,6 @@ class CoverageDirector(object):
             target=self._async_evaluate_ast,
             name="EvaluateAST"
         )
-        self._composition_worker.daemon = True
         self._composition_worker.start()
 
         #----------------------------------------------------------------------
@@ -177,6 +179,18 @@ class CoverageDirector(object):
         self._coverage_modified_callbacks = []
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
+
+    def terminate(self):
+        """
+        Cleanup & terminate the director.
+        """
+
+        # stop the composition worker
+        self._ast_queue.put(None)
+        self._composition_worker.join()
+
+        # stop any ongoing metadata refresh
+        self.metadata.abort_refresh(join=True)
 
     #--------------------------------------------------------------------------
     # Properties
@@ -330,7 +344,13 @@ class CoverageDirector(object):
                     continue
 
                 # call the object instance callback
-                callback(obj)
+                try:
+                    callback(obj)
+
+                # assume a Qt cleanup/deletion occured
+                except RuntimeError as e:
+                    cleanup.append(callback_ref)
+                    continue
 
             # if the callback is a static method...
             else:
@@ -351,19 +371,23 @@ class CoverageDirector(object):
     # Batch Loading
     #----------------------------------------------------------------------
 
-    def start_batch(self):
+    def suspend_aggregation(self):
         """
-        Gate the start of a batch coverage load.
-        """
-        self._batch_in_progress = True
+        Suspend the aggregate computation for any newly added coverage.
 
-    def end_batch(self):
+        It is performant to suspend/resume aggregation if loading a number
+        of individual coverage files. This will prevent the aggregate
+        coverage set from being re-computed multiple times.
         """
-        Gate the end of a batch coverage load.
+        self._aggregation_suspended = True
+
+    def resume_aggregation(self):
         """
-        assert self._batch_in_progress
+        Resume the aggregate computation.
+        """
+        assert self._aggregation_suspended
         self._refresh_aggregate()
-        self._batch_in_progress = False
+        self._aggregation_suspended = False
 
     #----------------------------------------------------------------------
     # Coverage
@@ -397,17 +421,17 @@ class CoverageDirector(object):
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
-    def add_coverage(self, coverage_name, coverage_data):
+    def create_coverage(self, coverage_name, coverage_data):
         """
-        Add new coverage to the director.
+        Create a new coverage object maintained by the director.
 
         This is effectively an alias of self.update_coverage
         """
-        self.update_coverage(coverage_name, coverage_data)
+        return self.update_coverage(coverage_name, coverage_data)
 
     def update_coverage(self, coverage_name, coverage_data):
         """
-        Add or update coverage maintained by the director.
+        Create or update a coverage object.
         """
         assert not (coverage_name in RESERVED_NAMES)
         updating_coverage = coverage_name in self.coverage_names
@@ -418,10 +442,13 @@ class CoverageDirector(object):
             logger.debug("Adding coverage %s" % coverage_name)
 
         # create & map a new database coverage object using the given data
-        new_coverage = self._build_coverage(coverage_data)
+        new_coverage = self._new_coverage(coverage_data)
 
+        #
         # coverage mapping complete, looks like we're good. add the new
         # coverage to the director's coverage table and surface it for use.
+        #
+
         self._update_coverage(coverage_name, new_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
@@ -433,6 +460,9 @@ class CoverageDirector(object):
             self._notify_coverage_modified()
         else:
             self._notify_coverage_created()
+
+        # return the created/updated coverage
+        return new_coverage
 
     def _update_coverage(self, coverage_name, new_coverage):
         """
@@ -450,7 +480,7 @@ class CoverageDirector(object):
         if coverage_name in self.coverage_names:
             old_coverage = self._database_coverage[coverage_name]
             self.aggregate.subtract_data(old_coverage.data)
-            if not self._batch_in_progress:
+            if not self._aggregation_suspended:
                 self._refresh_aggregate()
 
         #
@@ -462,10 +492,10 @@ class CoverageDirector(object):
 
         # (re)-add the newly loaded/updated coverage to the aggregate set
         self.aggregate.add_data(new_coverage.data)
-        if not self._batch_in_progress:
+        if not self._aggregation_suspended:
             self._refresh_aggregate()
 
-    def _build_coverage(self, coverage_data):
+    def _new_coverage(self, coverage_data):
         """
         Build a new database coverage object from the given data.
         """
@@ -496,7 +526,7 @@ class CoverageDirector(object):
         # TODO: check if there's any references to the coverage object here...
 
         self.aggregate.subtract_data(coverage.data)
-        if not self._batch_in_progress:
+        if not self._aggregation_suspended:
             self._refresh_aggregate()
 
         # notify any listeners that we have deleted coverage
@@ -598,6 +628,15 @@ class CoverageDirector(object):
 
         # there doesn't appear to be a shorthand symbol...
         except KeyError:
+            return None
+
+    def peek_shorthand(self):
+        """
+        Peek at the next available shorthand symbol.
+        """
+        try:
+            return self._shorthand[0]
+        except IndexError:
             return None
 
     def _request_shorthand_alias(self, coverage_name):

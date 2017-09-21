@@ -16,6 +16,9 @@ class LighthousePalette(object):
         Initialize default palette colors for Lighthouse.
         """
 
+        # one-time initialization flag, used for selecting initial palette
+        self._initialized = False
+
         # the active theme name
         self._qt_theme  = "Light"
         self._ida_theme = "Light"
@@ -86,6 +89,10 @@ class LighthousePalette(object):
         to select colors that will hopefully keep things most readable.
         """
 
+        # TODO: temporary until I have a better mechanism to do one-time init
+        if self._initialized:
+            return
+
         #
         # NOTE/TODO:
         #
@@ -96,6 +103,9 @@ class LighthousePalette(object):
 
         self._qt_theme  = "Dark" # self._qt_theme_hint()
         self._ida_theme = self._ida_theme_hint()
+
+        # mark the palette as initialized
+        self._initialized = True
 
     def _ida_theme_hint(self):
         """
@@ -109,10 +119,10 @@ class LighthousePalette(object):
 
         #
         # determine whether to use a 'dark' or 'light' paint based on the
-        # background color of the user's disassembly view
+        # background color of the user's IDA text based windows
         #
 
-        bg_color = get_disas_bg_color()
+        bg_color = get_ida_bg_color()
 
         # return 'Dark' or 'Light'
         return test_color_brightness(bg_color)

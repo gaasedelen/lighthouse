@@ -5,7 +5,7 @@
 
 ## Overview
 
-Lighthouse is a Code Coverage Plugin for [IDA Pro](https://www.hex-rays.com/products/ida/). The plugin leverages IDA as a platform to map, explore, and visualize externally collected code coverage data when symbols or source may not be available for a given binary.
+Lighthouse is a code coverage plugin for [IDA Pro](https://www.hex-rays.com/products/ida/). The plugin leverages IDA as a platform to map, explore, and visualize externally collected code coverage data when symbols or source may not be available for a given binary.
 
 This plugin is labeled only as a prototype and IDA / Qt code example for the community. 
 
@@ -13,6 +13,7 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 
 ## Releases
 
+* v0.6 -- Intel pintool, cyclomatic complexity, batch load, bugfixes.
 * v0.5 -- Search, IDA 7 support, many improvements, stability.
 * v0.4 -- Most compute is now asynchronous, bugfixes.
 * v0.3 -- Coverage composition, interactive composing shell.
@@ -32,14 +33,21 @@ The plugin is platform agnostic, but has only been tested on Windows for IDA 6.8
 
 ## Usage
 
-Lighthouse loads automatically when an IDB is opened, installing the following menu entries into the IDA interface:
+Lighthouse loads automatically when an IDB is opened, installing a handful of menu entries into the IDA interface.
+
+<p align="center">
+<img alt="Lighthouse Menu Entries" src="screenshots/open.gif"/>
+</p>
+
+These are the entry points for a user to load and view coverage data.
 
 ```
-- File --> Load file --> Code Coverage File(s)...
+- File --> Load file --> Code coverage file...
+- File --> Load file --> Code coverage batch...
 - View --> Open subviews --> Coverage Overview
 ```
 
-These are the entry points for a user to load and view coverage data.
+Batch load can quickly aggregate hundreds (thousands?) of collected coverage files into a single composite at load time.
 
 ## Coverage Painting
 
@@ -69,17 +77,17 @@ Building relationships between multiple sets of coverage data often distills dee
 
 Pressing `enter` on the shell will evaluate and save a user constructed composition.
 
-### Composition Syntax
+## Composition Syntax
 
 Coverage composition, or _Composing_ as demonstrated above is achieved through a simple expression grammar and 'shorthand' coverage symbols (A to Z) on the composing shell. 
 
-#### Grammar Tokens
+### Grammar Tokens
 * Logical Operators: `|, &, ^, -`
 * Coverage Symbol: `A, B, C, ..., Z`
 * Coverage Range: `A,C`, `Q,Z`, ...
 * Parenthesis: `(...)`
 
-#### Example Compositions
+### Example Compositions
 * `A & B`
 * `(A & B) | C`
 * `(C & (A - B)) | (F,H & Q)`
@@ -88,7 +96,7 @@ The evaluation of the composition may occur right to left, parenthesis are sugge
 
 ## Hot Shell
 
-Additionally, there is a prototype 'Hot Shell' mode that asynchronously evaluates and caches user compositions in real-time.
+Additionally, there is a 'Hot Shell' mode that asynchronously evaluates and caches user compositions in real-time.
 
 <p align="center">
 <img alt="Lighthouse Hot Shell" src="screenshots/hot_shell.gif"/>
@@ -122,27 +130,35 @@ Loaded coverage data and user constructed compositions can be selected or delete
 <img alt="Lighthouse Coverage ComboBox" src="screenshots/combobox.gif"/>
 </p>
 
-## Collecting Coverage
+# Collecting Coverage
 
-At this time, Lighthouse only consumes binary coverage data as produced by DynamoRIO's [drcov](http://dynamorio.org/docs/page_drcov.html) code coverage module. 
+Before using Lighthouse, one will need to collect code coverage data for their target binary / application.
 
-Collecting blackbox coverage data with `drcov` is relatively straightforward. The following example demonstrates how coverage was produced for the `boombox.exe` testcase provided in this repository.
+The examples below demonstrate how one can use [DynamoRIO](http://www.dynamorio.org) or [Intel Pin](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool) to collect Lighthouse compatible coverage agaainst a target. The `.log` files produced by these instrumentation tools can be loaded directly into Lighthouse.
+
+## DynamoRIO
+
+Code coverage data can be collected via DynamoRIO's [drcov](http://dynamorio.org/docs/page_drcov.html) code coverage module. 
+
+Example usage:
 
 ```
 ..\DynamoRIO-Windows-7.0.0-RC1\bin64\drrun.exe -t drcov -- boombox.exe
 ```
 
-This command will produce a `.log` file consisting of the coverage data upon termination of the target application.
+## Intel Pin (Experimental)
 
-## Other Coverage Sources
+Using a [custom pintool](coverage/pin) contributed by [Agustin Gianni](https://twitter.com/agustingianni), the Intel Pin DBI can also be used to collect coverage data.
 
-[drcov](http://dynamorio.org/docs/page_drcov.html) was selected as the initial coverage data source due to its availability, adoption, multi-platform (Win/Mac/Linux), and multi-architecture (x86/AMD64/ARM) support. 
+Example usage:
 
-Intel's [PIN](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool) for example does not come with a default code coverage pintool. It appears that most implement their own solution and there is no clear format for Lighthouse to standardize on. In the future, Lighthouse may ship with its own pintool.
+```
+pin.exe -t CodeCoverage64.dll -- boombox.exe
+```
 
-While Lighthouse is considered a prototype, internally it is largely agnostic of its data source. Future work will hopefully allow one to drop a loader into the `parsers` folder without any need for code changes to Lighthouse. Right now, this is not the case.
+For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.6.0) page. MacOS and Linux users need to compile the pintool themselves following the [instructions](coverage/pin#compilation) included with the pintool for their respective platforms.
 
-## Future Work
+# Future Work
 
 Time and motivation permitting, future work may include:
 
@@ -150,10 +166,11 @@ Time and motivation permitting, future work may include:
 * ~~Multifile/coverage support~~
 * Profiling based heatmaps/painting
 * Coverage & Profiling Treemaps
-* Automatic parser pickup
-* Parsers for additional coverage sources, eg PIN
+* Additional coverage sources, trace formats, etc
 * Improved Pseudocode painting
 
-## Authors
+I welcome external contributions, issues, and feature requests.
+
+# Authors
 
 * Markus Gaasedelen ([@gaasedelen](https://twitter.com/gaasedelen))

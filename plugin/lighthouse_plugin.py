@@ -1,6 +1,7 @@
 import os
 
-from idaapi import plugin_t
+import idaapi
+import idautils
 
 from lighthouse.ui import *
 from lighthouse.util import *
@@ -8,6 +9,7 @@ from lighthouse.parsers import *
 from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
+from lighthouse.coverage import DatabaseCoverage
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 
 # start the global logger *once*
@@ -18,7 +20,7 @@ if not logging_started():
 # IDA Plugin
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.5.0"
+PLUGIN_VERSION = "0.6.0"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2017"
 
@@ -28,7 +30,7 @@ def PLUGIN_ENTRY():
     """
     return Lighthouse()
 
-class Lighthouse(plugin_t):
+class Lighthouse(idaapi.plugin_t):
     """
     The Lighthouse IDA Plugin.
     """
@@ -38,26 +40,6 @@ class Lighthouse(plugin_t):
     help = ""
     wanted_name = "Lighthouse"
     wanted_hotkey = ""
-
-    def __init__(self):
-
-        # plugin color palette
-        self.palette = LighthousePalette()
-
-        # the coverage engine
-        self.director = CoverageDirector(self.palette)
-
-        # the coverage painter
-        self.painter = CoveragePainter(self.director, self.palette)
-
-        # the coverage overview widget
-        self._ui_coverage_overview = None
-
-        # members for the 'Load Code Coverage' menu entry
-        self._icon_id_load     = idaapi.BADADDR
-
-        # members for the 'Coverage Overview' menu entry
-        self._icon_id_overview     = idaapi.BADADDR
 
     #--------------------------------------------------------------------------
     # IDA Plugin Overloads
@@ -114,7 +96,41 @@ class Lighthouse(plugin_t):
         """
         Initialize & integrate the plugin into IDA.
         """
+        self._init()
         self._install_ui()
+
+    def _init(self):
+        """
+        Initialize plugin members.
+        """
+
+        # plugin color palette
+        self.palette = LighthousePalette()
+
+        # the coverage engine
+        self.director = CoverageDirector(self.palette)
+
+        # the coverage painter
+        self.painter = CoveragePainter(self.director, self.palette)
+
+        # the coverage overview widget
+        self._ui_coverage_overview = None
+
+        # menu entry icons
+        self._icon_id_file = idaapi.BADADDR
+        self._icon_id_batch = idaapi.BADADDR
+        self._icon_id_overview = idaapi.BADADDR
+
+        # the directory to start the coverage file dialog in
+        self._last_directory = idautils.GetIdbDir()
+
+    def _install_ui(self):
+        """
+        Initialize & integrate all UI elements.
+        """
+        self._install_load_file()
+        self._install_load_batch()
+        self._install_open_coverage_overview()
 
     def print_banner(self):
         """
@@ -133,19 +149,6 @@ class Lighthouse(plugin_t):
         lmsg("")
 
     #--------------------------------------------------------------------------
-    # Initialization - UI
-    #--------------------------------------------------------------------------
-
-    def _install_ui(self):
-        """
-        Initialize & integrate all UI elements.
-        """
-
-        # install the 'Load Coverage' file dialog
-        self._install_load_file_dialog()
-        self._install_open_coverage_overview()
-
-    #--------------------------------------------------------------------------
     # Termination
     #--------------------------------------------------------------------------
 
@@ -154,60 +157,102 @@ class Lighthouse(plugin_t):
         Cleanup & uninstall the plugin from IDA.
         """
         self._uninstall_ui()
-
-    #--------------------------------------------------------------------------
-    # Termination - UI
-    #--------------------------------------------------------------------------
+        self._cleanup()
 
     def _uninstall_ui(self):
         """
         Cleanup & uninstall the plugin UI from IDA.
         """
         self._uninstall_open_coverage_overview()
-        self._uninstall_load_file_dialog()
+        self._uninstall_load_batch()
+        self._uninstall_load_file()
+
+    def _cleanup(self):
+        """
+        IDB closing event, last chance to spin down threaded workers.
+        """
+        self.painter.terminate()
+        self.director.terminate()
 
     #--------------------------------------------------------------------------
     # IDA Actions
     #--------------------------------------------------------------------------
 
-    ACTION_LOAD_COVERAGE     = "lighthouse:load_coverage"
+    ACTION_LOAD_FILE         = "lighthouse:load_file"
+    ACTION_LOAD_BATCH        = "lighthouse:load_batch"
     ACTION_COVERAGE_OVERVIEW = "lighthouse:coverage_overview"
 
-    def _install_load_file_dialog(self):
+    def _install_load_file(self):
         """
-        Install the 'File->Load->Code Coverage File(s)...' menu entry.
+        Install the 'File->Load->Code coverage file...' menu entry.
         """
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "load.png"))
         icon_data = str(open(icon_path, "rb").read())
-        self._icon_id_load = idaapi.load_custom_icon(data=icon_data)
+        self._icon_id_file = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
         action_desc = idaapi.action_desc_t(
-            self.ACTION_LOAD_COVERAGE,                # The action name.
-            "~C~ode Coverage File(s)...",             # The action text.
-            IDACtxEntry(self.load_coverage),          # The action handler.
-            None,                                     # Optional: action shortcut
-            "Load a code coverage file for this IDB", # Optional: tooltip
-            self._icon_id_load                        # Optional: the action icon
+            self.ACTION_LOAD_FILE,                     # The action name.
+            "~C~ode coverage file...",                 # The action text.
+            IDACtxEntry(self.interactive_load_file),   # The action handler.
+            None,                                      # Optional: action shortcut
+            "Load individual code coverage file(s)",   # Optional: tooltip
+            self._icon_id_file                         # Optional: the action icon
         )
 
         # register the action with IDA
         result = idaapi.register_action(action_desc)
         if not result:
-            RuntimeError("Failed to register load coverage action with IDA")
+            RuntimeError("Failed to register load_file action with IDA")
 
         # attach the action to the File-> dropdown menu
         result = idaapi.attach_action_to_menu(
             "File/Load file/",       # Relative path of where to add the action
-            self.ACTION_LOAD_COVERAGE,  # The action ID (see above)
+            self.ACTION_LOAD_FILE,   # The action ID (see above)
             idaapi.SETMENU_APP       # We want to append the action after ^
         )
         if not result:
-            RuntimeError("Failed action attach to 'File/Load file/' dropdown")
+            RuntimeError("Failed action attach load_file")
 
-        logger.info("Installed the 'Load Code Coverage' menu entry")
+        logger.info("Installed the 'Code coverage file' menu entry")
+
+    def _install_load_batch(self):
+        """
+        Install the 'File->Load->Code coverage batch...' menu entry.
+        """
+
+        # create a custom IDA icon
+        icon_path = plugin_resource(os.path.join("icons", "batch.png"))
+        icon_data = str(open(icon_path, "rb").read())
+        self._icon_id_batch = idaapi.load_custom_icon(data=icon_data)
+
+        # describe a custom IDA UI action
+        action_desc = idaapi.action_desc_t(
+            self.ACTION_LOAD_BATCH,                   # The action name.
+            "~C~ode coverage batch...",               # The action text.
+            IDACtxEntry(self.interactive_load_batch), # The action handler.
+            None,                                     # Optional: action shortcut
+            "Load and aggregate code coverage files", # Optional: tooltip
+            self._icon_id_batch                       # Optional: the action icon
+        )
+
+        # register the action with IDA
+        result = idaapi.register_action(action_desc)
+        if not result:
+            RuntimeError("Failed to register load_batch action with IDA")
+
+        # attach the action to the File-> dropdown menu
+        result = idaapi.attach_action_to_menu(
+            "File/Load file/",          # Relative path of where to add the action
+            self.ACTION_LOAD_BATCH,     # The action ID (see above)
+            idaapi.SETMENU_APP          # We want to append the action after ^
+        )
+        if not result:
+            RuntimeError("Failed action attach load_batch")
+
+        logger.info("Installed the 'Code coverage batch' menu entry")
 
     def _install_open_coverage_overview(self):
         """
@@ -245,29 +290,53 @@ class Lighthouse(plugin_t):
 
         logger.info("Installed the 'Coverage Overview' menu entry")
 
-    def _uninstall_load_file_dialog(self):
+    def _uninstall_load_file(self):
         """
-        Remove the 'File->Load file->Code Coverage File(s)...' menu entry.
+        Remove the 'File->Load file->Code coverage file...' menu entry.
         """
 
         # remove the entry from the File-> menu
         result = idaapi.detach_action_from_menu(
             "File/Load file/",
-            self.ACTION_LOAD_COVERAGE
+            self.ACTION_LOAD_FILE
         )
         if not result:
             return False
 
         # unregister the action
-        result = idaapi.unregister_action(self.ACTION_LOAD_COVERAGE)
+        result = idaapi.unregister_action(self.ACTION_LOAD_FILE)
         if not result:
             return False
 
         # delete the entry's icon
-        idaapi.free_custom_icon(self._icon_id_load)
-        self._icon_id_load = idaapi.BADADDR
+        idaapi.free_custom_icon(self._icon_id_file)
+        self._icon_id_file = idaapi.BADADDR
 
-        logger.info("Uninstalled the 'Load Code Coverage' menu entry")
+        logger.info("Uninstalled the 'Code coverage file' menu entry")
+
+    def _uninstall_load_batch(self):
+        """
+        Remove the 'File->Load file->Code coverage batch...' menu entry.
+        """
+
+        # remove the entry from the File-> menu
+        result = idaapi.detach_action_from_menu(
+            "File/Load file/",
+            self.ACTION_LOAD_BATCH
+        )
+        if not result:
+            return False
+
+        # unregister the action
+        result = idaapi.unregister_action(self.ACTION_LOAD_BATCH)
+        if not result:
+            return False
+
+        # delete the entry's icon
+        idaapi.free_custom_icon(self._icon_id_batch)
+        self._icon_id_batch = idaapi.BADADDR
+
+        logger.info("Uninstalled the 'Code coverage batch' menu entry")
 
     def _uninstall_open_coverage_overview(self):
         """
@@ -301,46 +370,146 @@ class Lighthouse(plugin_t):
         """
         Open the 'Coverage Overview' dialog.
         """
+        self.palette.refresh_colors()
+
+        # the coverage overview is already open & visible, simply refresh it
+        if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
+            self._ui_coverage_overview.refresh()
+            return
+
+        # create a new coverage overview if there is not one visible
         self._ui_coverage_overview = CoverageOverview(self.director)
         self._ui_coverage_overview.show()
 
-    def load_coverage(self):
+    def interactive_load_batch(self):
         """
-        An interactive file dialog flow for loading code coverage files.
+        Interactive loading & aggregation of coverage files.
         """
+        self.palette.refresh_colors()
 
         #
         # kick off an asynchronous metadata refresh. this collects underlying
         # database metadata while the user will be busy selecting coverage files.
         #
-        # the collected metadata enables the director to process, map, and
-        # manipulate loaded coverage data in a performant, asynchronous manner.
+
+        future = self.director.metadata.refresh(progress_callback=metadata_progress)
+
+        #
+        # we will now prompt the user with an interactive file dialog so they
+        # can select the coverage files they would like to load from disk.
+        #
+
+        loaded_files = self._select_and_load_coverage_files()
+
+        # if no valid coveragee files were selected (and loaded), bail
+        if not loaded_files:
+            self.director.metadata.abort_refresh()
+            return
+
+        # prompt the user to name the new coverage aggregate
+        default_name = "BATCH_%s" % self.director.peek_shorthand()
+        ok, coverage_name = prompt_string(
+            "Batch Name:",
+            "Please enter a name for this coverage",
+            default_name
+        )
+
+        # if user didn't enter a name for the batch, or hit cancel, we abort
+        if not (ok and coverage_name):
+            lmsg("Aborting batch load...")
+            return
+
+        #
+        # to continue any further, we need the database metadata. hopefully
+        # it has finished with its asynchronous collection, otherwise we will
+        # block until it completes. the user will be shown a progress dialog.
+        #
+
+        idaapi.show_wait_box("Building database metadata...")
+        await_future(future)
+
+        # aggregate all the selected files into one new coverage set
+        new_coverage = self._aggregate_batch(loaded_files)
+
+        # inject the the aggregated coverage set
+        idaapi.replace_wait_box("Mapping coverage...")
+        self.director.create_coverage(coverage_name, new_coverage.data)
+
+        # select the newly created batch coverage
+        idaapi.replace_wait_box("Selecting coverage...")
+        self.director.select_coverage(coverage_name)
+
+        # all done, hide the IDA wait box
+        idaapi.hide_wait_box()
+        lmsg("Successfully loaded batch %s..." % coverage_name)
+
+        # show the coverage overview
+        self.open_coverage_overview()
+
+    def _aggregate_batch(self, loaded_files):
+        """
+        Aggregate the given loaded_files data into a single coverage object.
+        """
+        idaapi.replace_wait_box("Aggregating coverage batch...")
+
+        # create a new coverage set to manually aggregate data into
+        coverage = DatabaseCoverage({}, self.palette)
+
+        #
+        # loop through the coverage data we have loaded from disk, and begin
+        # the normalization process to translate / filter / flatten it for
+        # insertion into the director (as a list of instruction addresses)
+        #
+
+        for i, data in enumerate(loaded_files, 1):
+
+            # keep the user informed about our progress while loading coverage
+            idaapi.replace_wait_box(
+                "Aggregating batch data %u/%u" % (i, len(loaded_files))
+            )
+
+            # normalize coverage data to the open database
+            try:
+                addresses = self._normalize_coverage(data, self.director.metadata)
+
+            # normalization failed, print & log it
+            except Exception as e:
+                lmsg("Failed to map coverage %s" % data.filepath)
+                lmsg("- %s" % e)
+                logger.exception("Error details:")
+                continue
+
+            # aggregate the addresses into the output coverage object
+            coverage.add_addresses(addresses, False)
+
+        # return the created coverage name
+        return coverage
+
+    def interactive_load_file(self):
+        """
+        Interactive loading of individual coverage files.
+        """
+        self.palette.refresh_colors()
+        created_coverage = []
+
+        #
+        # kick off an asynchronous metadata refresh. this collects underlying
+        # database metadata while the user will be busy selecting coverage files.
         #
 
         future = self.director.metadata.refresh(progress_callback=metadata_progress)
 
         #
-        # prompt the user with a QtFileDialog so that they can select any
-        # number of coverage files to load at once.
-        #
-        # if no files are selected, we abort the coverage loading process.
+        # we will now prompt the user with an interactive file dialog so they
+        # can select the coverage files they would like to load from disk.
         #
 
-        filenames = self._select_coverage_files()
-        if not filenames:
+        loaded_files = self._select_and_load_coverage_files()
+
+        # if no valid coveragee files were selected (and loaded), bail
+        if not loaded_files:
+            self.director.metadata.abort_refresh()
             return
-
-        #
-        # load the selected coverage files from disk
-        #
-
-        coverage_data = self._load_coverage_files(filenames)
-
-        #
-        # refresh the theme aware color palette for lighthouse
-        #
-
-        self.palette.refresh_colors()
 
         #
         # to continue any further, we need the database metadata. hopefully
@@ -352,68 +521,92 @@ class Lighthouse(plugin_t):
         await_future(future)
 
         #
-        # at this point the metadata caching is guaranteed to be complete.
-        # the coverage data has been loaded and is ready for mapping and
-        # management by the director.
+        # stop the director's aggregate from updating. this is in the interest
+        # of better performance when loading more than one new coverage set
+        # into the director.
         #
 
-        idaapi.replace_wait_box("Normalizing and mapping coverage data...")
-
-        #
-        # start a batch coverage data load for better performance incase we
-        # are loading more than one new coverage file / data to the director.
-        #
-
-        self.director.start_batch()
-
-        # a list to output the names of successfully loaded coverage files
-        loaded = []
+        self.director.suspend_aggregation()
 
         #
         # loop through the coverage data we have loaded from disk, and begin
-        # the normalization process to translate / filter / flatten it for
-        # insertion into the director (as a list of instruction addresses)
+        # the normalization process to translate / filter / flatten its blocks
+        # into a generic format the director can understand (a list of addresses)
         #
 
-        for i, data in enumerate(coverage_data, 1):
+        for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
-            idaapi.replace_wait_box("Normalizing and mapping coverage %u/%u" % (i, len(coverage_data)))
+            idaapi.replace_wait_box(
+                "Normalizing and mapping coverage %u/%u" % (i, len(loaded_files))
+            )
 
-            # TODO: it would be nice to get rid of this try/catch in the long run
+            # normalize coverage data to the open database
             try:
-
-                # normalize coverage data to the database
                 addresses = self._normalize_coverage(data, self.director.metadata)
-
-                # enlighten the coverage director to this new runtime data
-                coverage_name = os.path.basename(data.filepath)
-                self.director.add_coverage(coverage_name, addresses)
-
-                # if we made it this far, the coverage must have loaded okay...
-                loaded.append(coverage_name)
-
             except Exception as e:
-                lmsg("Failed to load coverage:")
+                lmsg("Failed to map coverage %s" % data.filepath)
                 lmsg("- %s" % e)
-                logger.error("Error details:")
+                logger.exception("Error details:")
                 continue
 
-        # collapse the batch job to recompute the director's aggregate coverage set
-        self.director.end_batch()
+            #
+            # ask the director to create and track a new coverage set from
+            # the normalized coverage data we provide
+            #
 
-        # select the 'first' coverage file loaded from this round
-        if loaded:
-            self.director.select_coverage(loaded[0])
+            coverage_name = os.path.basename(data.filepath)
+            self.director.create_coverage(coverage_name, addresses)
+
+            # save the coverage name to the list of succesful loads
+            created_coverage.append(coverage_name)
+
+        #
+        # resume the director's aggregation capabilities, triggering an update
+        # to recompute the aggregate with the newly loaded coverage
+        #
+
+        idaapi.replace_wait_box("Recomputing coverage aggregate...")
+        self.director.resume_aggregation()
+
+        # if nothing was mapped, then there's nothing else to do
+        if not created_coverage:
+            lmsg("No coverage files could be mapped...")
+            idaapi.hide_wait_box()
+            return
+
+        #
+        # select one (the first) of the newly loaded coverage file(s)
+        #
+
+        idaapi.replace_wait_box("Selecting coverage...")
+        self.director.select_coverage(created_coverage[0])
 
         # all done, hide the IDA wait box
         idaapi.hide_wait_box()
-
-        # print a success message to the output window
-        lmsg("loaded %u coverage file(s)..." % len(loaded))
+        lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
         self.open_coverage_overview()
+
+    def _select_and_load_coverage_files(self):
+        """
+        Interactive coverage file selection.
+        """
+
+        #
+        # prompt the user with a QtFileDialog so that they can select any
+        # number of coverage files to load at once.
+        #
+        # if no files are selected, we abort the coverage loading process.
+        #
+
+        filenames = self._select_coverage_files()
+        if not filenames:
+            return None
+
+        # load the selected coverage files from disk and return them
+        return self._load_coverage_files(filenames)
 
     def _select_coverage_files(self):
         """
@@ -421,11 +614,24 @@ class Lighthouse(plugin_t):
         """
 
         # create & configure a Qt File Dialog for immediate use
-        file_dialog = QtWidgets.QFileDialog(None, 'Open Code Coverage File(s)')
+        file_dialog = QtWidgets.QFileDialog(
+            None,
+            'Open code coverage file',
+            self._last_directory,
+            'All Files (*.*)'
+        )
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
 
         # prompt the user with the file dialog, and await filename(s)
         filenames, _ = file_dialog.getOpenFileNames()
+
+        #
+        # remember the last directory we were in (parsed from a selected file)
+        # for the next time the user comes to load coverage files
+        #
+
+        if filenames:
+            self._last_directory = os.path.dirname(filenames[0]) + os.sep
 
         # log the captured (selected) filenames from the dialog
         logger.debug("Captured filenames from file dialog:")
@@ -462,7 +668,30 @@ class Lighthouse(plugin_t):
         """
         Load multiple code coverage files from disk.
         """
-        return [self._load_coverage_file(filename) for filename in filenames]
+        loaded_coverage = []
+
+        #
+        # loop through each of the given filenames and attempt to load/parse
+        # their coverage data from disk
+        #
+
+        for filename in filenames:
+
+            # attempt to load/parse a single coverage data file from disk
+            try:
+                coverage_data = self._load_coverage_file(filename)
+
+            # catch all for parse errors / bad input / malformed files
+            except Exception as e:
+                lmsg("Failed to load coverage %s" % filename)
+                logger.exception("Error details:")
+                continue
+
+            # save the loaded coverage data to the output list
+            loaded_coverage.append(coverage_data)
+
+        # return all the succesfully loaded coverage files
+        return loaded_coverage
 
     def _load_coverage_file(self, filename):
         """
@@ -488,4 +717,3 @@ class Lighthouse(plugin_t):
 
         # flatten the blobs into individual instructions or addresses
         return metadata.flatten_blocks(condensed_blocks)
-

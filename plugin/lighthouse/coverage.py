@@ -195,6 +195,9 @@ class DatabaseCoverage(object):
         # bake our coverage map
         self._finalize(dirty_nodes, dirty_functions)
 
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
+
         # dump the unmappable coverage data
         #self.dump_unmapped()
 
@@ -230,7 +233,7 @@ class DatabaseCoverage(object):
     # Data Operations
     #--------------------------------------------------------------------------
 
-    def add_data(self, data):
+    def add_data(self, data, update=True):
         """
         Add runtime data to this mapping.
         """
@@ -239,11 +242,34 @@ class DatabaseCoverage(object):
         for address, hit_count in data.iteritems():
             self._hitmap[address] += hit_count
 
+        # do not update other internal structures if requested
+        if not update:
+            return
+
         # update the coverage hash incase the hitmap changed
         self._update_coverage_hash()
 
         # mark these touched addresses as dirty
         self._unmapped_data |= data.viewkeys()
+
+    def add_addresses(self, addresses, update=True):
+        """
+        Add a list of instruction addresses to this mapping (eg, a trace).
+        """
+
+        # increment the hit count for an address
+        for address in addresses:
+            self._hitmap[address] += 1
+
+        # do not update other internal structures if requested
+        if not update:
+            return
+
+        # update the coverage hash incase the hitmap changed
+        self._update_coverage_hash()
+
+        # mark these touched addresses as dirty
+        self._unmapped_data |= set(addresses)
 
     def subtract_data(self, data):
         """
@@ -274,11 +300,7 @@ class DatabaseCoverage(object):
         # current implementation of things
         #
 
-        self._unmap_all()
-
-    #--------------------------------------------------------------------------
-    # Coverage Operations
-    #--------------------------------------------------------------------------
+        self.unmap_all()
 
     def mask_data(self, coverage_mask):
         """
@@ -347,15 +369,14 @@ class DatabaseCoverage(object):
             address = addresses_to_map.popleft()
 
             # get the node (basic block) that contains this address
-            try:
-                node_metadata = self._metadata.get_node(address)
+            node_metadata = self._metadata.get_node(address)
 
             #
             # failed to locate the node (basic block) for this address.
             # this address must not fall inside of a defined function...
             #
 
-            except ValueError:
+            if not node_metadata:
                 continue
 
             #
@@ -477,7 +498,7 @@ class DatabaseCoverage(object):
         # done
         return dirty_functions
 
-    def _unmap_all(self):
+    def unmap_all(self):
         """
         Unmap all mapped data.
         """
