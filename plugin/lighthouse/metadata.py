@@ -7,6 +7,7 @@ import threading
 
 import idaapi
 import idautils
+import idc
 
 from lighthouse.util import *
 
@@ -583,7 +584,12 @@ class FunctionMetadata(object):
         if using_ida7api:
             self.name = idaapi.get_func_name(self.address)
         else:
-            self.name = idaapi.get_func_name2(self.address)
+            name = idaapi.get_func_name2(self.address)
+            demangled_name = idc.Demangle(name, idc.GetLongPrm(idc.INF_SHORT_DN))
+            if demangled_name:
+                self.name = demangled_name
+            else:
+                self.name = name
 
         #
         # the replace is sort of a 'special case' for the 'Prefix' IDA
