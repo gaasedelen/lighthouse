@@ -7,7 +7,6 @@ import threading
 
 import idaapi
 import idautils
-import idc
 
 from lighthouse.util import *
 
@@ -581,26 +580,7 @@ class FunctionMetadata(object):
         """
         Refresh the function name against the open database.
         """
-        if using_ida7api:
-            self.name = idaapi.get_func_name(self.address)
-        else:
-            name = idaapi.get_func_name2(self.address)
-            demangled_name = idc.Demangle(name, idc.GetLongPrm(idc.INF_SHORT_DN))
-            if demangled_name:
-                self.name = demangled_name
-            else:
-                self.name = name
-
-        #
-        # the replace is sort of a 'special case' for the 'Prefix' IDA
-        # plugin: https://github.com/gaasedelen/prefix
-        #
-        # % signs are used as a marker byte for the prefix. we simply
-        # replace the % signs with a '_' before displaying them. this
-        # technically mirrors the behavior of IDA's functions view
-        #
-
-        self.name = self.name.replace("%", "_")
+        self.name = idaapi.get_short_name(self.address)
 
     def _refresh_nodes(self):
         """
