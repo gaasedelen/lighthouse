@@ -657,7 +657,7 @@ class FunctionMetadata(object):
             if using_ida7api:
                 for edge_dst in idautils.CodeRefsFrom(edge_src, True):
                     edge_function = idaapi.get_func(edge_dst)
-                    if edge_function and edge_function.start_ea == function.startEA:  # NOTE: start_ea vs startEA
+                    if edge_function and edge_function.start_ea == function.start_ea: # NOTE: start_ea vs startEA
                         function_metadata.edges.append((edge_src, edge_dst))
             else:
                 for edge_dst in idautils.CodeRefsFrom(edge_src, True):
