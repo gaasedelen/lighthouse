@@ -199,7 +199,7 @@ def create_header(modules):
 
 def create_coverage(data):
     bb_header = 'BB Table: %d bbs\n' % len(data)
-    return bb_header + ''.join(bbs)
+    return bb_header + ''.join(data)
 
 def on_message(msg, data):
     #print(msg)
