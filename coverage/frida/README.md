@@ -6,7 +6,7 @@ If your target is complex, you'll likely want to use a better, dedicated
 tracing engine like drcov or a pin based tracer. This tracer has some
 significant shortcomings, which are exagerated on larger or more complex
 binaries:
-* It is roughly two orders of magnitude slower than native execution
+* It is roughly one order of magnitude slower than native execution
 * It drops coverage, especially near `exit()`
 * It cannot easily detect new threads being created, thus cannot instrument
 them

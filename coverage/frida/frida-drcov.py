@@ -41,18 +41,24 @@ function make_maps() {
     return maps;
 }
 
-function mod_lookup(a, fmaps) {
-    for (var i = 0; i < fmaps.length; ++i) {
-        var m = fmaps[i];
-        if (a.compare(m.base) == 1 && a.compare(m.end) == -1) {
-            return {start: m.base, id: m.id};
-        }
-    }
+var maps = make_maps()
 
-    return {start: 0, id: 0};
-}
+send({'map': maps});
 
-function drcov_bb(bbs, fmaps) {
+var module_ids = {};
+var module_idx = 0;
+
+maps.map(function (e) {
+    module_ids[e.path] = {id: module_idx++, start: e.base};
+});
+
+var filtered_maps = new ModuleMap(function (m) {
+    if (whitelist.indexOf('all') >= 0) { return true; }
+
+    return whitelist.indexOf(m.name) >= 0;
+});
+
+function drcov_bb(bbs, fmaps, path_ids) {
     var bb = new ArrayBuffer(8 * bbs.length);
 
     var out_cnt = 0;
@@ -63,9 +69,11 @@ function drcov_bb(bbs, fmaps) {
         var start = e[0];
         var end   = e[1];
 
-        var mod_info = mod_lookup(start, fmaps);
+        var path = fmaps.findPath(start);
 
-        if (mod_info.start == 0 && mod_info.id == 0) { continue; }
+        if (path == null) { continue; }
+
+        var mod_info = path_ids[path];
 
         var offset = start.sub(mod_info.start).toInt32();
         var size = end.sub(start).toInt32();
@@ -79,11 +87,14 @@ function drcov_bb(bbs, fmaps) {
                 ushort mod_id;
             } bb_entry_t;
         */
+        var entry_sz = 8;
 
-        var x =  new Uint32Array(bb, out_cnt * 8, 1);
+        // we want one u32 after all the other entries we've created
+        var x =  new Uint32Array(bb, out_cnt * entry_sz, 1);
         x[0] = offset;
 
-        var y = new Uint16Array(bb, out_cnt * 8 + 4, 2);
+        // we want two u16's offset after the 4 byte u32 above
+        var y = new Uint16Array(bb, out_cnt * entry_sz + 4, 2);
         y[0] = size;
         y[1] = mod_id;
 
@@ -92,21 +103,9 @@ function drcov_bb(bbs, fmaps) {
 
     return new Uint8Array(bb, 0, out_cnt * 8);
 }
-
-
-function filter_maps(maps, whitelist) {
-    if (whitelist.indexOf('all') >= 0) {
-        return maps;
-    }
-
-    return maps.filter(function (e) { return whitelist.indexOf(e.name) >= 0; });
-}
-
-var maps = make_maps()
-
-send({'map': maps});
-
-var filtered_maps = filter_maps(maps, whitelist);
+// Punt on self modifying code -- should improve speed and lighthouse will
+//  barf on it anyways
+Stalker.trustThreshold = 0;
 
 console.log('Starting to stalk threads...');
 
@@ -122,16 +121,12 @@ Process.enumerateThreads({
         console.log('Stalking thread ' + thread.id);
 
         Stalker.follow(thread.id, {
-            // It would be really nice to use 'compile' here instead of 'block',
-            //  but if we did that we'd miss coverage of blocks we hit before
-            //  attaching, and I don't really think thats acceptable. It would be
-            //  a lot faster though :-/
             events: {
-                block: true
+                compile: true
             },
             onReceive: function (event) {
                 var bb_events = Stalker.parse(event, {stringify: false, annotate: false});
-                var bbs = drcov_bb(bb_events, filtered_maps);
+                var bbs = drcov_bb(bb_events, filtered_maps, module_ids);
 
                 // We're going to send a dummy message, the actual bb is in the
                 //  data field. We're sending a dict to keep it consistent with the
