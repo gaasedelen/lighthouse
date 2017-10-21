@@ -27,6 +27,7 @@ js = """
 "use strict";
 
 var whitelist = %s;
+var threadlist = %s;
 
 // Get the module map
 function update_maps() {
@@ -97,10 +98,19 @@ function drcov_bb(bbs, maps) {
 var maps = update_maps()
 send({'map': maps});
 
+console.log('Starting to stalk threads...');
+
 // Note, we will miss any bbs hit by threads that are created after we've
 //  attached
 Process.enumerateThreads({
     onMatch: function (thread) {
+        if (threadlist.indexOf(thread.id) < 0 && threadlist.indexOf('all') < 0) {
+            // This is not the thread you're look for
+            return;
+        }
+
+        console.log('Stalking thread ' + thread.id);
+
         Stalker.follow(thread.id, {
             // It would be really nice to use 'compile' here instead of 'block',
             //  but if we did that we'd miss coverage of blocks we hit before
@@ -121,7 +131,7 @@ Process.enumerateThreads({
             }
         });
     },
-    onComplete: function () { ; }
+    onComplete: function () { console.log('Done stalking threads.'); }
 });
 """
 
@@ -189,7 +199,7 @@ def create_coverage(data):
     return bb_header + ''.join(bbs)
 
 def on_message(msg, data):
-    print(msg)
+    #print(msg)
     pay = msg['payload']
     if 'map' in pay:
         maps = msg['payload']['map']
@@ -203,17 +213,22 @@ def main(argv):
     parser.add_argument('-o', '--outfile', help='coverage file',
             default='frida-cov.log')
     parser.add_argument('-w', '--whitelist',
-            help='module to trace, may be specified multiple times',
+            help='module to trace, may be specified multiple times [all]',
             action='append', default=[])
+    parser.add_argument('-t', '--thread-id',
+            help='threads to trace, may be specified multiple times [all]',
+            action='append', type=int, default=[])
 
     args = parser.parse_args()
 
     whitelist = args.whitelist if len(args.whitelist) else ['all']
+    threadlist = args.thread_id if len(args.thread_id) else ['all']
 
     json_whitelist = json.dumps(whitelist)
+    json_threadlist = json.dumps(threadlist)
 
     session = frida.attach(args.target)
-    script = session.create_script(js % (json_whitelist))
+    script = session.create_script(js % (json_whitelist, json_threadlist))
 
     script.on('message', on_message)
     script.load()
@@ -225,7 +240,8 @@ def main(argv):
     print('Detatching...')
     session.detach()
 
-    print('Stopped collecting. Formatting coverage and saving...')
+    print('Stopped collecting. Got %d basic blocks.' % len(bbs))
+    print('Formatting coverage and saving...')
 
     header = create_header(modules)
     body = create_coverage(bbs)
