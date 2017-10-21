@@ -1,22 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
-"""
-A quick and dirty frida-based bb-tracer
-
-If your target is complex, you'll likely want to use a better, dedicated
-tracing engine like drcov, or pin. This tracer has some significant
-shortcomings, which are exagerated on large, complex binaries:
-* It drops coverage, especially near `exit()`
-* It cannot easily detect new threads being created, thus cannot instrument
-them
-* Self modifying code will confuse it, though to be fair I'm not sure how
-drcov, pin, or otheres deal with self modifying code either
-
-These shortcomines are probably 10% frida's and 90% the author's. Despite these
-flaws however, it is hard to beat the ease of use frida provides.
-"""
-
 import argparse
 import json
 import sys
@@ -46,10 +30,9 @@ var maps = make_maps()
 send({'map': maps});
 
 var module_ids = {};
-var module_idx = 0;
 
 maps.map(function (e) {
-    module_ids[e.path] = {id: module_idx++, start: e.base};
+    module_ids[e.path] = {id: e.id, start: e.base};
 });
 
 var filtered_maps = new ModuleMap(function (m) {
