@@ -171,6 +171,7 @@ def populate_modules(image_list):
 
         modules.append(m)
 
+    print('[+] Got module info')
     return modules
 
 def populate_bbs(data):
@@ -202,10 +203,7 @@ def create_header(modules):
     return header + header_modules + '\n'
 
 def create_coverage(data):
-    # Filter out the bbs that didnt match, or were unable to resolve
-    filtered_bbs = [x for x in bbs if x != '\x00' * 8]
-
-    bb_header = 'BB Table: %d bbs\n' % len(filtered_bbs)
+    bb_header = 'BB Table: %d bbs\n' % len(data)
     return bb_header + ''.join(bbs)
 
 def on_message(msg, data):
@@ -243,15 +241,14 @@ def main(argv):
     script.on('message', on_message)
     script.load()
 
-    print('Got module data, now collecting coverage')
-    print('Control-D to terminate....')
+    print('[*] Now collecting info, control-D to terminate....')
     sys.stdin.read()
 
-    print('Detatching, this might take a second...')
+    print('[*] Detatching, this might take a second...')
     session.detach()
 
-    print('Stopped collecting. Got %d basic blocks.' % len(bbs))
-    print('Formatting coverage and saving...')
+    print('[+] Detatched. Got %d basic blocks.' % len(bbs))
+    print('[*] Formatting coverage and saving...')
 
     header = create_header(modules)
     body = create_coverage(bbs)
@@ -260,7 +257,7 @@ def main(argv):
         h.write(header)
         h.write(body)
 
-    print('Done!')
+    print('[!] Done')
 
 if __name__ == '__main__':
     main(sys.argv)
