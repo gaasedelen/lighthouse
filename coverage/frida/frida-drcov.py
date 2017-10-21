@@ -30,7 +30,7 @@ var whitelist = %s;
 var threadlist = %s;
 
 // Get the module map
-function update_maps() {
+function make_maps() {
     var maps = Process.enumerateModulesSync();
     var i = 0;
     // We need to add the module id
@@ -41,25 +41,21 @@ function update_maps() {
     return maps;
 }
 
-function mod_lookup(a) {
-    for (var i = 0; i < maps.length; ++i) {
-        var m = maps[i];
+function mod_lookup(a, fmaps) {
+    for (var i = 0; i < fmaps.length; ++i) {
+        var m = fmaps[i];
         if (a.compare(m.base) == 1 && a.compare(m.end) == -1) {
-            if (whitelist.indexOf('all') >= 0 ||
-                whitelist.indexOf(m.name) >= 0) {
-                return {start: m.base, id: m.id};
-            } else {
-                return {start: 0, id: 0};
-            }
+            return {start: m.base, id: m.id};
         }
     }
 
-    console.log('Could not find module for: ' + a);
     return {start: 0, id: 0};
 }
 
-function drcov_bb(bbs, maps) {
+function drcov_bb(bbs, fmaps) {
     var bb = new ArrayBuffer(8 * bbs.length);
+
+    var out_cnt = 0;
 
     for (var i = 0; i < bbs.length; ++i) {
         var e = bbs[i];
@@ -67,7 +63,7 @@ function drcov_bb(bbs, maps) {
         var start = e[0];
         var end   = e[1];
 
-        var mod_info = mod_lookup(start);
+        var mod_info = mod_lookup(start, fmaps);
 
         if (mod_info.start == 0 && mod_info.id == 0) { continue; }
 
@@ -84,19 +80,33 @@ function drcov_bb(bbs, maps) {
             } bb_entry_t;
         */
 
-        var x =  new Uint32Array(bb, i * 8, 1);
+        var x =  new Uint32Array(bb, out_cnt * 8, 1);
         x[0] = offset;
 
-        var y = new Uint16Array(bb, i * 8 + 4, 2);
+        var y = new Uint16Array(bb, out_cnt * 8 + 4, 2);
         y[0] = size;
         y[1] = mod_id;
+
+        ++out_cnt;
     }
 
-    return bb;
+    return new Uint8Array(bb, 0, out_cnt * 8);
 }
 
-var maps = update_maps()
+
+function filter_maps(maps, whitelist) {
+    if (whitelist.indexOf('all') >= 0) {
+        return maps;
+    }
+
+    return maps.filter(function (e) { return whitelist.indexOf(e.name) >= 0; });
+}
+
+var maps = make_maps()
+
 send({'map': maps});
+
+var filtered_maps = filter_maps(maps, whitelist);
 
 console.log('Starting to stalk threads...');
 
@@ -121,13 +131,13 @@ Process.enumerateThreads({
             },
             onReceive: function (event) {
                 var bb_events = Stalker.parse(event, {stringify: false, annotate: false});
-                var bbs = drcov_bb(bb_events, maps);
+                var bbs = drcov_bb(bb_events, filtered_maps);
 
                 // We're going to send a dummy message, the actual bb is in the
                 //  data field. We're sending a dict to keep it consistent with the
                 //  map. We're also creating the drcov event in javascript, so on
                 //  the py recv side we can just blindly add it to a set.
-                send({bb:1}, bbs);
+                send({bbs: 1}, bbs);
             }
         });
     },
@@ -166,7 +176,7 @@ def populate_modules(image_list):
 def populate_bbs(data):
     global bbs
 
-    for i in xrange(0, len(data), 8):
+    for i in range(0, len(data), 8):
         bbs.add(data[i:i+8])
 
 def create_header(modules):
@@ -202,7 +212,7 @@ def on_message(msg, data):
     #print(msg)
     pay = msg['payload']
     if 'map' in pay:
-        maps = msg['payload']['map']
+        maps = pay['map']
         populate_modules(maps)
     else:
         populate_bbs(data)
@@ -237,7 +247,7 @@ def main(argv):
     print('Control-D to terminate....')
     sys.stdin.read()
 
-    print('Detatching...')
+    print('Detatching, this might take a second...')
     session.detach()
 
     print('Stopped collecting. Got %d basic blocks.' % len(bbs))
