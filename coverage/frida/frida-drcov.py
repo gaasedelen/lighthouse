@@ -7,6 +7,26 @@ import sys
 
 import frida
 
+"""
+Frida BB tracer that outputs in DRcov format.
+
+Frida script is responsible for:
+- Getting and sending the process module map initially
+- Getting the code execution events
+- Parsing the raw event into a GumCompileEvent
+- Converting from GumCompileEvent to Drcov block
+- Sending a list of DRcov blocks to python
+
+Python side is responsible for:
+- Attaching and detaching from the target process
+- Removing duplicate DRcov blocks
+- Formatting module map and blocks
+- Writing the output file
+"""
+
+# Our frida script, takes two string arguments to embed
+# 1. whitelist of modules, in the form "['module_a', 'module_b']" or ['all']
+# 2. threads to trace, in the form "[345, 765]"
 js = """
 "use strict";
 
@@ -29,6 +49,11 @@ var maps = make_maps()
 
 send({'map': maps});
 
+// We want to use frida's ModuleMap to create DRcov events, however frida's
+//  Module object doesn't have the 'id' we added above. To get around this,
+//  we'll create a mapping from path -> id, and have the ModuleMap look up the
+//  path. While the ModuleMap does contain the base address, if we cache it
+//  here, we can simply look up the path rather than the entire Module object.
 var module_ids = {};
 
 maps.map(function (e) {
@@ -41,10 +66,16 @@ var filtered_maps = new ModuleMap(function (m) {
     return whitelist.indexOf(m.name) >= 0;
 });
 
-function drcov_bb(bbs, fmaps, path_ids) {
+// This function takes a list of GumCompileEvents and converts it into a DRcov
+//  entry. Note that we'll get duplicated events when two traced threads
+//  execute the same code, but this will be handled by the python side.
+function drcov_bbs(bbs, fmaps, path_ids) {
+    // We're going to use send(..., data) so we need an array buffer to send
+    //  our results back with. Let's go ahead and alloc the max possible
+    //  reply size
     var bb = new ArrayBuffer(8 * bbs.length);
 
-    var out_cnt = 0;
+    var num_entries = 0;
 
     for (var i = 0; i < bbs.length; ++i) {
         var e = bbs[i];
@@ -72,19 +103,25 @@ function drcov_bb(bbs, fmaps, path_ids) {
         */
         var entry_sz = 8;
 
+        // We're going to create two memory views into the array we alloc'd at
+        //  the start.
+
         // we want one u32 after all the other entries we've created
-        var x =  new Uint32Array(bb, out_cnt * entry_sz, 1);
+        var x =  new Uint32Array(bb, num_entries * entry_sz, 1);
         x[0] = offset;
 
         // we want two u16's offset after the 4 byte u32 above
-        var y = new Uint16Array(bb, out_cnt * entry_sz + 4, 2);
+        var y = new Uint16Array(bb, num_entries * entry_sz + 4, 2);
         y[0] = size;
         y[1] = mod_id;
 
-        ++out_cnt;
+        ++num_entries;
     }
 
-    return new Uint8Array(bb, 0, out_cnt * 8);
+    // We can save some space here, rather than sending the entire array back,
+    //  we can create a new view into the already allocated memory, and just
+    //  send back that linear chunk.
+    return new Uint8Array(bb, 0, num_entries * 8);
 }
 // Punt on self modifying code -- should improve speed and lighthouse will
 //  barf on it anyways
@@ -96,25 +133,27 @@ console.log('Starting to stalk threads...');
 //  attached
 Process.enumerateThreads({
     onMatch: function (thread) {
-        if (threadlist.indexOf(thread.id) < 0 && threadlist.indexOf('all') < 0) {
+        if (threadlist.indexOf(thread.id) < 0 &&
+            threadlist.indexOf('all') < 0) {
             // This is not the thread you're look for
             return;
         }
 
-        console.log('Stalking thread ' + thread.id);
+        console.log('Stalking thread ' + thread.id + '.');
 
         Stalker.follow(thread.id, {
             events: {
                 compile: true
             },
             onReceive: function (event) {
-                var bb_events = Stalker.parse(event, {stringify: false, annotate: false});
-                var bbs = drcov_bb(bb_events, filtered_maps, module_ids);
+                var bb_events = Stalker.parse(event,
+                    {stringify: false, annotate: false});
+                var bbs = drcov_bbs(bb_events, filtered_maps, module_ids);
 
                 // We're going to send a dummy message, the actual bb is in the
-                //  data field. We're sending a dict to keep it consistent with the
-                //  map. We're also creating the drcov event in javascript, so on
-                //  the py recv side we can just blindly add it to a set.
+                //  data field. We're sending a dict to keep it consistent with
+                //  the map. We're also creating the drcov event in javascript,
+                // so on the py recv side we can just blindly add it to a set.
                 send({bbs: 1}, bbs);
             }
         });
@@ -123,13 +162,14 @@ Process.enumerateThreads({
 });
 """
 
+# These are global so we can easily access them from the frida callbacks
+# It's important that bbs is a set, as we're going to depend on it's uniquing
+#  behavior for deduplication
 modules = []
 bbs = set([])
 
-def usage(argv0):
-    sys.stderr.write('Usage: %s <process name/pid>\n' % argv0)
-    sys.exit(1)
-
+# This converts the object frida sends which has string addresses into
+#  a python dict
 def populate_modules(image_list):
     global modules
 
@@ -149,15 +189,19 @@ def populate_modules(image_list):
 
         modules.append(m)
 
-    print('[+] Got module info')
+    print('[+] Got module info.')
     return modules
 
+# called when we get coverage data from frida
 def populate_bbs(data):
     global bbs
 
+    # we know every drcov block is 8 bytes, so lets just blindly slice and
+    #  insert. This will dedup for us.
     for i in range(0, len(data), 8):
         bbs.add(data[i:i+8])
 
+# take the module dict and format it as a drcov logfile header
 def create_header(modules):
     header = ''
     header += 'DRCOV VERSION: 2\n'
@@ -180,6 +224,7 @@ def create_header(modules):
 
     return header + header_modules + '\n'
 
+# take the recv'd basic blocks, finish the header, and append the coverage
 def create_coverage(data):
     bb_header = 'BB Table: %d bbs\n' % len(data)
     return bb_header + ''.join(data)
@@ -196,7 +241,8 @@ def on_message(msg, data):
 def main(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('target', help='target process name or pid')
-    parser.add_argument('-o', '--outfile', help='coverage file',
+    parser.add_argument('-o', '--outfile',
+            help='coverage file',
             default='frida-cov.log')
     parser.add_argument('-w', '--whitelist',
             help='module to trace, may be specified multiple times [all]',
@@ -236,6 +282,8 @@ def main(argv):
         h.write(body)
 
     print('[!] Done')
+
+    sys.exit(0)
 
 if __name__ == '__main__':
     main(sys.argv)
