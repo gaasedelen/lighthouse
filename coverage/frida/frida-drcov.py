@@ -240,7 +240,9 @@ def on_message(msg, data):
 
 def main(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument('target', help='target process name or pid')
+    parser.add_argument('target',
+            help='target process name or pid',
+            default='-1')
     parser.add_argument('-o', '--outfile',
             help='coverage file',
             default='frida-cov.log')
@@ -250,8 +252,27 @@ def main(argv):
     parser.add_argument('-t', '--thread-id',
             help='threads to trace, may be specified multiple times [all]',
             action='append', type=int, default=[])
+    parser.add_argument('-D', '--device',
+            help='select a device by id [local]',
+            default='local')
 
     args = parser.parse_args()
+
+    device = frida.get_device(args.device)
+
+    target = -1
+    for p in device.enumerate_processes():
+        if args.target in [str(p.pid), p.name]:
+            if target == -1:
+                target = p.pid
+            else:
+                print('[-] Warning: multiple processes on device match \'%s\'' +
+                    ', using pid: %d' % (args.target, target))
+
+    if target == -1:
+        print('[-] Error: could not find process matching \'%s\'' +
+            ' on device \'%s\'' % (args.target, device.id))
+        sys.exit(1)
 
     whitelist = args.whitelist if len(args.whitelist) else ['all']
     threadlist = args.thread_id if len(args.thread_id) else ['all']
@@ -259,19 +280,24 @@ def main(argv):
     json_whitelist = json.dumps(whitelist)
     json_threadlist = json.dumps(threadlist)
 
-    session = frida.attach(args.target)
-    script = session.create_script(js % (json_whitelist, json_threadlist))
+    print('[*] Attaching to pid \'%d\' on device \'%s\'...' %
+            (target, device.id))
 
+    session = device.attach(target)
+    print('[+] Attached. Loading script...')
+
+    script = session.create_script(js % (json_whitelist, json_threadlist))
     script.on('message', on_message)
     script.load()
 
     print('[*] Now collecting info, control-D to terminate....')
+
     sys.stdin.read()
 
-    print('[*] Detatching, this might take a second...')
+    print('[*] Detaching, this might take a second...')
     session.detach()
 
-    print('[+] Detatched. Got %d basic blocks.' % len(bbs))
+    print('[+] Detached. Got %d basic blocks.' % len(bbs))
     print('[*] Formatting coverage and saving...')
 
     header = create_header(modules)
