@@ -14,7 +14,7 @@ Frida script is responsible for:
 - Getting and sending the process module map initially
 - Getting the code execution events
 - Parsing the raw event into a GumCompileEvent
-- Converting from GumCompileEvent to Drcov block
+- Converting from GumCompileEvent to DRcov block
 - Sending a list of DRcov blocks to python
 
 Python side is responsible for:
@@ -25,8 +25,8 @@ Python side is responsible for:
 """
 
 # Our frida script, takes two string arguments to embed
-# 1. whitelist of modules, in the form "['module_a', 'module_b']" or ['all']
-# 2. threads to trace, in the form "[345, 765]"
+# 1. whitelist of modules, in the form "['module_a', 'module_b']" or "['all']"
+# 2. threads to trace, in the form "[345, 765]" or "['all']"
 js = """
 "use strict";
 
@@ -73,7 +73,19 @@ function drcov_bbs(bbs, fmaps, path_ids) {
     // We're going to use send(..., data) so we need an array buffer to send
     //  our results back with. Let's go ahead and alloc the max possible
     //  reply size
-    var bb = new ArrayBuffer(8 * bbs.length);
+
+    /*
+        // Data structure for the coverage info itself
+        typedef struct _bb_entry_t {
+            uint   start;      // offset of bb start from the image base
+            ushort size;
+            ushort mod_id;
+        } bb_entry_t;
+    */
+
+    var entry_sz = 8;
+
+    var bb = new ArrayBuffer(entry_sz * bbs.length);
 
     var num_entries = 0;
 
@@ -93,16 +105,6 @@ function drcov_bbs(bbs, fmaps, path_ids) {
         var size = end.sub(start).toInt32();
         var mod_id = mod_info.id;
 
-        /*
-            // Data structure for the coverage info itself
-            typedef struct _bb_entry_t {
-                uint   start;      // offset of bb start from the image base
-                ushort size;
-                ushort mod_id;
-            } bb_entry_t;
-        */
-        var entry_sz = 8;
-
         // We're going to create two memory views into the array we alloc'd at
         //  the start.
 
@@ -121,7 +123,7 @@ function drcov_bbs(bbs, fmaps, path_ids) {
     // We can save some space here, rather than sending the entire array back,
     //  we can create a new view into the already allocated memory, and just
     //  send back that linear chunk.
-    return new Uint8Array(bb, 0, num_entries * 8);
+    return new Uint8Array(bb, 0, num_entries * entry_sz);
 }
 // Punt on self modifying code -- should improve speed and lighthouse will
 //  barf on it anyways
@@ -190,7 +192,6 @@ def populate_modules(image_list):
         modules.append(m)
 
     print('[+] Got module info.')
-    return modules
 
 # called when we get coverage data from frida
 def populate_bbs(data):
@@ -198,20 +199,21 @@ def populate_bbs(data):
 
     # we know every drcov block is 8 bytes, so lets just blindly slice and
     #  insert. This will dedup for us.
-    for i in range(0, len(data), 8):
-        bbs.add(data[i:i+8])
+    block_sz = 8
+    for i in range(0, len(data), block_sz):
+        bbs.add(data[i:i+block_sz])
 
 # take the module dict and format it as a drcov logfile header
-def create_header(modules):
+def create_header(mods):
     header = ''
     header += 'DRCOV VERSION: 2\n'
     header += 'DRCOV FLAVOR: frida\n'
-    header += 'Module Table: version 2, count %d\n' % len(modules)
+    header += 'Module Table: version 2, count %d\n' % len(mods)
     header += 'Columns: id, base, end, entry, checksum, timestamp, path\n'
 
     entries = []
 
-    for m in modules:
+    for m in mods:
         # drcov: id, base, end, entry, checksum, timestamp, path
         # frida doesnt give us entry, checksum, or timestamp
         #  luckily, I don't think we need them.
@@ -238,7 +240,7 @@ def on_message(msg, data):
     else:
         populate_bbs(data)
 
-def main(argv):
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('target',
             help='target process name or pid',
@@ -246,7 +248,7 @@ def main(argv):
     parser.add_argument('-o', '--outfile',
             help='coverage file',
             default='frida-cov.log')
-    parser.add_argument('-w', '--whitelist',
+    parser.add_argument('-w', '--whitelist-modules',
             help='module to trace, may be specified multiple times [all]',
             action='append', default=[])
     parser.add_argument('-t', '--thread-id',
@@ -274,10 +276,15 @@ def main(argv):
             ' on device \'%s\'' % (args.target, device.id))
         sys.exit(1)
 
-    whitelist = args.whitelist if len(args.whitelist) else ['all']
-    threadlist = args.thread_id if len(args.thread_id) else ['all']
+    whitelist_modules = ['all']
+    if len(args.whitelist_modules):
+            whitelist_modules = args.whitelist_modules
 
-    json_whitelist = json.dumps(whitelist)
+    threadlist = ['all']
+    if len(args.thread_id):
+        threadlist = args.thread_id
+
+    json_whitelist_modules = json.dumps(whitelist_modules)
     json_threadlist = json.dumps(threadlist)
 
     print('[*] Attaching to pid \'%d\' on device \'%s\'...' %
@@ -286,7 +293,7 @@ def main(argv):
     session = device.attach(target)
     print('[+] Attached. Loading script...')
 
-    script = session.create_script(js % (json_whitelist, json_threadlist))
+    script = session.create_script(js % (json_whitelist_modules, json_threadlist))
     script.on('message', on_message)
     script.load()
 
@@ -312,4 +319,4 @@ def main(argv):
     sys.exit(0)
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()
