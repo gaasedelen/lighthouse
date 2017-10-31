@@ -54,6 +54,7 @@ SAMPLE_CONTENTS = \
 #------------------------------------------------------------------------------
 # Pseudo Widget Filter
 #------------------------------------------------------------------------------
+debugger_docked = False
 
 class EventProxy(QtCore.QObject):
     def __init__(self, target):
@@ -61,8 +62,48 @@ class EventProxy(QtCore.QObject):
         self._target = target
 
     def eventFilter(self, source, event):
+
+        #
+        # hook the destroy event of the coverage overview widget so that we can
+        # cleanup after ourselves in the interest of stability
+        #
+
         if int(event.type()) == 16: # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7?
             self._target.terminate()
+
+        #
+        # this is an unknown event, but it seems to fire when the widget is
+        # being saved/restored by a QMainWidget. We use this to try and ensure
+        # the Coverage Overview stays docked when flipping between Reversing
+        # and Debugging states in IDA.
+        #
+        # See issue #16 on github for more information.
+        #
+
+        if int(event.type()) == 2002:
+
+            #
+            # if the general registers IDA View exists, we make the assumption
+            # that the user has probably started debugging.
+            #
+
+            # NOTE / COMPAT:
+            if using_ida7api:
+                debug_mode = bool(idaapi.find_widget("General registers"))
+            else:
+                debug_mode = bool(idaapi.find_tform("General registers"))
+
+            #
+            # if this is the first time the user has started debugging, dock
+            # the coverage overview in the debug QMainWidget workspace. its
+            # dock status / position should persist future debugger launches.
+            #
+
+            global debugger_docked
+            if debug_mode and not debugger_docked:
+                idaapi.set_dock_pos(self._target._title, "Structures", idaapi.DP_TAB)
+                debugger_docked = True
+
         return False
 
 #------------------------------------------------------------------------------
