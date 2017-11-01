@@ -35,6 +35,18 @@ class CoveragePainter(object):
         self._painted_instructions = set()
 
         #----------------------------------------------------------------------
+        # HexRays Hooking
+        #----------------------------------------------------------------------
+
+        #
+        # we attempt to hook hexrays the *first* time a repaint request is
+        # made. the assumption being that IDA is fully loaded and if hexrays is
+        # present, it will definitely be available (for hooking) by this time
+        #
+
+        self._attempted_hook = False
+
+        #----------------------------------------------------------------------
         # Async
         #----------------------------------------------------------------------
 
@@ -63,11 +75,6 @@ class CoveragePainter(object):
         # Callbacks
         #----------------------------------------------------------------------
 
-        self._hooks = PainterHooks()
-        self._hooks.tform_visible  = self._init_hexrays_hooks # IDA 6.x
-        self._hooks.widget_visible = self._init_hexrays_hooks # IDA 7.x
-        self._hooks.hook()
-
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
         self._director.coverage_modified(self.repaint)
@@ -85,23 +92,9 @@ class CoveragePainter(object):
     # Initialization
     #--------------------------------------------------------------------------
 
-    def _init_hexrays_hooks(self, widget, _=None):
+    def _init_hexrays_hooks(self):
         """
         Install Hex-Rrays hooks (when available).
-
-        NOTE:
-
-          This is called when the tform/widget_visible event fires. The
-          use of this event is somewhat arbitrary. It is simply an
-          event that fires at least once after things seem mostly setup.
-
-          We were using UI_Hooks.ready_to_run previously, but it appears
-          that this event fires *before* this plugin is loaded depending
-          on the user's individual copy of IDA.
-
-          This approach seems relatively consistent for inividuals and builds
-          from IDA 6.8 --> 7.0.
-
         """
         result = False
 
@@ -111,14 +104,6 @@ class CoveragePainter(object):
 
         logger.debug("HexRays hooked: %r" % result)
 
-        #
-        # we only use self._hooks (IDP_Hooks) to install our hexrays hooks.
-        # since this 'init' function should only ever be called once, remove
-        # our IDP_Hooks now to clean up after ourselves.
-        #
-
-        self._hooks.unhook()
-
     #------------------------------------------------------------------------------
     # Painting
     #------------------------------------------------------------------------------
@@ -127,6 +112,13 @@ class CoveragePainter(object):
         """
         Paint coverage defined by the current database mappings.
         """
+
+        # attempt to hook hexrays *once*
+        if not self._attempted_hook:
+            self._init_hexrays_hooks()
+            self._attempted_hook = True
+
+        # signal the painting thread that it's time to repaint coverage
         self._repaint_requested = True
         self._repaint_request.set()
 
@@ -695,13 +687,3 @@ class CoveragePainter(object):
 
         # operation completed successfully
         return True
-
-#------------------------------------------------------------------------------
-# Painter Hooks
-#------------------------------------------------------------------------------
-
-class PainterHooks(idaapi.UI_Hooks):
-    """
-    This is a concrete stub of IDA's UI_Hooks.
-    """
-    pass
