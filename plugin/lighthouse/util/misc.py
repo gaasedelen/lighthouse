@@ -8,13 +8,14 @@ from .shims import using_pyqt5, QtCore, QtGui, QtWidgets
 # Plugin Util
 #------------------------------------------------------------------------------
 
+PLUGIN_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 def plugin_resource(resource_name):
     """
     Return the full path for a given plugin resource file.
     """
     return os.path.join(
-        idaapi.idadir(idaapi.PLG_SUBDIR),
-        "lighthouse",
+        PLUGIN_PATH,
         "ui",
         "resources",
         resource_name
