@@ -29,6 +29,10 @@ class ComposingShell(QtWidgets.QWidget):
         self._model = model
         self._table = table
 
+        # command / input
+        self._search_text = ""
+        self._command_timer = QtCore.QTimer()
+
         # the last known user AST
         self._last_ast = None
 
@@ -299,9 +303,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Execute the search semantics.
         """
-
-        # the given text is a real search query, apply it as a filter now
-        self._model.filter_string(text[1:])
+        self._search_text = text[1:]
 
         #
         # if the user input is only "/" (starting to type something), hint
@@ -312,14 +314,47 @@ class ComposingShell(QtWidgets.QWidget):
             self._line_label.setText("Search")
             return
 
+        #
+        # stop an existing command timer if there is one running. we are about
+        # to schedule a new one or execute inline. so the old/deferred command
+        # is no longer needed.
+        #
+
+        self._command_timer.stop()
+
+        #
+        # if the functions list is HUGE, we want to defer the filtering until
+        # we think the user has stopped typing as each pass may take awhile
+        # to compute (while blocking the main thread...)
+        #
+
+        if self._director.metadata.is_big():
+            self._command_timer = singleshot(1000, self._execute_search_internal)
+            self._command_timer.start()
+
+        #
+        # the database is not *massive*, let's execute the search immediately
+        #
+
+        else:
+            self._execute_search_internal()
+
+        # done
+        return
+
+    def _execute_search_internal(self):
+        """
+        Execute the actual search filtering & coverage metrics.
+        """
+
+        # the given text is a real search query, apply it as a filter now
+        self._model.filter_string(self._search_text)
+
         # compute coverage % of the visible (filtered) results
         percent = self._model.get_modeled_coverage_percent()
 
         # show the coverage % of the search results in the shell label
         self._line_label.setText("%1.2f%%" % percent)
-
-        # done
-        return
 
     def _highlight_search(self):
         """

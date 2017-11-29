@@ -262,6 +262,12 @@ class DatabaseMetadata(object):
         # return the list of addresses
         return output
 
+    def is_big(self):
+        """
+        Return an size classification of the database / metadata.
+        """
+        return len(self.functions) > 100000
+
     #--------------------------------------------------------------------------
     # Refresh
     #--------------------------------------------------------------------------

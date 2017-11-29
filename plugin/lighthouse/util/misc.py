@@ -33,6 +33,16 @@ def MonospaceFont():
     font.setStyleHint(QtGui.QFont.TypeWriter)
     return font
 
+def singleshot(ms, function=None):
+    """
+    A Qt Singleshot timer that can be stopped.
+    """
+    timer = QtCore.QTimer()
+    timer.setInterval(ms)
+    timer.setSingleShot(True)
+    timer.timeout.connect(function)
+    return timer
+
 #------------------------------------------------------------------------------
 # Python Util
 #------------------------------------------------------------------------------
