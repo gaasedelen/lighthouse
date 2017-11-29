@@ -46,7 +46,7 @@ def map_line2citem(decompilation_text):
     for line_number in xrange(decompilation_text.size()):
         line_text = decompilation_text[line_number].line
         line2citem[line_number] = lex_citem_indexes(line_text)
-        logger.debug("Line Text: %s" % binascii.hexlify(line_text))
+        #logger.debug("Line Text: %s" % binascii.hexlify(line_text))
 
     return line2citem
 
