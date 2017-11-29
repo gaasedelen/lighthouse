@@ -71,6 +71,9 @@ class DatabaseMetadata(object):
         # database defined functions
         self.functions = {}
 
+        # database metadata cache status
+        self.cached = False
+
         # lookup list members
         self._stale_lookup = False
         self._name2func = {}
@@ -345,6 +348,7 @@ class DatabaseMetadata(object):
 
         if not (worker and worker.is_alive()):
             self._stop_threads = False
+            self._refresh_worker = None
             return
 
         # signal the worker thread to stop
@@ -367,6 +371,7 @@ class DatabaseMetadata(object):
 
         # send the refresh result (good/bad) incase anyone is still listening
         if completed:
+            self.cached = True
             result_queue.put(self)
         else:
             result_queue.put(None)
