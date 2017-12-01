@@ -582,14 +582,14 @@ class ComposingShell(QtWidgets.QWidget):
         # composition name
         #
 
-        coverage_name = idaapi.askstr(
-            0,
-            str("COMP_%s" % self.text),
-            "Save composition as..."
+        ok, coverage_name = prompt_string(
+            "Composition Name:",
+            "Please enter a name for this composition",
+            "COMP_%s" % self.text
         )
 
         # the user did not enter a coverage name or hit cancel - abort the save
-        if not coverage_name:
+        if not (ok and coverage_name):
             return
 
         #
