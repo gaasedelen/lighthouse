@@ -154,6 +154,7 @@ class CoverageDirector(object):
         #----------------------------------------------------------------------
 
         self._ast_queue = Queue.Queue()
+        self._composition_lock = threading.Lock()
         self._composition_cache = CompositionCache()
 
         self._composition_worker = threading.Thread(
@@ -693,8 +694,6 @@ class CoverageDirector(object):
 
         # evaluate the last AST into a coverage set
         composite_coverage = self._evaluate_composition(ast)
-        composite_coverage.update_metadata(self.metadata)
-        composite_coverage.refresh() # TODO: hash refresh?
 
         # save the evaluated coverage under the given name
         self._update_coverage(composite_name, composite_coverage)
@@ -741,15 +740,14 @@ class CoverageDirector(object):
             # produce a single composite coverage object as described by the AST
             composite_coverage = self._evaluate_composition(ast)
 
-            # map the composited coverage data to the database metadata
-            composite_coverage.update_metadata(self.metadata)
-            composite_coverage.refresh()
-
             # we always save the most recent composite to the hotshell entry
             self._special_coverage[HOT_SHELL] = composite_coverage
 
+            #
             # if the hotshell entry is the active coverage selection, notify
             # listeners of its update
+            #
+
             if self.coverage_name == HOT_SHELL:
                 self._notify_coverage_modified()
 
@@ -767,8 +765,37 @@ class CoverageDirector(object):
         if isinstance(ast, TokenNull):
             return self._NULL_COVERAGE
 
+        #
+        # the director's composition evaluation code (this function) is most
+        # generally called via the background caching evaluation thread known
+        # as self._composition_worker. But this function can also be called
+        # inline via the 'add_composition' function from a different thread
+        # (namely, the main thread)
+        #
+        # because of this, we must control access to the resources the AST
+        # evaluation code operates by restricting the code to one thread
+        # at a time.
+        #
+        # should we call _evaluate_composition from the context of the main
+        # IDA thread, it is important that we do so in a pseudo non-blocking
+        # such that we don't hang IDA. await_lock(...) will allow the Qt/IDA
+        # main thread to yield to other threads while waiting for the lock
+        #
+
+        await_lock(self._composition_lock)
+
         # recursively evaluate the AST
-        return self._evaluate_composition_recursive(ast)
+        composite_coverage = self._evaluate_composition_recursive(ast)
+
+        # map the composited coverage data to the database metadata
+        composite_coverage.update_metadata(self.metadata)
+        composite_coverage.refresh() # TODO: hash refresh?
+
+        # done operating on shared data (coverage), release the lock
+        self._composition_lock.release()
+
+        # return the evaluated composition
+        return composite_coverage
 
     def _evaluate_composition_recursive(self, node):
         """

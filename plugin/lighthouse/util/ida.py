@@ -475,23 +475,19 @@ def execute_sync(sync_flags=idaapi.MFF_FAST):
 # IDA Async Magic
 #------------------------------------------------------------------------------
 
-@mainthread
-def await_future(future, block=True, timeout=1.0):
+def await_future(future):
     """
     This is effectively a technique I use to get around completely blocking
     IDA's mainthread while waiting for a threaded result that may need to make
-    use of the sync operators.
+    use of the execute_sync operators.
 
     Waiting for a 'future' thread result to come through via this function
     lets other execute_sync actions to slip through (at least Read, Fast).
     """
-
-    elapsed  = 0       # total time elapsed processing this future object
     interval = 0.02    # the interval which we wait for a response
-    end_time = time.time() + timeout
 
-    # run until the the future completes or the timeout elapses
-    while block or (time.time() < end_time):
+    # run until the the future arrives
+    while True:
 
         # block for a brief period to see if the future completes
         try:
@@ -503,25 +499,74 @@ def await_future(future, block=True, timeout=1.0):
         #
 
         except Queue.Empty as e:
-            logger.debug("Flushing future...")
+            pass
+
+        logger.debug("Awaiting future...")
+
+        #
+        # if we are executing (well, blocking) as the main thread, we need
+        # to flush the event loop so IDA does not hang
+        #
+
+        if idaapi.is_main_thread():
             flush_ida_sync_requests()
+
+def await_lock(lock):
+    """
+    Attempt to acquire a lock without blocking the IDA mainthread.
+
+    See await_future() for more details.
+    """
+
+    elapsed  = 0       # total time elapsed waiting for the lock
+    interval = 0.02    # the interval (in seconds) between acquire attempts
+    timeout  = 60.0    # the total time allotted to acquiring the lock
+    end_time = time.time() + timeout
+
+    # wait until the the lock is available
+    while time.time() < end_time:
+
+        #
+        # attempt to acquire the given lock without blocking (via 'False').
+        # if we succesfully aquire the lock, then we can return (success)
+        #
+
+        if lock.acquire(False):
+            logger.debug("Acquired lock!")
+            return
+
+        #
+        # the lock is not available yet. we need to sleep so we don't choke
+        # the cpu, and try to acquire the lock again next time through...
+        #
+
+        logger.debug("Awaiting lock...")
+        time.sleep(interval)
+
+        #
+        # if we are executing (well, blocking) as the main thread, we need
+        # to flush the event loop so IDA does not hang
+        #
+
+        if idaapi.is_main_thread():
+            flush_ida_sync_requests()
+
+    #
+    # we spent 60 seconds trying to acquire the lock, but never got it...
+    # to avoid hanging IDA indefinitely (or worse), we abort via signal
+    #
+
+    raise RuntimeError("Failed to acquire lock after %f seconds!" % timeout)
 
 @mainthread
 def flush_ida_sync_requests():
     """
     Flush all execute_sync requests.
-
-    NOTE: This MUST be called from the IDA Mainthread to be effective.
     """
-    if not idaapi.is_main_thread():
-        return False
 
     # this will trigger/flush the IDA UI loop
     qta = QtCore.QCoreApplication.instance()
     qta.processEvents()
-
-    # done
-    return True
 
 @mainthread
 def prompt_string(label, title, default=""):
