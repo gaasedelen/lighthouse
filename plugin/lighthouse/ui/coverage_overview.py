@@ -655,8 +655,19 @@ class CoverageModel(QtCore.QAbstractTableModel):
         """
         Get the coverage % represented by the current (visible) model.
         """
-        sum_coverage = sum(cov.instruction_percent for cov in self._visible_coverage.itervalues())
-        return (sum_coverage / (self._row_count or 1))*100
+
+        # sum the # of instructions in all the visible functions
+        instruction_count = sum(
+            meta.instruction_count for meta in self._visible_metadata.itervalues()
+        )
+
+        # sum the # of instructions executed in all the visible functions
+        instructions_executed = sum(
+            cov.instructions_executed for cov in self._visible_coverage.itervalues()
+        )
+
+        # compute coverage percentage of the visible functions
+        return (float(instructions_executed) / (instruction_count or 1))*100
 
     #--------------------------------------------------------------------------
     # Filters
