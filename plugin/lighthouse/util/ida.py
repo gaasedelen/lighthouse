@@ -572,6 +572,79 @@ def flush_ida_sync_requests():
 # IDA Util
 #------------------------------------------------------------------------------
 
+# taken from https://github.com/gaasedelen/prefix
+PREFIX_DEFAULT = "MyPrefix"
+PREFIX_SEPARATOR = '%'
+
+def prefix_function(function_address, prefix):
+    """
+    Prefix a function name with the given string.
+    """
+    original_name = get_function_name(function_address)
+    new_name = str(prefix) + PREFIX_SEPARATOR + str(original_name)
+
+    # rename the function with the newly prefixed name
+    idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+def prefix_functions(function_addresses, prefix):
+    """
+    Prefix a list of functions with the given string.
+    """
+    for function_address in function_addresses:
+        prefix_function(function_address, prefix)
+
+def clear_prefix(function_address):
+    """
+    Clear the prefix from a given function.
+    """
+    original_name = get_function_name(function_address)
+
+    #
+    # locate the last (rfind) prefix separator in the function name as
+    # we will want to keep everything that comes after it
+    #
+
+    i = original_name.rfind(PREFIX_SEPARATOR)
+
+    # if there is no prefix (separator), there is nothing to trim
+    if i == -1:
+        return
+
+    # trim the prefix off the original function name and discard it
+    new_name = original_name[i+1:]
+
+    # rename the function with the prefix stripped
+    idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+def clear_prefixes(function_addresses):
+    """
+    Clear the prefix from a list of given functions.
+    """
+    for function_address in function_addresses:
+        clear_prefix(function_address)
+
+def get_function_name(function_address):
+    """
+    Get a function's true name.
+    """
+
+    # get the original function name from the database
+    if using_ida7api:
+        original_name = idaapi.get_name(function_address)
+    else:
+        original_name = idaapi.get_true_name(idaapi.BADADDR, function_address)
+
+    # sanity check
+    if original_name == None:
+        raise ValueError("Invalid function address")
+
+    # return the function name
+    return original_name
+
+#------------------------------------------------------------------------------
+# Interactive
+#------------------------------------------------------------------------------
+
 @mainthread
 def prompt_string(label, title, default=""):
     """
@@ -593,20 +666,12 @@ def prompt_string(label, title, default=""):
     text = str(dlg.textValue())
     return (ok, text)
 
-def rename_function(function_address):
+@mainthread
+def gui_rename_function(function_address):
     """
-    Rename a function in the IDB.
+    Interactive rename of a function in the IDB.
     """
-
-    # get the original function name from the database
-    if using_ida7api:
-        original_name = idaapi.get_name(function_address)
-    else:
-        original_name = idaapi.get_true_name(idaapi.BADADDR, function_address)
-
-    # sanity check
-    if original_name == None:
-        raise ValueError("Invalid function address")
+    original_name = get_function_name(function_address)
 
     # prompt the user for a new function name
     ok, new_name = prompt_string(
@@ -625,3 +690,23 @@ def rename_function(function_address):
 
     # rename the function
     idaapi.set_name(function_address, new_name, idaapi.SN_NOCHECK)
+
+@mainthread
+def gui_prefix_functions(function_addresses):
+    """
+    Interactive prefixing of functions in the IDB.
+    """
+
+    # prompt the user for a new function name
+    ok, prefix = prompt_string(
+        "Please enter a function prefix",
+        "Prefix Function(s)",
+        PREFIX_DEFAULT
+       )
+
+    # bail if the user clicked cancel or failed to enter a prefix
+    if not (ok and prefix):
+        return
+
+    # prefix the given functions with the user specified prefix
+    prefix_functions(function_addresses, prefix)

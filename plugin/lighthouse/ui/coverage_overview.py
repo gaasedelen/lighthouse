@@ -454,10 +454,30 @@ class CoverageOverview(DockableShim):
             return
 
         #
+        # extract the function addresses for the list of selected rows
+        # as they will probably come in handy later.
+        #
+
+        function_addresses = []
+        for index in selected_rows:
+            address = self._model.row2func[index.row()]
+            function_addresses.append(address)
+
+        #
         # check the universal actions first
         #
 
-        # TODO: ...
+        # handle the 'Prefix functions' action
+        if action == self._action_prefix:
+            gui_prefix_functions(function_addresses)
+
+        # handle the 'Clear prefix' action
+        elif action == self._action_clear_prefix:
+            clear_prefixes(function_addresses)
+
+        # handle the 'Refresh metadata' action
+        elif action == self._action_refresh_metadata:
+            print "TODO: refresh metadata"
 
         #
         # the following actions are only applicable if there is only one
@@ -470,14 +490,11 @@ class CoverageOverview(DockableShim):
 
         # unpack the single QModelIndex
         index = selected_rows[0]
-
-        # get the function address from the table row
-        address_index = self._model.index(index.row(), FUNC_ADDR)
-        function_address = self._model.data(address_index, QtCore.Qt.DisplayRole)
+        function_address = function_addresses[0]
 
         # handle the 'Rename' action
         if action == self._action_rename:
-            rename_function(int(function_address, 16))
+            gui_rename_function(function_address)
 
         # handle the 'Copy name' action
         elif action == self._action_copy_name:
@@ -487,7 +504,8 @@ class CoverageOverview(DockableShim):
 
         # handle the 'Copy address' action
         elif action == self._action_copy_address:
-            copy_to_clipboard(function_address)
+            address_string = "0x%X" % function_address
+            copy_to_clipboard(address_string)
 
     #--------------------------------------------------------------------------
     # Refresh
