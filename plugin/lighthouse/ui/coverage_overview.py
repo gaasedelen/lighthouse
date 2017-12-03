@@ -441,6 +441,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         # register for cues from the director
         self._director.coverage_switched(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
+        self._director.metadata_modified(self._data_changed)
 
     #--------------------------------------------------------------------------
     # AbstractItemModel Overloads
@@ -706,6 +707,13 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # sort the data set according to the last selected sorted column
         self.sort(self._last_sort, self._last_sort_order)
+
+    @idafast
+    def _data_changed(self):
+        """
+        Notify attached views that simple model data has been updated/modified.
+        """
+        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
 
     def _refresh_data(self):
         """

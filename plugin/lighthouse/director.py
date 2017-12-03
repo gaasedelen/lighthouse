@@ -181,6 +181,9 @@ class CoverageDirector(object):
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
 
+        # metadata callbacks
+        self._metadata_modified_callbacks = []
+
     def terminate(self):
         """
         Cleanup & terminate the director.
@@ -912,9 +915,20 @@ class CoverageDirector(object):
         """
 
         #
-        # if the metadata has already been collected once by lighthouse
-        # during this coverage session (eg, it is cached), ignore a request
-        # to refresh it unless explicitly told to refresh via force=True
+        # if this is the first time the director is going to use / populate
+        # the database metadata, register the director for notifications of
+        # metadata modification (this should only happen once)
+        #
+        # TODO: this is a little dirty, but it will suffice.
+        #
+
+        if not self.metadata.cached:
+            self.metadata.function_renamed(self._notify_metadata_modified)
+
+        #
+        # if the lighthouse has collected metadata previously for this IDB
+        # session (eg, it is cached), ignore a request to refresh it unless
+        # explicitly told to refresh via force=True
         #
 
         if self.metadata.cached and not force:

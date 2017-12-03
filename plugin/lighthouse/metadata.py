@@ -81,6 +81,13 @@ class DatabaseMetadata(object):
         self._node_addresses = []
         self._function_addresses = []
 
+        # hook to listen for rename events from IDA
+        self._rename_hooks = RenameHooks()
+        self._rename_hooks.renamed = self._name_changed
+
+        # metadata callbacks (see director for more info)
+        self._function_renamed_callbacks = []
+
         # asynchrnous metadata collection thread
         self._refresh_worker = None
         self._stop_threads = False
@@ -369,11 +376,20 @@ class DatabaseMetadata(object):
         Internal asynchronous metadata collection worker.
         """
 
+        # pause our rename listening hooks, for speed
+        self._rename_hooks.unhook()
+
         # collect metadata
-        completed = self._async_collect_metadata(function_addresses, progress_callback)
+        completed = self._async_collect_metadata(
+            function_addresses,
+            progress_callback
+        )
 
         # refresh the lookup lists
         self._refresh_lookup()
+
+        # resume our rename listening hooks
+        self._rename_hooks.hook()
 
         # send the refresh result (good/bad) incase anyone is still listening
         if completed:
@@ -535,6 +551,63 @@ class DatabaseMetadata(object):
         # return the delta for other interested consumers to use
         return delta
 
+    #--------------------------------------------------------------------------
+    # Signal Handlers
+    #--------------------------------------------------------------------------
+
+    @mainthread
+    def _name_changed(self, address, new_name, local_name):
+        """
+        Handler for rename event in IDA.
+        """
+
+        # we should never care about local renames (eg, loc_40804b), ignore
+        if local_name:
+            return
+
+        # get the function that this address falls within
+        function = self.get_function(address)
+
+        # if the address does not fall within a function (might happen?), ignore
+        if not function:
+            return
+
+        #
+        # ensure the renamed address matches the function start before
+        # renaming the function in our metadata cache.
+        #
+        # I am not sure when this would not be the case (globals? maybe)
+        # but I'd rather not find out.
+        #
+
+        if address == function.address:
+            logger.debug("Name changing @ 0x%X" % address)
+            logger.debug("  Old name: %s" % function.name)
+            function.name = idaapi.get_short_name(address)
+            logger.debug("  New name: %s" % function.name)
+
+        # notify any listeners that a function rename occurred
+        self._notify_function_renamed()
+
+        # necessary for IDP/IDB_Hooks
+        return 0
+
+    #--------------------------------------------------------------------------
+    # Callbacks
+    #--------------------------------------------------------------------------
+
+    def function_renamed(self, callback):
+        """
+        Subscribe a callback for function rename events.
+        """
+        register_callback(self._function_renamed_callbacks, callback)
+
+    def _notify_function_renamed(self):
+        """
+        Notify listeners of a function rename event.
+        """
+        notify_callback(self._function_renamed_callbacks)
+
 #------------------------------------------------------------------------------
 # Function Level Metadata
 #------------------------------------------------------------------------------
@@ -671,18 +744,6 @@ class FunctionMetadata(object):
         self.edge_count = len(self.edges)
         self.instruction_count = sum(node.instruction_count for node in self.nodes.itervalues())
         self.cyclomatic_complexity = self.edge_count - self.node_count + 2
-
-    #--------------------------------------------------------------------------
-    # Signal Handlers
-    #--------------------------------------------------------------------------
-
-    def name_changed(self, new_name):
-        """
-        Handler for rename event in IDA.
-
-        TODO: hook this up
-        """
-        self.name = new_name
 
     #--------------------------------------------------------------------------
     # Operator Overloads
@@ -994,3 +1055,14 @@ def metadata_progress(completed, total):
     Handler for metadata collection callback, updates progress dialog.
     """
     idaapi.replace_wait_box("Collected metadata for %u/%u Functions" % (completed, total))
+
+#--------------------------------------------------------------------------
+# Event Hooks
+#--------------------------------------------------------------------------
+
+if using_ida7api:
+    class RenameHooks(idaapi.IDB_Hooks):
+        pass
+else:
+    class RenameHooks(idaapi.IDP_Hooks):
+        pass
