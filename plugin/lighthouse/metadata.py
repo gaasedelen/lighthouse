@@ -378,9 +378,9 @@ class DatabaseMetadata(object):
         # send the refresh result (good/bad) incase anyone is still listening
         if completed:
             self.cached = True
-            result_queue.put(self)
+            result_queue.put(True)
         else:
-            result_queue.put(None)
+            result_queue.put(False)
 
         # clean up our thread's reference as it is basically done/dead
         self._refresh_worker = None

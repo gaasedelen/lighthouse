@@ -386,15 +386,13 @@ class Lighthouse(idaapi.plugin_t):
         Interactive loading & aggregation of coverage files.
         """
         self.palette.refresh_colors()
-        metadata_is_cached = self.director.metadata.cached
 
         #
         # kick off an asynchronous metadata refresh. this collects underlying
         # database metadata while the user will be busy selecting coverage files.
         #
 
-        if not metadata_is_cached:
-            future = self.director.metadata.refresh(progress_callback=metadata_progress)
+        future = self.director.refresh_metadata(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
@@ -428,8 +426,7 @@ class Lighthouse(idaapi.plugin_t):
         #
 
         idaapi.show_wait_box("Building database metadata...")
-        if not metadata_is_cached:
-            await_future(future)
+        await_future(future)
 
         # aggregate all the selected files into one new coverage set
         new_coverage = self._aggregate_batch(loaded_files)
@@ -493,7 +490,6 @@ class Lighthouse(idaapi.plugin_t):
         Interactive loading of individual coverage files.
         """
         self.palette.refresh_colors()
-        metadata_is_cached = self.director.metadata.cached
         created_coverage = []
 
         #
@@ -501,8 +497,7 @@ class Lighthouse(idaapi.plugin_t):
         # database metadata while the user will be busy selecting coverage files.
         #
 
-        if not metadata_is_cached:
-            future = self.director.metadata.refresh(progress_callback=metadata_progress)
+        future = self.director.refresh_metadata(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
@@ -523,8 +518,7 @@ class Lighthouse(idaapi.plugin_t):
         #
 
         idaapi.show_wait_box("Building database metadata...")
-        if not metadata_is_cached:
-            await_future(future)
+        await_future(future)
 
         #
         # stop the director's aggregate from updating. this is in the interest

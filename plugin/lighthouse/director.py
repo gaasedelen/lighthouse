@@ -976,9 +976,35 @@ class CoverageDirector(object):
         # (re)map each set of loaded coverage data to the database
         self._refresh_database_coverage(delta)
 
+    def refresh_metadata(self, progress_callback=None, force=False):
+        """
+        Refresh the database metadata cache utilized by the director.
+
+        Returns a future (Queue) that will carry the completion message.
+        """
+
+        #
+        # if the metadata has already been collected once by lighthouse
+        # during this coverage session (eg, it is cached), ignore a request
+        # to refresh it unless explicitly told to refresh via force=True
+        #
+
+        if self.metadata.cached and not force:
+            fake_queue = Queue.Queue()
+            fake_queue.put(False)
+            return fake_queue
+
+        # start the asynchronous metadata refresh
+        result_queue = self.metadata.refresh(progress_callback=progress_callback)
+
+        # return the channel that will carry asynchronous result
+        return result_queue
+
     def _refresh_database_metadata(self):
         """
         Refresh the database metadata cache utilized by the director.
+
+        NOTE: this is currently unused.
         """
         logger.debug("Refreshing database metadata")
 
