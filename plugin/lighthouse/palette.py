@@ -48,7 +48,7 @@ class LighthousePalette(object):
         # Composing Shell
         #
 
-        self._composer_bg       = [QtGui.QColor(30, 30, 30),    QtGui.QColor(30, 30, 30)]
+        self._overview_bg       = [QtGui.QColor(30, 30, 30),    QtGui.QColor(30, 30, 30)]
         self._composer_fg       = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
         self._valid_text        = [0x80F0FF, 0x0000FF]
         self._invalid_text      = [0xF02070, 0xFF0000]
@@ -207,8 +207,8 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
 
     @property
-    def composer_bg(self):
-        return self._composer_bg[self.qt_theme]
+    def overview_bg(self):
+        return self._overview_bg[self.qt_theme]
 
     @property
     def composer_fg(self):

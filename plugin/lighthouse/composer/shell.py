@@ -92,7 +92,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # configure the shell background & default text color
         palette = self._line.palette()
-        palette.setColor(QtGui.QPalette.Base, self._palette.composer_bg)
+        palette.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
         palette.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
         palette.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
         self._line.setPalette(palette)
