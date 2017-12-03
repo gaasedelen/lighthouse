@@ -1,7 +1,6 @@
 import time
 import string
 import logging
-import weakref
 import threading
 import collections
 
@@ -172,10 +171,11 @@ class CoverageDirector(object):
         #   events or changes to the underlying data they consume.
         #
         #   Callbacks provide a way for us to notify any interested parties
-        #   of these key events.
+        #   of these key events. Below are lists of registered notification
+        #   callbacks. see 'Callbacks' section below for more info.
         #
 
-        # lists of registered notification callbacks, see 'Callbacks' below
+        # coverage callbacks
         self._coverage_switched_callbacks = []
         self._coverage_modified_callbacks = []
         self._coverage_created_callbacks  = []
@@ -247,126 +247,61 @@ class CoverageDirector(object):
         """
         Subscribe a callback for coverage switch events.
         """
-        self._register_callback(self._coverage_switched_callbacks, callback)
+        register_callback(self._coverage_switched_callbacks, callback)
 
     def _notify_coverage_switched(self):
         """
         Notify listeners of a coverage switch event.
         """
-        self._notify_callback(self._coverage_switched_callbacks)
+        notify_callback(self._coverage_switched_callbacks)
 
     def coverage_modified(self, callback):
         """
         Subscribe a callback for coverage modification events.
         """
-        self._register_callback(self._coverage_modified_callbacks, callback)
+        register_callback(self._coverage_modified_callbacks, callback)
 
     def _notify_coverage_modified(self):
         """
         Notify listeners of a coverage modification event.
         """
-        self._notify_callback(self._coverage_modified_callbacks)
+        notify_callback(self._coverage_modified_callbacks)
 
     def coverage_created(self, callback):
         """
         Subscribe a callback for coverage creation events.
         """
-        self._register_callback(self._coverage_created_callbacks, callback)
+        register_callback(self._coverage_created_callbacks, callback)
 
     def _notify_coverage_created(self):
         """
         Notify listeners of a coverage creation event.
         """
-        self._notify_callback(self._coverage_created_callbacks) # TODO: send list of names created?
+        notify_callback(self._coverage_created_callbacks) # TODO: send list of names created?
 
     def coverage_deleted(self, callback):
         """
         Subscribe a callback for coverage deletion events.
         """
-        self._register_callback(self._coverage_deleted_callbacks, callback)
+        register_callback(self._coverage_deleted_callbacks, callback)
 
     def _notify_coverage_deleted(self):
         """
         Notify listeners of a coverage deletion event.
         """
-        self._notify_callback(self._coverage_deleted_callbacks) # TODO: send list of names deleted?
+        notify_callback(self._coverage_deleted_callbacks) # TODO: send list of names deleted?
 
-    def _register_callback(self, callback_list, callback):
+    def metadata_modified(self, callback):
         """
-        Register a given callable (callback) to the given callback_list.
-
-        Adapted from http://stackoverflow.com/a/21941670
+        Subscribe a callback for metadata modification events.
         """
+        register_callback(self._metadata_modified_callbacks, callback)
 
-        # create a weakref callback to an object method
-        try:
-            callback_ref = weakref.ref(callback.__func__), weakref.ref(callback.__self__)
-
-        # create a wweakref callback to a stand alone function
-        except AttributeError:
-            callback_ref = weakref.ref(callback), None
-
-        # 'register' the callback
-        callback_list.append(callback_ref)
-
-    def _notify_callback(self, callback_list):
+    def _notify_metadata_modified(self):
         """
-        Notify the given list of registered callbacks.
-
-        The given list (callback_list) is a list of weakref'd callables
-        registered through the _register_callback function. To notify the
-        callbacks we simply loop through the list and call them.
-
-        This routine self-heals by removing dead callbacks for deleted objects.
-
-        Adapted from http://stackoverflow.com/a/21941670
+        Notify listeners of a metadata modification event.
         """
-        cleanup = []
-
-        #
-        # loop through all the registered callbacks in the given callback_list,
-        # notifying active callbacks, and removing dead ones.
-        #
-
-        for callback_ref in callback_list:
-            callback, obj_ref = callback_ref[0](), callback_ref[1]
-
-            #
-            # if the callback is an instance method, deference the instance
-            # (an object) first to check that it is still alive
-            #
-
-            if obj_ref:
-                obj = obj_ref()
-
-                # if the object instance is gone, mark this callback for cleanup
-                if obj is None:
-                    cleanup.append(callback_ref)
-                    continue
-
-                # call the object instance callback
-                try:
-                    callback(obj)
-
-                # assume a Qt cleanup/deletion occured
-                except RuntimeError as e:
-                    cleanup.append(callback_ref)
-                    continue
-
-            # if the callback is a static method...
-            else:
-
-                # if the static method is deleted, mark this callback for cleanup
-                if callback is None:
-                    cleanup.append(callback_ref)
-                    continue
-
-                # call the static callback
-                callback(self)
-
-        # remove the deleted callbacks
-        for callback_ref in cleanup:
-            callback_list.remove(callback_ref)
+        notify_callback(self._metadata_modified_callbacks)
 
     #----------------------------------------------------------------------
     # Batch Loading
