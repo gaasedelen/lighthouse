@@ -101,6 +101,18 @@ def cleanup_log_directory(log_directory):
 def start_logging():
     global logger
 
+    # create the Lighthouse logger
+    logger = logging.getLogger("Lighthouse")
+
+    #
+    # only enable logging if the LIGHTHOUSE_LOGGING environment variable is
+    # present. we simply return a stub logger to sinkhole messages.
+    #
+
+    if os.getenv("LIGHTHOUSE_LOGGING") == None:
+        logger.disabled = True
+        return logger
+
     # create a directory for lighthouse logs if it does not exist
     log_dir = get_log_dir()
     if not os.path.exists(log_dir):
@@ -116,9 +128,6 @@ def start_logging():
         datefmt='%m-%d-%Y %H:%M:%S',
         level=logging.DEBUG
     )
-
-    # create the Lighthouse logger
-    logger = logging.getLogger("Lighthouse")
 
     # proxy STDOUT/STDERR to the log files too
     stdout_logger = logging.getLogger('Lighthouse.STDOUT')
