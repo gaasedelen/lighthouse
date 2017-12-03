@@ -440,15 +440,41 @@ class CoverageDirector(object):
         """
         Delete a database coverage object by name.
         """
-        assert coverage_name in self.coverage_names
 
         #
         # if the delete request targets the currently active coverage, we want
-        # to switch into a safer coverage to try and avoid any ill effects.
+        # to switch into a safer coverage set to try and avoid any ill effects.
         #
 
-        if self.coverage_name == coverage_name:
+        if coverage_name in [self.coverage_name, AGGREGATE]:
             self.select_coverage(NEW_COMPOSITION)
+
+        #
+        # the user is trying to delete one of their own loaded/created coverages
+        #
+
+        if coverage_name in self.coverage_names:
+            self._delete_user_coverage(coverage_name)
+
+        #
+        # the user is trying to delete the aggregate coverage set, which simply
+        # means clears *all* loaded coverages
+        #
+
+        elif coverage_name == AGGREGATE:
+            self._delete_aggregate_coverage(coverage_name)
+
+        # unsupported / unknown coverage
+        else:
+            raise ValueError("Cannot delete %s, does not exist" % coverage_name)
+
+        # notify any listeners that we have deleted coverage
+        self._notify_coverage_deleted()
+
+    def _delete_user_coverage(self, coverage_name):
+        """
+        Delete a user created database coverage object by name.
+        """
 
         # release the shorthand alias held by this coverage
         self._release_shorthand_alias(coverage_name)
@@ -461,8 +487,21 @@ class CoverageDirector(object):
         if not self._aggregation_suspended:
             self._refresh_aggregate()
 
-        # notify any listeners that we have deleted coverage
-        self._notify_coverage_deleted()
+    def _delete_aggregate_coverage(self, coverage_name):
+        """
+        Delete the aggregate set, effectiveely clearing all loaded covearge.
+        """
+
+        # loop through all the loaded coverage sets and release them
+        for coverage_name in self.coverage_names:
+            self._release_shorthand_alias(coverage_name)
+            self._database_coverage.pop(coverage_name)
+
+        # TODO: check if there's any references to the coverage aggregate...
+
+        # assign a new, blank aggregate set
+        self._special_coverage[AGGREGATE] = DatabaseCoverage(None, self._palette)
+        self._refresh_aggregate() # probably not needed
 
     def get_coverage(self, name):
         """
