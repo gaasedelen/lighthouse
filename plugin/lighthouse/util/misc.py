@@ -44,6 +44,14 @@ def singleshot(ms, function=None):
     timer.timeout.connect(function)
     return timer
 
+def copy_to_clipboard(data):
+    """
+    Copy the given data (a string) to the user clipboard.
+    """
+    cb = QtWidgets.QApplication.clipboard()
+    cb.clear(mode=cb.Clipboard)
+    cb.setText(data, mode=cb.Clipboard)
+
 #------------------------------------------------------------------------------
 # Python Util
 #------------------------------------------------------------------------------

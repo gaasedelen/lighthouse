@@ -568,6 +568,10 @@ def flush_ida_sync_requests():
     qta = QtCore.QCoreApplication.instance()
     qta.processEvents()
 
+#------------------------------------------------------------------------------
+# IDA Util
+#------------------------------------------------------------------------------
+
 @mainthread
 def prompt_string(label, title, default=""):
     """
@@ -586,5 +590,38 @@ def prompt_string(label, title, default=""):
         dlg.fontMetrics().averageCharWidth()*10
     )
     ok = dlg.exec_()
-    text = dlg.textValue()
+    text = str(dlg.textValue())
     return (ok, text)
+
+def rename_function(function_address):
+    """
+    Rename a function in the IDB.
+    """
+
+    # get the original function name from the database
+    if using_ida7api:
+        original_name = idaapi.get_name(function_address)
+    else:
+        original_name = idaapi.get_true_name(idaapi.BADADDR, function_address)
+
+    # sanity check
+    if original_name == None:
+        raise ValueError("Invalid function address")
+
+    # prompt the user for a new function name
+    ok, new_name = prompt_string(
+        "Please enter function name",
+        "Rename Function",
+        original_name
+       )
+
+    #
+    # if the user clicked cancel, or the name they entered
+    # is identical to the original, there's nothing to do
+    #
+
+    if not (ok or new_name != original_name):
+        return
+
+    # rename the function
+    idaapi.set_name(function_address, new_name, idaapi.SN_NOCHECK)

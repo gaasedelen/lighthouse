@@ -174,6 +174,7 @@ class CoverageOverview(DockableShim):
         # initialize our ui elements
         self._ui_init_table(director)
         self._ui_init_toolbar(director)
+        self._ui_init_ctx_menu_actions()
         self._ui_init_signals()
 
         # layout the populated ui just before showing it
@@ -315,6 +316,24 @@ class CoverageOverview(DockableShim):
         # give the shell expansion preference over the combobox
         self._splitter.setStretchFactor(0, 1)
 
+    def _ui_init_ctx_menu_actions(self):
+        """
+        Initialize the right click context menu actions.
+        """
+
+        # function actions
+        self._action_rename = QtWidgets.QAction("Rename", None)
+        self._action_copy_name = QtWidgets.QAction("Copy name", None)
+        self._action_copy_address = QtWidgets.QAction("Copy address", None)
+
+        # function prefixing actions
+        self._action_prefix = QtWidgets.QAction("Prefix selected functions", None)
+        self._action_clear_prefix = QtWidgets.QAction("Clear prefixes", None)
+
+        # misc actions
+        self._action_refresh_metadata = QtWidgets.QAction(
+            "Refresh metadata (slow)", None)
+
     def _ui_init_signals(self):
         """
         Connect UI signals.
@@ -324,8 +343,8 @@ class CoverageOverview(DockableShim):
         self._table.doubleClicked.connect(self._ui_entry_double_click)
 
         # right click popup menu
-        #self._table.setContextMenuPolicy(Qt.CustomContextMenu)
-        #self._table.customContextMenuRequested.connect(...)
+        self._table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._ui_ctx_menu_handler)
 
         # toggle 0% coverage checkbox
         self._hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
@@ -349,18 +368,126 @@ class CoverageOverview(DockableShim):
 
     def _ui_entry_double_click(self, index):
         """
-        Handle double click event on the coverage table view.
+        Handle double click event on the coverage table.
 
         A double click on the coverage table view will jump the user to
         the corresponding function in the IDA disassembly view.
         """
         idaapi.jumpto(self._model.row2func[index.row()])
 
+    def _ui_ctx_menu_handler(self, position):
+        """
+        Handle right click context menu event on the coverage table.
+        """
+
+        # create a right click menu based on the state and context
+        ctx_menu = self._populate_ctx_menu()
+        if not ctx_menu:
+            return
+
+        # show the popup menu to the user, and wait for their selection
+        action = ctx_menu.exec_(self._table.viewport().mapToGlobal(position))
+
+        # process the user action
+        self._process_ctx_menu_action(action)
+
     def _ui_hide_zero_toggle(self, checked):
         """
         Handle state change of 'Hide 0% Coverage' checkbox.
         """
         self._model.filter_zero_coverage(checked)
+
+    #--------------------------------------------------------------------------
+    # Context Menu
+    #--------------------------------------------------------------------------
+
+    def _populate_ctx_menu(self):
+        """
+        Populate a context menu for the table view based on selection.
+
+        Returns a populated QMenu, or None.
+        """
+
+        # get the list rows currently selected in the coverage table
+        selected_rows = self._table.selectionModel().selectedRows()
+        if len(selected_rows) == 0:
+            return None
+
+        # the context menu we will dynamically populate
+        ctx_menu = QtWidgets.QMenu()
+
+        #
+        # if there is only one table entry (a function) selected, then
+        # show the menu actions available for a single function such as
+        # copy function name, address, or renaming the function.
+        #
+
+        if len(selected_rows) == 1:
+            ctx_menu.addAction(self._action_rename)
+            ctx_menu.addAction(self._action_copy_name)
+            ctx_menu.addAction(self._action_copy_address)
+            ctx_menu.addSeparator()
+
+        # function prefixing actions
+        ctx_menu.addAction(self._action_prefix)
+        ctx_menu.addAction(self._action_clear_prefix)
+        ctx_menu.addSeparator()
+
+        # misc actions
+        ctx_menu.addAction(self._action_refresh_metadata)
+
+        # return the completed context menu
+        return ctx_menu
+
+    def _process_ctx_menu_action(self, action):
+        """
+        Process the given (user selected) context menu action.
+        """
+
+        # a right click menu action was not clicked. nothing else to do
+        if not action:
+            return
+
+        # get the list rows currently selected in the coverage table
+        selected_rows = self._table.selectionModel().selectedRows()
+        if len(selected_rows) == 0:
+            return
+
+        #
+        # check the universal actions first
+        #
+
+        # TODO: ...
+
+        #
+        # the following actions are only applicable if there is only one
+        # row/function selected in the coverage overview table. don't
+        # bother to check multi-function selections against these
+        #
+
+        if len(selected_rows) != 1:
+            return
+
+        # unpack the single QModelIndex
+        index = selected_rows[0]
+
+        # get the function address from the table row
+        address_index = self._model.index(index.row(), FUNC_ADDR)
+        function_address = self._model.data(address_index, QtCore.Qt.DisplayRole)
+
+        # handle the 'Rename' action
+        if action == self._action_rename:
+            rename_function(int(function_address, 16))
+
+        # handle the 'Copy name' action
+        elif action == self._action_copy_name:
+            name_index = self._model.index(index.row(), FUNC_NAME)
+            function_name = self._model.data(name_index, QtCore.Qt.DisplayRole)
+            copy_to_clipboard(function_name)
+
+        # handle the 'Copy address' action
+        elif action == self._action_copy_address:
+            copy_to_clipboard(function_address)
 
     #--------------------------------------------------------------------------
     # Refresh
