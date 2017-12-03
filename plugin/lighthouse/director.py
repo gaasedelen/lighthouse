@@ -45,7 +45,7 @@ class CoverageDirector(object):
         self._palette = palette
 
         # database metadata cache
-        self._database_metadata = DatabaseMetadata()
+        self.metadata = DatabaseMetadata()
 
         # flag to suspend/resume the automatic coverage aggregation
         self._aggregation_suspended = False
@@ -196,13 +196,6 @@ class CoverageDirector(object):
     #--------------------------------------------------------------------------
     # Properties
     #--------------------------------------------------------------------------
-
-    @property
-    def metadata(self):
-        """
-        The active database metadata cache.
-        """
-        return self._database_metadata
 
     @property
     def coverage(self):
@@ -951,7 +944,7 @@ class CoverageDirector(object):
         delta = MetadataDelta(new_metadata, self.metadata)
 
         # save the new metadata in place of the old metadata
-        self._database_metadata = new_metadata
+        self.metadata = new_metadata
 
         # finally, return the list of nodes that have changed (the delta)
         return delta
