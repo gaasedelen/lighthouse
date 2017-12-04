@@ -706,7 +706,7 @@ class Lighthouse(idaapi.plugin_t):
 
         # extract the coverage relevant to this IDB (well, the root binary)
         root_filename   = idaapi.get_root_filename()
-        coverage_blocks = coverage_data.filter_by_module(root_filename)
+        coverage_blocks = coverage_data.get_blocks_by_module(root_filename)
 
         # rebase the basic blocks
         base = idaapi.get_imagebase()
