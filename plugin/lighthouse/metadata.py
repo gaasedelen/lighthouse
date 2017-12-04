@@ -705,6 +705,23 @@ class FunctionMetadata(object):
             if node_start == node_end:
                 continue
 
+            #
+            # if the current node_start address does not fall within the
+            # original / entry 'function chunk', we want to ignore it.
+            #
+            # this check is used as an attempt to ignore the try/catch/SEH
+            # exception handling blocks that IDA 7 parses and displays in
+            # the graph view (and therefore, the flowcahrt).
+            #
+            # practically speaking, 99% of the time people aren't going to be
+            # interested in the coverage information on their exception
+            # handlers. I am skeptical that dynamic instrumentation tools
+            # would be able to collect coverage in these handlers anway...
+            #
+
+            if idaapi.get_func_chunknum(function, node_start):
+                continue
+
             # create a new metadata object for this node
             node_metadata = NodeMetadata(node_start, node_end, node_id)
 
