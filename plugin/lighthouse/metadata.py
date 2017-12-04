@@ -562,15 +562,15 @@ class DatabaseMetadata(object):
         """
 
         # we should never care about local renames (eg, loc_40804b), ignore
-        if local_name:
-            return
+        if local_name or new_name.startswith("loc_"):
+            return 0
 
         # get the function that this address falls within
         function = self.get_function(address)
 
         # if the address does not fall within a function (might happen?), ignore
         if not function:
-            return
+            return 0
 
         #
         # ensure the renamed address matches the function start before
