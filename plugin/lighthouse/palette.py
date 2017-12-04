@@ -42,14 +42,15 @@ class LighthousePalette(object):
         # IDA Views / HexRays
         #
 
-        self._ida_coverage = [0x990000, 0xC8E696] # NOTE: IDA uses BBGGRR
+        self._ida_coverage = [0x990000, 0xFFE2A8] # NOTE: IDA uses BBGGRR
 
         #
         # Composing Shell
         #
 
-        self._overview_bg       = [QtGui.QColor(30, 30, 30),    QtGui.QColor(30, 30, 30)]
-        self._composer_fg       = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+        self._overview_bg = [QtGui.QColor(20, 20, 20),    QtGui.QColor(20, 20, 20)]
+        self._composer_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
         self._valid_text        = [0x80F0FF, 0x0000FF]
         self._invalid_text      = [0xF02070, 0xFF0000]
         self._invalid_highlight = [0x990000, 0xFF0000]
