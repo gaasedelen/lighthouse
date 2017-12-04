@@ -54,6 +54,7 @@ SAMPLE_CONTENTS = \
 #------------------------------------------------------------------------------
 # Pseudo Widget Filter
 #------------------------------------------------------------------------------
+
 debugger_docked = False
 
 class EventProxy(QtCore.QObject):
@@ -121,7 +122,10 @@ class CoverageOverview(DockableShim):
             plugin_resource(os.path.join("icons", "overview.png"))
         )
 
-        # internal
+        # local reference to the director
+        self._director = director
+
+        # underlying data model for the coverage overview
         self._model = CoverageModel(director, self._widget)
 
         # pseudo widget science
@@ -130,7 +134,7 @@ class CoverageOverview(DockableShim):
         self._widget.installEventFilter(self._events)
 
         # initialize the plugin UI
-        self._ui_init(director)
+        self._ui_init()
 
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
@@ -162,7 +166,7 @@ class CoverageOverview(DockableShim):
     # Initialization - UI
     #--------------------------------------------------------------------------
 
-    def _ui_init(self, director):
+    def _ui_init(self):
         """
         Initialize UI elements.
         """
@@ -172,19 +176,19 @@ class CoverageOverview(DockableShim):
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # initialize our ui elements
-        self._ui_init_table(director)
-        self._ui_init_toolbar(director)
+        self._ui_init_table()
+        self._ui_init_toolbar()
         self._ui_init_ctx_menu_actions()
         self._ui_init_signals()
 
         # layout the populated ui just before showing it
         self._ui_layout()
 
-    def _ui_init_table(self, director):
+    def _ui_init_table(self):
         """
         Initialize the coverage table.
         """
-        palette = director._palette
+        palette = self._director._palette
         self._table = QtWidgets.QTableView()
         self._table.setFocusPolicy(QtCore.Qt.NoFocus)
         self._table.setStyleSheet(
@@ -236,13 +240,13 @@ class CoverageOverview(DockableShim):
         self._table.setSortingEnabled(True)
         hh.setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
-    def _ui_init_toolbar(self, director):
+    def _ui_init_toolbar(self):
         """
         Initialize the coverage toolbar.
         """
 
         # initialize toolbar elements
-        self._ui_init_toolbar_elements(director)
+        self._ui_init_toolbar_elements()
 
         # populate the toolbar
         self._toolbar = QtWidgets.QToolBar()
@@ -268,20 +272,20 @@ class CoverageOverview(DockableShim):
         self._toolbar.addWidget(self._hide_zero_label)
         self._toolbar.addWidget(self._hide_zero_checkbox)
 
-    def _ui_init_toolbar_elements(self, director):
+    def _ui_init_toolbar_elements(self):
         """
         Initialize the coverage toolbar UI elements.
         """
 
         # the composing shell
         self._shell = ComposingShell(
-            director,
+            self._director,
             weakref.proxy(self._model),
             self._table
         )
 
         # the coverage combobox
-        self._combobox = CoverageComboBox(director)
+        self._combobox = CoverageComboBox(self._director)
 
         # the checkbox to hide 0% coverage entries
         self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
@@ -533,7 +537,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         super(CoverageModel, self).__init__(parent)
         self._blank_coverage = FunctionCoverage(idaapi.BADADDR)
 
-        # the data source
+        # local reference to the director
         self._director = director
 
         # mapping to correlate a given row in the table to its function coverage
