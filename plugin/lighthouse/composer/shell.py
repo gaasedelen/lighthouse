@@ -434,10 +434,15 @@ class ComposingShell(QtWidgets.QWidget):
         # the user string did not translate to a parsable hex number (address)
         # or the function it falls within could not be found in the director.
         #
-        # attempt to convert the user input from a function name eg
-        # 'sub_1400016F0' to a function address validated by the director
+        # attempt to convert the user input from a function name, eg 'main',
+        # or 'sub_1400016F0' to a function address validated by the director.
         #
 
+        # special case to make 'sub_*' prefixed user inputs case insensitive
+        if text.lower().startswith("sub_"):
+            text = "sub_" + text[4:].upper()
+
+        # look up the text function name within the director's metadata
         function_metadata = self._director.metadata.get_function_by_name(text)
         if function_metadata:
             return function_metadata.address
