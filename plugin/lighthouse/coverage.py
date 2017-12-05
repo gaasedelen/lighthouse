@@ -124,6 +124,7 @@ class DatabaseCoverage(object):
 
         self.nodes     = {}
         self.functions = {}
+        self.instruction_percent = 0.0
 
         #
         # we instantiate a single weakref of ourself (the DatbaseMapping
@@ -150,23 +151,6 @@ class DatabaseCoverage(object):
         The instruction-level coverage bitmap/mask of this mapping.
         """
         return self._hitmap.viewkeys()
-
-    @property
-    def instruction_percent(self):
-        """
-        The database coverage % by instructions executed in all defined functions.
-        """
-        num_funcs = len(self._metadata.functions)
-
-        # avoid a zero division error
-        if not num_funcs:
-            return 0
-
-        # sum all the function coverage %'s
-        func_sum = sum(f.instruction_percent for f in self.functions.itervalues())
-
-        # return the average function coverage % aka 'the database coverage %'
-        return func_sum / num_funcs
 
     #--------------------------------------------------------------------------
     # Metadata Population
@@ -214,6 +198,7 @@ class DatabaseCoverage(object):
         """
         self._finalize_nodes(dirty_nodes)
         self._finalize_functions(dirty_functions)
+        self._finalize_instruction_percent()
 
     def _finalize_nodes(self, dirty_nodes):
         """
@@ -228,6 +213,23 @@ class DatabaseCoverage(object):
         """
         for function_coverage in dirty_functions.itervalues():
             function_coverage.finalize()
+
+    def _finalize_instruction_percent(self):
+        """
+        Finalize the database coverage % by instructions executed in all defined functions.
+        """
+
+        # sum all the instructions in the database metadata
+        total = sum(f.instruction_count for f in self._metadata.functions.itervalues())
+        if not total:
+            self.instruction_percent = 0.0
+            return
+
+        # sum all the instructions executed by the coverage
+        executed = sum(f.instructions_executed for f in self.functions.itervalues())
+
+        # return the average function coverage % aka 'the database coverage %'
+        self.instruction_percent = float(executed) / total
 
     #--------------------------------------------------------------------------
     # Data Operations
