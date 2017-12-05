@@ -4,8 +4,10 @@ import logging
 import threading
 import collections
 
+import idaapi # TODO: remove in v0.8
+
 from lighthouse.util import *
-from lighthouse.metadata import DatabaseMetadata, MetadataDelta
+from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.composer.parser import *
 
@@ -941,10 +943,11 @@ class CoverageDirector(object):
         logger.debug("Refreshing the CoverageDirector")
 
         # (re)build our metadata cache of the underlying database
-        delta = self._refresh_database_metadata()
+        future = self.refresh_metadata(metadata_progress, True)
+        await_future(future)
 
         # (re)map each set of loaded coverage data to the database
-        self._refresh_database_coverage(delta)
+        self._refresh_database_coverage()
 
     def refresh_metadata(self, progress_callback=None, force=False):
         """
@@ -981,37 +984,19 @@ class CoverageDirector(object):
         # return the channel that will carry asynchronous result
         return result_queue
 
-    def _refresh_database_metadata(self):
-        """
-        Refresh the database metadata cache utilized by the director.
-
-        NOTE: this is currently unused.
-        """
-        logger.debug("Refreshing database metadata")
-
-        # compute the metadata for the current state of the database
-        new_metadata = DatabaseMetadata()
-        new_metadata.build_metadata()
-
-        # compute the delta between the old metadata, and latest
-        delta = MetadataDelta(new_metadata, self.metadata)
-
-        # save the new metadata in place of the old metadata
-        self.metadata = new_metadata
-
-        # finally, return the list of nodes that have changed (the delta)
-        return delta
-
-    def _refresh_database_coverage(self, delta):
+    def _refresh_database_coverage(self):
         """
         Refresh all the database coverage mappings managed by the director.
         """
         logger.debug("Refreshing database coverage mappings")
 
-        for name in self.all_names:
+        for i, name in enumerate(self.all_names, 1):
             logger.debug(" - %s" % name)
+            idaapi.replace_wait_box(
+                "Refreshing coverage mapping %u/%u" % (i, len(self.all_names))
+            )
             coverage = self.get_coverage(name)
-            coverage.update_metadata(self.metadata, delta)
+            coverage.update_metadata(self.metadata)
             coverage.refresh()
 
     def _refresh_aggregate(self):

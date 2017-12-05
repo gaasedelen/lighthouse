@@ -8,7 +8,7 @@ import idaapi
 from lighthouse.util import *
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
-from lighthouse.metadata import FunctionMetadata
+from lighthouse.metadata import FunctionMetadata, metadata_progress
 from lighthouse.coverage import FunctionCoverage
 
 logger = logging.getLogger("Lighthouse.UI.Overview")
@@ -335,8 +335,7 @@ class CoverageOverview(DockableShim):
         self._action_clear_prefix = QtWidgets.QAction("Clear prefixes", None)
 
         # misc actions
-        self._action_refresh_metadata = QtWidgets.QAction(
-            "Refresh metadata (slow)", None)
+        self._action_refresh_metadata = QtWidgets.QAction("Full refresh (slow)", None)
 
     def _ui_init_signals(self):
         """
@@ -481,7 +480,16 @@ class CoverageOverview(DockableShim):
 
         # handle the 'Refresh metadata' action
         elif action == self._action_refresh_metadata:
-            print "TODO: refresh metadata"
+
+            idaapi.show_wait_box("Building database metadata...")
+            self._director.refresh()
+
+            # ensure the table's model gets refreshed
+            idaapi.replace_wait_box("Refreshing Coverage Overview...")
+            self.refresh()
+
+            # all done
+            idaapi.hide_wait_box()
 
         #
         # the following actions are only applicable if there is only one
@@ -647,8 +655,27 @@ class CoverageModel(QtCore.QAbstractTableModel):
             column = index.column()
 
             # lookup the function info for this row
-            function_address  = self.row2func[index.row()]
-            function_metadata = self._director.metadata.functions[function_address]
+            try:
+                function_address  = self.row2func[index.row()]
+                function_metadata = self._director.metadata.functions[function_address]
+
+            #
+            # if we hit a KeyError, it is probably because the database metadata
+            # is being refreshed and the model (this object) has yet to be
+            # updated.
+            #
+            # this should only ever happen as a result of the user using the
+            # right click 'Refresh metadata' action. And even then, only when
+            # a function they undefined in the IDB is visible in the coverage
+            # overview table view.
+            #
+            # In theory, the table should get refreshed *after* the metadata
+            # refresh completes. So for now, we simply return return the filler
+            # string '?'
+            #
+
+            except KeyError:
+                return "?"
 
             #
             # remember, if a function does *not* have coverage data, it will

@@ -163,10 +163,7 @@ class DatabaseCoverage(object):
 
         # install the new metadata
         self._metadata = weakref.proxy(metadata)
-
-        # unmap all the coverage affected by the metadata delta
-        if delta:
-            self._unmap_delta(delta)
+        self.unmap_all()
 
     def refresh(self):
         """

@@ -303,6 +303,15 @@ class DatabaseMetadata(object):
 
             removed_functions = self.functions.viewkeys() - set(function_addresses)
             for function_address in removed_functions:
+
+                # the function to delete
+                function_metadata = self.functions[function_address]
+
+                # delete all node metadata owned by this function from the db list
+                for node in function_metadata.nodes.itervalues():
+                    del self.nodes[node.address]
+
+                # now delete the function metadata from the db list
                 del self.functions[function_address]
 
             # schedule a deferred lookup list refresh if we deleted any functions
@@ -428,6 +437,7 @@ class DatabaseMetadata(object):
             return False
 
         # update the lookup lists
+        self._last_node = []
         self._name2func = { f.name: f.address for f in self.functions.itervalues() }
         self._node_addresses = sorted(self.nodes.keys())
         self._function_addresses = sorted(self.functions.keys())
