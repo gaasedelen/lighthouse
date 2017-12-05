@@ -268,12 +268,12 @@ def main():
             if target == -1:
                 target = p.pid
             else:
-                print('[-] Warning: multiple processes on device match \'%s\'' +
-                    ', using pid: %d' % (args.target, target))
+                print('[-] Warning: multiple processes on device match '
+                      '\'%s\', using pid: %d' % (args.target, target))
 
     if target == -1:
-        print('[-] Error: could not find process matching \'%s\'' +
-            ' on device \'%s\'' % (args.target, device.id))
+        print('[-] Error: could not find process matching '
+              '\'%s\' on device \'%s\'' % (args.target, device.id))
         sys.exit(1)
 
     whitelist_modules = ['all']
