@@ -134,7 +134,7 @@ static VOID OnImageLoad(IMG img, VOID* v)
     ADDRINT low = IMG_LowAddress(img);
     ADDRINT high = IMG_HighAddress(img);
 
-    printf("Loaded image: 0x%.16lx:0x%.16lx -> %s\n", low, high, img_name.c_str());
+    printf("Loaded image: %p:%p -> %s\n", (void *)low, (void *)high, img_name.c_str());
 
     // Save the loaded image with its original full name/path.
     PIN_GetLock(&context.m_loaded_images_lock, 1);
@@ -204,8 +204,8 @@ static VOID OnFini(INT32 code, VOID* v)
     // We don't supply entry, checksum and, timestamp.
     for (unsigned i = 0; i < context.m_loaded_images.size(); i++) {
         const auto& image = context.m_loaded_images[i];
-        context.m_trace->write_string("%2u, 0x%.16llx, 0x%.16llx, 0x0000000000000000, 0x00000000, 0x00000000, %s\n",
-            i, image.low_, image.high_, image.name_.c_str());
+        context.m_trace->write_string("%2u, %p, %p, 0x0000000000000000, 0x00000000, 0x00000000, %s\n",
+            i, (void *)image.low_, (void *)image.high_, image.name_.c_str());
     }
 
     // Add non terminated threads to the list of terminated threads.
@@ -239,8 +239,8 @@ static VOID OnFini(INT32 code, VOID* v)
             if (it == context.m_loaded_images.end())
                 continue;
 
-            tmp.id = std::distance(context.m_loaded_images.begin(), it);
-            tmp.start = address - it->low_;
+            tmp.id = (uint16_t)std::distance(context.m_loaded_images.begin(), it);
+            tmp.start = (uint32_t)(address - it->low_);
             tmp.size = data->m_block_size[address];
 
             context.m_trace->write_binary(&tmp, sizeof(tmp));
