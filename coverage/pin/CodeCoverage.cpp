@@ -161,7 +161,7 @@ static VOID OnImageUnload(IMG img, VOID* v)
 }
 
 // Basic block hit event handler.
-static VOID OnBasicBlockHit(THREADID tid, ADDRINT addr, UINT32 size, VOID* v)
+static VOID PIN_FAST_ANALYSIS_CALL OnBasicBlockHit(THREADID tid, ADDRINT addr, UINT32 size, VOID* v)
 {
     auto& context = *reinterpret_cast<ToolContext*>(v);
     ThreadData* data = context.GetThreadLocalData(tid);
@@ -184,6 +184,7 @@ static VOID OnTrace(TRACE trace, VOID* v)
     for (; BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
         addr = BBL_Address(bbl);
         BBL_InsertCall(bbl, IPOINT_ANYWHERE, (AFUNPTR)OnBasicBlockHit,
+            IARG_FAST_ANALYSIS_CALL,
             IARG_THREAD_ID,
             IARG_ADDRINT, addr,
             IARG_UINT32, BBL_Size(bbl),
