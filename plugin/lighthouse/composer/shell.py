@@ -29,6 +29,10 @@ class ComposingShell(QtWidgets.QWidget):
         self._model = model
         self._table = table
 
+        # command / input
+        self._search_text = ""
+        self._command_timer = QtCore.QTimer()
+
         # the last known user AST
         self._last_ast = None
 
@@ -88,7 +92,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # configure the shell background & default text color
         palette = self._line.palette()
-        palette.setColor(QtGui.QPalette.Base, self._palette.composer_bg)
+        palette.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
         palette.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
         palette.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
         self._line.setPalette(palette)
@@ -299,9 +303,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Execute the search semantics.
         """
-
-        # the given text is a real search query, apply it as a filter now
-        self._model.filter_string(text[1:])
+        self._search_text = text[1:]
 
         #
         # if the user input is only "/" (starting to type something), hint
@@ -312,14 +314,47 @@ class ComposingShell(QtWidgets.QWidget):
             self._line_label.setText("Search")
             return
 
+        #
+        # stop an existing command timer if there is one running. we are about
+        # to schedule a new one or execute inline. so the old/deferred command
+        # is no longer needed.
+        #
+
+        self._command_timer.stop()
+
+        #
+        # if the functions list is HUGE, we want to defer the filtering until
+        # we think the user has stopped typing as each pass may take awhile
+        # to compute (while blocking the main thread...)
+        #
+
+        if self._director.metadata.is_big():
+            self._command_timer = singleshot(1000, self._execute_search_internal)
+            self._command_timer.start()
+
+        #
+        # the database is not *massive*, let's execute the search immediately
+        #
+
+        else:
+            self._execute_search_internal()
+
+        # done
+        return
+
+    def _execute_search_internal(self):
+        """
+        Execute the actual search filtering & coverage metrics.
+        """
+
+        # the given text is a real search query, apply it as a filter now
+        self._model.filter_string(self._search_text)
+
         # compute coverage % of the visible (filtered) results
         percent = self._model.get_modeled_coverage_percent()
 
         # show the coverage % of the search results in the shell label
         self._line_label.setText("%1.2f%%" % percent)
-
-        # done
-        return
 
     def _highlight_search(self):
         """
@@ -399,10 +434,15 @@ class ComposingShell(QtWidgets.QWidget):
         # the user string did not translate to a parsable hex number (address)
         # or the function it falls within could not be found in the director.
         #
-        # attempt to convert the user input from a function name eg
-        # 'sub_1400016F0' to a function address validated by the director
+        # attempt to convert the user input from a function name, eg 'main',
+        # or 'sub_1400016F0' to a function address validated by the director.
         #
 
+        # special case to make 'sub_*' prefixed user inputs case insensitive
+        if text.lower().startswith("sub_"):
+            text = "sub_" + text[4:].upper()
+
+        # look up the text function name within the director's metadata
         function_metadata = self._director.metadata.get_function_by_name(text)
         if function_metadata:
             return function_metadata.address
@@ -547,14 +587,14 @@ class ComposingShell(QtWidgets.QWidget):
         # composition name
         #
 
-        coverage_name = idaapi.askstr(
-            0,
-            str("COMP_%s" % self.text),
-            "Save composition as..."
+        ok, coverage_name = prompt_string(
+            "Composition Name:",
+            "Please enter a name for this composition",
+            "COMP_%s" % self.text
         )
 
         # the user did not enter a coverage name or hit cancel - abort the save
-        if not coverage_name:
+        if not (ok and coverage_name):
             return
 
         #

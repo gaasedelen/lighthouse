@@ -20,7 +20,7 @@ if not logging_started():
 # IDA Plugin
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.6.1"
+PLUGIN_VERSION = "0.7.0"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2017"
 
@@ -392,7 +392,7 @@ class Lighthouse(idaapi.plugin_t):
         # database metadata while the user will be busy selecting coverage files.
         #
 
-        future = self.director.metadata.refresh(progress_callback=metadata_progress)
+        future = self.director.refresh_metadata(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
@@ -497,7 +497,7 @@ class Lighthouse(idaapi.plugin_t):
         # database metadata while the user will be busy selecting coverage files.
         #
 
-        future = self.director.metadata.refresh(progress_callback=metadata_progress)
+        future = self.director.refresh_metadata(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
@@ -706,7 +706,7 @@ class Lighthouse(idaapi.plugin_t):
 
         # extract the coverage relevant to this IDB (well, the root binary)
         root_filename   = idaapi.get_root_filename()
-        coverage_blocks = coverage_data.filter_by_module(root_filename)
+        coverage_blocks = coverage_data.get_blocks_by_module(root_filename)
 
         # rebase the basic blocks
         base = idaapi.get_imagebase()

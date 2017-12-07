@@ -40,20 +40,57 @@ class DrcovData(object):
     # Public
     #--------------------------------------------------------------------------
 
-    def filter_by_module(self, module_name):
+    def get_module(self, module_name, fuzzy=True):
+        """
+        Get a module by its name.
+
+        Note that this is a 'fuzzy' lookup by default.
+        """
+
+        # fuzzy module name lookup
+        if fuzzy:
+
+            # attempt lookup using case-insensitive filename
+            for module in self.modules:
+                if module_name.lower() in module.filename.lower():
+                    return module
+
+            #
+            # no hits yet... let's cleave the extension from the given module
+            # name (if present) and try again
+            #
+
+            if "." in module_name:
+                module_name = module_name.split(".")[0]
+
+            # attempt lookup using case-insensitive filename without extension
+            for module in self.modules:
+                if module_name.lower() in module.filename.lower():
+                    return module
+
+        # strict lookup
+        else:
+            for module in self.modules:
+                if module_name == module.filename:
+                    return module
+
+        # no matching module exists
+        return None
+
+    def get_blocks_by_module(self, module_name):
         """
         Extract coverage blocks pertaining to the named module.
         """
 
         # locate the coverage that matches the given module_name
-        for module in self.modules:
-            if module.filename.lower() == module_name.lower():
-                mod_id = module.id
-                break
+        module = self.get_module(module_name)
 
-        # failed to find a module that matches the given name, bail
-        else:
+        # if we fail to find a module that matches the given name, bail
+        if not module:
             raise ValueError("Failed to find module '%s' in coverage data" % module_name)
+
+        # extract module id for speed
+        mod_id = module.id
 
         # loop through the coverage data and filter out data for only this module
         coverage_blocks = [(bb.start, bb.size) for bb in self.basic_blocks if bb.mod_id == mod_id]
@@ -357,5 +394,3 @@ if __name__ == "__main__":
     x = DrcovData(argv[1])
     for bb in x.basic_blocks:
         print "0x%08x" % bb.start
-
-
