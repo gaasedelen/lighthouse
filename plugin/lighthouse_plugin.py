@@ -20,7 +20,7 @@ if not logging_started():
 # IDA Plugin
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.6.1"
+PLUGIN_VERSION = "0.7.0"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2017"
 
