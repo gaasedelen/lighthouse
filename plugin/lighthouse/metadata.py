@@ -273,7 +273,7 @@ class DatabaseMetadata(object):
         """
         Return an size classification of the database / metadata.
         """
-        return len(self.functions) > 100000
+        return len(self.functions) > 50000
 
     #--------------------------------------------------------------------------
     # Refresh
