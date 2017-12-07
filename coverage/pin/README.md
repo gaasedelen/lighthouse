@@ -68,7 +68,7 @@ The resulting binaries will be labaled based on their architecture (eg, 64 is th
 * CodeCoverage.dll
 * CodeCoverage64.dll
 
-Compiling a pintool on Windows can be more arduous. Because of this, we have provided compiled binaries for Windows on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.6.0) page. 
+Compiling a pintool on Windows can be more arduous. Because of this, we have provided compiled binaries for Windows on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.7.0) page. 
 
 # Usage
 

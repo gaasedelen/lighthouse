@@ -25,7 +25,7 @@ python frida-drcov.py <process name | pid>
 Here is an example of us instrumenting the running process `bb-bench`.
 
 ```
-$ sudo python ./frida-drcov.py bb-bench
+$ sudo python frida-drcov.py bb-bench
 [+] Got module info
 Starting to stalk threads...
 Stalking thread 775
