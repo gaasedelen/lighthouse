@@ -19,14 +19,13 @@ class ComposingShell(QtWidgets.QWidget):
     independent, but obviously must communicate with the director.
     """
 
-    def __init__(self, director, model, table=None):
+    def __init__(self, director, table):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
 
         # external entities
         self._director = director
         self._palette = director._palette
-        self._model = model
         self._table = table
 
         # command / input
@@ -137,7 +136,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._director.coverage_modified(self._internal_refresh)
 
         # register for cues from the model
-        self._model.layoutChanged.connect(self._ui_shell_text_changed)
+        self._table._model.layoutChanged.connect(self._ui_shell_text_changed)
 
     def _ui_layout(self):
         """
@@ -243,7 +242,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # not a search query clear any lingering filters for it
         else:
-            self._model.filter_string("")
+            self._table._model.filter_string("")
 
         #
         # a Jump, eg '0x804010a' or 'sub_1400016F0'
@@ -348,10 +347,10 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # the given text is a real search query, apply it as a filter now
-        self._model.filter_string(self._search_text)
+        self._table._model.filter_string(self._search_text)
 
         # compute coverage % of the visible (filtered) results
-        percent = self._model.get_modeled_coverage_percent()
+        percent = self._table._model.get_modeled_coverage_percent()
 
         # show the coverage % of the search results in the shell label
         self._line_label.setText("%1.2f%%" % percent)
@@ -368,7 +367,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._color_clear()
 
         # color search based on if there are any matching results
-        if self._model.rowCount():
+        if self._table._model.rowCount():
             self._color_text(self._palette.valid_text, start=1)
         else:
             self._color_text(self._palette.invalid_text, start=1)
@@ -466,7 +465,7 @@ class ComposingShell(QtWidgets.QWidget):
         assert function_address
 
         # select the function entry in the coverage overview table
-        self._table.selectRow(self._model.func2row[function_address])
+        self._table.selectRow(self._table._model.func2row[function_address])
         self._table.scrollTo(
             self._table.currentIndex(),
             QtWidgets.QAbstractItemView.PositionAtCenter
