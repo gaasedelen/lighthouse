@@ -329,6 +329,11 @@ class CoverageOverview(DockableShim):
         self._action_rename = QtWidgets.QAction("Rename", None)
         self._action_copy_name = QtWidgets.QAction("Copy name", None)
         self._action_copy_address = QtWidgets.QAction("Copy address", None)
+        self._action_copy_name_and_address = QtWidgets.QAction("Copy name and address", None)
+
+        self._action_copy_names = QtWidgets.QAction("Copy names", None)
+        self._action_copy_addresses = QtWidgets.QAction("Copy addresses", None)
+        self._action_copy_names_and_addresses = QtWidgets.QAction("Copy names and addresses", None)
 
         # function prefixing actions
         self._action_prefix = QtWidgets.QAction("Prefix selected functions", None)
@@ -419,16 +424,21 @@ class CoverageOverview(DockableShim):
         # the context menu we will dynamically populate
         ctx_menu = QtWidgets.QMenu()
 
-        #
-        # if there is only one table entry (a function) selected, then
-        # show the menu actions available for a single function such as
-        # copy function name, address, or renaming the function.
-        #
-
         if len(selected_rows) == 1:
+            # if there is only one table entry (a function) selected, then
+            # show the menu actions available for a single function such as
+            # copy function name, address, or renaming the function.
             ctx_menu.addAction(self._action_rename)
             ctx_menu.addAction(self._action_copy_name)
             ctx_menu.addAction(self._action_copy_address)
+            ctx_menu.addAction(self._action_copy_name_and_address)
+            ctx_menu.addSeparator()
+        else:
+            # if multiple functions are selected then show actions  available
+            # for multiple functions.
+            ctx_menu.addAction(self._action_copy_names)
+            ctx_menu.addAction(self._action_copy_addresses)
+            ctx_menu.addAction(self._action_copy_names_and_addresses)
             ctx_menu.addSeparator()
 
         # function prefixing actions
@@ -466,10 +476,6 @@ class CoverageOverview(DockableShim):
             address = self._model.row2func[index.row()]
             function_addresses.append(address)
 
-        #
-        # check the universal actions first
-        #
-
         # handle the 'Prefix functions' action
         if action == self._action_prefix:
             gui_prefix_functions(function_addresses)
@@ -491,32 +497,36 @@ class CoverageOverview(DockableShim):
             # all done
             idaapi.hide_wait_box()
 
-        #
-        # the following actions are only applicable if there is only one
-        # row/function selected in the coverage overview table. don't
-        # bother to check multi-function selections against these
-        #
+        # handle the 'Rename' action (only applies to a single function)
+        if action == self._action_rename and len(selected_rows) == 1:
+            gui_rename_function(function_addresses[0])
 
-        if len(selected_rows) != 1:
-            return
+        # handle the 'Copy name and address' or 'Copy names and addresses' action
+        elif action in [self._action_copy_name_and_address, self._action_copy_names_and_addresses]:
+            function_name_and_address = ""
+            for idx, val in enumerate(selected_rows):
+                name_index = self._model.index(val.row(), FUNC_NAME)
+                function_name_and_address += "0x%X" % function_addresses[idx]
+                function_name_and_address += " "
+                function_name_and_address += self._model.data(name_index, QtCore.Qt.DisplayRole)
+                function_name_and_address += "\n"
+            copy_to_clipboard(function_name_and_address)
 
-        # unpack the single QModelIndex
-        index = selected_rows[0]
-        function_address = function_addresses[0]
-
-        # handle the 'Rename' action
-        if action == self._action_rename:
-            gui_rename_function(function_address)
-
-        # handle the 'Copy name' action
-        elif action == self._action_copy_name:
-            name_index = self._model.index(index.row(), FUNC_NAME)
-            function_name = self._model.data(name_index, QtCore.Qt.DisplayRole)
+        # handle the 'Copy name' or 'Copy names' action
+        elif action in [self._action_copy_name, self._action_copy_names]:
+            function_name = ""
+            for val in selected_rows:
+                name_index = self._model.index(val.row(), FUNC_NAME)
+                function_name += self._model.data(name_index, QtCore.Qt.DisplayRole)
+                function_name += "\n"
             copy_to_clipboard(function_name)
 
-        # handle the 'Copy address' action
-        elif action == self._action_copy_address:
-            address_string = "0x%X" % function_address
+        # handle the 'Copy address' or 'Copy addresses' action
+        elif action in [self._action_copy_address, self._action_copy_addresses]:
+            address_string = ""
+            for val in function_addresses:
+                address_string += "0x%X" % val
+                address_string += "\n"
             copy_to_clipboard(address_string)
 
     #--------------------------------------------------------------------------
