@@ -195,8 +195,8 @@ class CoverageDirector(object):
         self._ast_queue.put(None)
         self._composition_worker.join()
 
-        # stop any ongoing metadata refresh
-        self.metadata.abort_refresh(join=True)
+	# spin down the live metadata object
+	self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # Properties

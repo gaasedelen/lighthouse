@@ -92,6 +92,13 @@ class DatabaseMetadata(object):
         self._refresh_worker = None
         self._stop_threads = False
 
+    def terminate(self):
+        """
+        Cleanup & terminate the metadata object.
+        """
+        self.abort_refresh(join=True)
+        self._rename_hooks.unhook()
+
     #--------------------------------------------------------------------------
     # Providers
     #--------------------------------------------------------------------------
