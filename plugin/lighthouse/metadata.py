@@ -92,6 +92,13 @@ class DatabaseMetadata(object):
         self._refresh_worker = None
         self._stop_threads = False
 
+    def terminate(self):
+        """
+        Cleanup & terminate the metadata object.
+        """
+        self.abort_refresh(join=True)
+        self._rename_hooks.unhook()
+
     #--------------------------------------------------------------------------
     # Providers
     #--------------------------------------------------------------------------
@@ -726,11 +733,18 @@ class FunctionMetadata(object):
             # practically speaking, 99% of the time people aren't going to be
             # interested in the coverage information on their exception
             # handlers. I am skeptical that dynamic instrumentation tools
-            # would be able to collect coverage in these handlers anway...
+            # would be able to collect coverage in these handlers anyway...
             #
-
+            # @x9090:
+            # This will cause some false negatives on some valid blocks/nodes
+            # within a function that are optimized by the compiler because
+            # these blocks/nodes are very unlikely to be executed frequently,
+            # as determined by compile-time analysis
+            #
             if idaapi.get_func_chunknum(function, node_start):
-                continue
+                disasm = idaapi.tag_remove(idaapi.generate_disasm_line(node_start, idaapi.GENDSM_MULTI_LINE))
+                if ("Exception handler" or "Exception filter" or "ms_exc.old_esp") in disasm:
+                    continue
 
             # create a new metadata object for this node
             node_metadata = NodeMetadata(node_start, node_end, node_id)
