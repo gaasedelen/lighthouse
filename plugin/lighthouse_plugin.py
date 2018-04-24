@@ -20,7 +20,7 @@ if not logging_started():
 # IDA Plugin
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.7.1"
+PLUGIN_VERSION = "0.7.2"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2017"
 
@@ -684,7 +684,8 @@ class Lighthouse(idaapi.plugin_t):
             # catch all for parse errors / bad input / malformed files
             except Exception as e:
                 lmsg("Failed to load coverage %s" % filename)
-                logger.exception("Error details:")
+                lmsg(" - Error: %s" % str(e))
+                logger.exception(" - Traceback:")
                 continue
 
             # save the loaded coverage data to the output list
