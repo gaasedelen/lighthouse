@@ -40,20 +40,57 @@ class DrcovData(object):
     # Public
     #--------------------------------------------------------------------------
 
-    def filter_by_module(self, module_name):
+    def get_module(self, module_name, fuzzy=True):
+        """
+        Get a module by its name.
+
+        Note that this is a 'fuzzy' lookup by default.
+        """
+
+        # fuzzy module name lookup
+        if fuzzy:
+
+            # attempt lookup using case-insensitive filename
+            for module in self.modules:
+                if module_name.lower() in module.filename.lower():
+                    return module
+
+            #
+            # no hits yet... let's cleave the extension from the given module
+            # name (if present) and try again
+            #
+
+            if "." in module_name:
+                module_name = module_name.split(".")[0]
+
+            # attempt lookup using case-insensitive filename without extension
+            for module in self.modules:
+                if module_name.lower() in module.filename.lower():
+                    return module
+
+        # strict lookup
+        else:
+            for module in self.modules:
+                if module_name == module.filename:
+                    return module
+
+        # no matching module exists
+        return None
+
+    def get_blocks_by_module(self, module_name):
         """
         Extract coverage blocks pertaining to the named module.
         """
 
         # locate the coverage that matches the given module_name
-        for module in self.modules:
-            if module.filename.lower() == module_name.lower():
-                mod_id = module.id
-                break
+        module = self.get_module(module_name)
 
-        # failed to find a module that matches the given name, bail
-        else:
+        # if we fail to find a module that matches the given name, bail
+        if not module:
             raise ValueError("Failed to find module '%s' in coverage data" % module_name)
+
+        # extract module id for speed
+        mod_id = module.id
 
         # loop through the coverage data and filter out data for only this module
         coverage_blocks = [(bb.start, bb.size) for bb in self.basic_blocks if bb.mod_id == mod_id]
@@ -119,7 +156,7 @@ class DrcovData(object):
            eg: 'Module Table: 11'
 
         Format used in DynamoRIO v7.0.0-RC1 (and hopefully above)
-           eg: 'Module Table: version 2, count 11'
+           eg: 'Module Table: version X, count 11'
 
         """
 
@@ -154,6 +191,8 @@ class DrcovData(object):
         data_name, version = version_data.split(" ")
         #assert data_name == "version"
         self.module_table_version = int(version)
+        if not self.module_table_version in [2, 3, 4]:
+            raise ValueError("Unsupported (new?) drcov log format...")
 
         # parse module count in table from 'count Y'
         data_name, count = count_data.split(" ")
@@ -166,14 +205,26 @@ class DrcovData(object):
 
         -------------------------------------------------------------------
 
-        Format used in DynamoRIO v6.1.1 through 6.2.0
+        DynamoRIO v6.1.1, table version 1:
            eg: (Not present)
 
-        Format used in DynamoRIO v7.0.0-RC1 (and hopefully above)
+        DynamoRIO v7.0.0-RC1, table version 2:
            Windows:
              'Columns: id, base, end, entry, checksum, timestamp, path'
            Mac/Linux:
              'Columns: id, base, end, entry, path'
+
+        DynamoRIO v7.0.17594B, table version 3:
+           Windows:
+             'Columns: id, containing_id, start, end, entry, checksum, timestamp, path'
+           Mac/Linux:
+             'Columns: id, containing_id, start, end, entry, path'
+
+        DynamoRIO v7.0.17640, table version 4:
+           Windows:
+             'Columns: id, containing_id, start, end, entry, offset, checksum, timestamp, path'
+           Mac/Linux:
+             'Columns: id, containing_id, start, end, entry, offset, path'
 
         """
 
@@ -271,9 +322,19 @@ class DrcovModule(object):
         self.timestamp = 0
         self.path      = ""
         self.filename  = ""
+        self.containing_id = 0
 
         # parse the module
         self._parse_module(module_data, version)
+
+    @property
+    def start(self):
+        """
+        Compatability alias for the module base.
+
+        DrCov table version 2 --> 3 changed this paramter name base --> start.
+        """
+        return self.base
 
     def _parse_module(self, module_line, version):
         """
@@ -286,6 +347,10 @@ class DrcovModule(object):
             self._parse_module_v1(data)
         elif version == 2:
             self._parse_module_v2(data)
+        elif version == 3:
+            self._parse_module_v3(data)
+        elif version == 4:
+            self._parse_module_v4(data)
         else:
             raise ValueError("Unknown module format (v%u)" % version)
 
@@ -312,6 +377,39 @@ class DrcovModule(object):
         self.path      = str(data[-1])
         self.size      = self.end-self.base
         self.filename  = os.path.basename(self.path)
+
+    def _parse_module_v3(self, data):
+        """
+        Parse a module table v3 entry.
+        """
+        self.id            = int(data[0])
+        self.containing_id = int(data[1])
+        self.base          = int(data[2], 16)
+        self.end           = int(data[3], 16)
+        self.entry         = int(data[4], 16)
+        if len(data) == 7: # Windows Only
+            self.checksum  = int(data[5], 16)
+            self.timestamp = int(data[6], 16)
+        self.path          = str(data[-1])
+        self.size          = self.end-self.base
+        self.filename      = os.path.basename(self.path)
+
+    def _parse_module_v4(self, data):
+        """
+        Parse a module table v4 entry.
+        """
+        self.id            = int(data[0])
+        self.containing_id = int(data[1])
+        self.base          = int(data[2], 16)
+        self.end           = int(data[3], 16)
+        self.entry         = int(data[4], 16)
+        self.offset        = int(data[5], 16)
+        if len(data) == 7: # Windows Only
+            self.checksum  = int(data[6], 16)
+            self.timestamp = int(data[7], 16)
+        self.path          = str(data[-1])
+        self.size          = self.end-self.base
+        self.filename      = os.path.basename(self.path)
 
 #------------------------------------------------------------------------------
 # drcov basic block parser
@@ -357,5 +455,3 @@ if __name__ == "__main__":
     x = DrcovData(argv[1])
     for bb in x.basic_blocks:
         print "0x%08x" % bb.start
-
-

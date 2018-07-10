@@ -1,4 +1,5 @@
 import os
+import weakref
 import collections
 
 import idaapi
@@ -8,13 +9,14 @@ from .shims import using_pyqt5, QtCore, QtGui, QtWidgets
 # Plugin Util
 #------------------------------------------------------------------------------
 
+PLUGIN_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 def plugin_resource(resource_name):
     """
     Return the full path for a given plugin resource file.
     """
     return os.path.join(
-        idaapi.idadir(idaapi.PLG_SUBDIR),
-        "lighthouse",
+        PLUGIN_PATH,
         "ui",
         "resources",
         resource_name
@@ -31,6 +33,24 @@ def MonospaceFont():
     font = QtGui.QFont("Monospace")
     font.setStyleHint(QtGui.QFont.TypeWriter)
     return font
+
+def singleshot(ms, function=None):
+    """
+    A Qt Singleshot timer that can be stopped.
+    """
+    timer = QtCore.QTimer()
+    timer.setInterval(ms)
+    timer.setSingleShot(True)
+    timer.timeout.connect(function)
+    return timer
+
+def copy_to_clipboard(data):
+    """
+    Copy the given data (a string) to the user clipboard.
+    """
+    cb = QtWidgets.QApplication.clipboard()
+    cb.clear(mode=cb.Clipboard)
+    cb.setText(data, mode=cb.Clipboard)
 
 #------------------------------------------------------------------------------
 # Python Util
@@ -52,6 +72,83 @@ def hex_list(items):
     [0, 5420, 1942512] --> '[0x0, 0x152C, 0x1DA30]'
     """
     return '[{}]'.format(', '.join('0x%X' % x for x in items))
+
+def register_callback(callback_list, callback):
+    """
+    Register a given callable (callback) to the given callback_list.
+
+    Adapted from http://stackoverflow.com/a/21941670
+    """
+
+    # create a weakref callback to an object method
+    try:
+        callback_ref = weakref.ref(callback.__func__), weakref.ref(callback.__self__)
+
+    # create a wweakref callback to a stand alone function
+    except AttributeError:
+        callback_ref = weakref.ref(callback), None
+
+    # 'register' the callback
+    callback_list.append(callback_ref)
+
+def notify_callback(callback_list):
+    """
+    Notify the given list of registered callbacks.
+
+    The given list (callback_list) is a list of weakref'd callables
+    registered through the _register_callback function. To notify the
+    callbacks we simply loop through the list and call them.
+
+    This routine self-heals by removing dead callbacks for deleted objects.
+
+    Adapted from http://stackoverflow.com/a/21941670
+    """
+    cleanup = []
+
+    #
+    # loop through all the registered callbacks in the given callback_list,
+    # notifying active callbacks, and removing dead ones.
+    #
+
+    for callback_ref in callback_list:
+        callback, obj_ref = callback_ref[0](), callback_ref[1]
+
+        #
+        # if the callback is an instance method, deference the instance
+        # (an object) first to check that it is still alive
+        #
+
+        if obj_ref:
+            obj = obj_ref()
+
+            # if the object instance is gone, mark this callback for cleanup
+            if obj is None:
+                cleanup.append(callback_ref)
+                continue
+
+            # call the object instance callback
+            try:
+                callback(obj)
+
+            # assume a Qt cleanup/deletion occured
+            except RuntimeError as e:
+                cleanup.append(callback_ref)
+                continue
+
+        # if the callback is a static method...
+        else:
+
+            # if the static method is deleted, mark this callback for cleanup
+            if callback is None:
+                cleanup.append(callback_ref)
+                continue
+
+            # call the static callback
+            callback()
+
+    # remove the deleted callbacks
+    for callback_ref in cleanup:
+        callback_list.remove(callback_ref)
 
 #------------------------------------------------------------------------------
 # Coverage Util

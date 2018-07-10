@@ -13,6 +13,7 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 
 ## Releases
 
+* v0.7 -- Frida, C++ demangling, context menu, function prefixing, tweaks, bugfixes.
 * v0.6 -- Intel pintool, cyclomatic complexity, batch load, bugfixes.
 * v0.5 -- Search, IDA 7 support, many improvements, stability.
 * v0.4 -- Most compute is now asynchronous, bugfixes.
@@ -29,7 +30,7 @@ Install Lighthouse into the IDA plugins folder.
     - On MacOS, the folder is at `/Applications/IDA\ Pro\ 6.8/idaq.app/Contents/MacOS/plugins`
     - On Linux, the folder may be at `/opt/IDA/plugins/`
 
-The plugin is platform agnostic, but has only been tested on Windows for IDA 6.8 --> 7.0
+The plugin is compatible with IDA Pro 6.8 --> 7.0 on Windows, MacOS, and Linux.
 
 ## Usage
 
@@ -66,6 +67,16 @@ The Coverage Overview is a dockable widget that provides a function level view o
 </p>
 
 This table can be sorted by column, and entries can be double clicked to jump to their corresponding disassembly.
+
+## Context Menu
+
+Right clicking the table in the Coverage Overview will produce a context menu with a few basic amenities.
+
+<p align="center">
+<img alt="Lighthouse Context Menu" src="screenshots/context_menu.gif"/>
+</p>
+
+These actions can be used to quickly manipulate or interact with entries in the table.
 
 ## Coverage Composition
 
@@ -134,7 +145,7 @@ Loaded coverage data and user constructed compositions can be selected or delete
 
 Before using Lighthouse, one will need to collect code coverage data for their target binary / application.
 
-The examples below demonstrate how one can use [DynamoRIO](http://www.dynamorio.org) or [Intel Pin](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool) to collect Lighthouse compatible coverage agaainst a target. The `.log` files produced by these instrumentation tools can be loaded directly into Lighthouse.
+The examples below demonstrate how one can use [DynamoRIO](http://www.dynamorio.org), [Intel Pin](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool) or [Frida](https://www.frida.re) to collect Lighthouse compatible coverage against a target. The `.log` files produced by these instrumentation tools can be loaded directly into Lighthouse.
 
 ## DynamoRIO
 
@@ -156,7 +167,17 @@ Example usage:
 pin.exe -t CodeCoverage64.dll -- boombox.exe
 ```
 
-For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.6.0) page. MacOS and Linux users need to compile the pintool themselves following the [instructions](coverage/pin#compilation) included with the pintool for their respective platforms.
+For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.7.0) page. MacOS and Linux users need to compile the pintool themselves following the [instructions](coverage/pin#compilation) included with the pintool for their respective platforms.
+
+## Frida (Experimental)
+
+Lighthouse offers limited support for Frida based code coverage via a custom [instrumentation script](coverage/frida) contributed by [yrp](https://twitter.com/yrp604). 
+
+Example usage:
+
+```
+sudo python frida-drcov.py bb-bench
+```
 
 # Future Work
 
@@ -166,7 +187,7 @@ Time and motivation permitting, future work may include:
 * ~~Multifile/coverage support~~
 * Profiling based heatmaps/painting
 * Coverage & Profiling Treemaps
-* Additional coverage sources, trace formats, etc
+* ~~Additional coverage sources, trace formats, etc~~
 * Improved Pseudocode painting
 
 I welcome external contributions, issues, and feature requests.

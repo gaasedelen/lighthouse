@@ -46,7 +46,7 @@ def map_line2citem(decompilation_text):
     for line_number in xrange(decompilation_text.size()):
         line_text = decompilation_text[line_number].line
         line2citem[line_number] = lex_citem_indexes(line_text)
-        logger.debug("Line Text: %s" % binascii.hexlify(line_text))
+        #logger.debug("Line Text: %s" % binascii.hexlify(line_text))
 
     return line2citem
 
@@ -475,23 +475,19 @@ def execute_sync(sync_flags=idaapi.MFF_FAST):
 # IDA Async Magic
 #------------------------------------------------------------------------------
 
-@mainthread
-def await_future(future, block=True, timeout=1.0):
+def await_future(future):
     """
     This is effectively a technique I use to get around completely blocking
     IDA's mainthread while waiting for a threaded result that may need to make
-    use of the sync operators.
+    use of the execute_sync operators.
 
     Waiting for a 'future' thread result to come through via this function
     lets other execute_sync actions to slip through (at least Read, Fast).
     """
-
-    elapsed  = 0       # total time elapsed processing this future object
     interval = 0.02    # the interval which we wait for a response
-    end_time = time.time() + timeout
 
-    # run until the the future completes or the timeout elapses
-    while block or (time.time() < end_time):
+    # run until the the future arrives
+    while True:
 
         # block for a brief period to see if the future completes
         try:
@@ -503,25 +499,151 @@ def await_future(future, block=True, timeout=1.0):
         #
 
         except Queue.Empty as e:
-            logger.debug("Flushing future...")
+            pass
+
+        logger.debug("Awaiting future...")
+
+        #
+        # if we are executing (well, blocking) as the main thread, we need
+        # to flush the event loop so IDA does not hang
+        #
+
+        if idaapi.is_main_thread():
             flush_ida_sync_requests()
+
+def await_lock(lock):
+    """
+    Attempt to acquire a lock without blocking the IDA mainthread.
+
+    See await_future() for more details.
+    """
+
+    elapsed  = 0       # total time elapsed waiting for the lock
+    interval = 0.02    # the interval (in seconds) between acquire attempts
+    timeout  = 60.0    # the total time allotted to acquiring the lock
+    end_time = time.time() + timeout
+
+    # wait until the the lock is available
+    while time.time() < end_time:
+
+        #
+        # attempt to acquire the given lock without blocking (via 'False').
+        # if we succesfully aquire the lock, then we can return (success)
+        #
+
+        if lock.acquire(False):
+            logger.debug("Acquired lock!")
+            return
+
+        #
+        # the lock is not available yet. we need to sleep so we don't choke
+        # the cpu, and try to acquire the lock again next time through...
+        #
+
+        logger.debug("Awaiting lock...")
+        time.sleep(interval)
+
+        #
+        # if we are executing (well, blocking) as the main thread, we need
+        # to flush the event loop so IDA does not hang
+        #
+
+        if idaapi.is_main_thread():
+            flush_ida_sync_requests()
+
+    #
+    # we spent 60 seconds trying to acquire the lock, but never got it...
+    # to avoid hanging IDA indefinitely (or worse), we abort via signal
+    #
+
+    raise RuntimeError("Failed to acquire lock after %f seconds!" % timeout)
 
 @mainthread
 def flush_ida_sync_requests():
     """
     Flush all execute_sync requests.
-
-    NOTE: This MUST be called from the IDA Mainthread to be effective.
     """
-    if not idaapi.is_main_thread():
-        return False
 
     # this will trigger/flush the IDA UI loop
     qta = QtCore.QCoreApplication.instance()
     qta.processEvents()
 
-    # done
-    return True
+#------------------------------------------------------------------------------
+# IDA Util
+#------------------------------------------------------------------------------
+
+# taken from https://github.com/gaasedelen/prefix
+PREFIX_DEFAULT = "MyPrefix"
+PREFIX_SEPARATOR = '%'
+
+def prefix_function(function_address, prefix):
+    """
+    Prefix a function name with the given string.
+    """
+    original_name = get_function_name(function_address)
+    new_name = str(prefix) + PREFIX_SEPARATOR + str(original_name)
+
+    # rename the function with the newly prefixed name
+    idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+def prefix_functions(function_addresses, prefix):
+    """
+    Prefix a list of functions with the given string.
+    """
+    for function_address in function_addresses:
+        prefix_function(function_address, prefix)
+
+def clear_prefix(function_address):
+    """
+    Clear the prefix from a given function.
+    """
+    original_name = get_function_name(function_address)
+
+    #
+    # locate the last (rfind) prefix separator in the function name as
+    # we will want to keep everything that comes after it
+    #
+
+    i = original_name.rfind(PREFIX_SEPARATOR)
+
+    # if there is no prefix (separator), there is nothing to trim
+    if i == -1:
+        return
+
+    # trim the prefix off the original function name and discard it
+    new_name = original_name[i+1:]
+
+    # rename the function with the prefix stripped
+    idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+def clear_prefixes(function_addresses):
+    """
+    Clear the prefix from a list of given functions.
+    """
+    for function_address in function_addresses:
+        clear_prefix(function_address)
+
+def get_function_name(function_address):
+    """
+    Get a function's true name.
+    """
+
+    # get the original function name from the database
+    if using_ida7api:
+        original_name = idaapi.get_name(function_address)
+    else:
+        original_name = idaapi.get_true_name(idaapi.BADADDR, function_address)
+
+    # sanity check
+    if original_name == None:
+        raise ValueError("Invalid function address")
+
+    # return the function name
+    return original_name
+
+#------------------------------------------------------------------------------
+# Interactive
+#------------------------------------------------------------------------------
 
 @mainthread
 def prompt_string(label, title, default=""):
@@ -541,5 +663,50 @@ def prompt_string(label, title, default=""):
         dlg.fontMetrics().averageCharWidth()*10
     )
     ok = dlg.exec_()
-    text = dlg.textValue()
+    text = str(dlg.textValue())
     return (ok, text)
+
+@mainthread
+def gui_rename_function(function_address):
+    """
+    Interactive rename of a function in the IDB.
+    """
+    original_name = get_function_name(function_address)
+
+    # prompt the user for a new function name
+    ok, new_name = prompt_string(
+        "Please enter function name",
+        "Rename Function",
+        original_name
+       )
+
+    #
+    # if the user clicked cancel, or the name they entered
+    # is identical to the original, there's nothing to do
+    #
+
+    if not (ok or new_name != original_name):
+        return
+
+    # rename the function
+    idaapi.set_name(function_address, new_name, idaapi.SN_NOCHECK)
+
+@mainthread
+def gui_prefix_functions(function_addresses):
+    """
+    Interactive prefixing of functions in the IDB.
+    """
+
+    # prompt the user for a new function name
+    ok, prefix = prompt_string(
+        "Please enter a function prefix",
+        "Prefix Function(s)",
+        PREFIX_DEFAULT
+       )
+
+    # bail if the user clicked cancel or failed to enter a prefix
+    if not (ok and prefix):
+        return
+
+    # prefix the given functions with the user specified prefix
+    prefix_functions(function_addresses, prefix)

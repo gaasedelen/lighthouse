@@ -15,8 +15,11 @@ Follow the build instructions below for your respective platform.
 On MacOS or Liunux, one can compile the pintool using the following commands.
 
 ```
-cd ~/lighthouse/coverage/pin   # Location of this repo / pintool source
-export PIN_ROOT=~/pin          # Location where you extracted Pin
+# Location of this repo / pintool source
+cd ~/lighthouse/coverage/pin
+
+# Location where you extracted Pin
+export PIN_ROOT=~/pin
 export PATH=$PATH:$PIN_ROOT
 make
 ```
@@ -36,8 +39,12 @@ Launch a command prompt and build the pintool with the following commands.
 
 ```
 "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86
-cd C:\Users\user\lighthouse\coverage\pin   # Location of this repo / pintool source
-set PIN_ROOT=C:\pin                        # Location where you extracted Pin
+
+REM Location of this repo / pintool source
+cd C:\Users\user\lighthouse\coverage\pin
+
+REM Location where you extracted Pin
+set PIN_ROOT=C:\pin
 set PATH=%PATH%;%PIN_ROOT%
 build-x86.bat
 ```
@@ -46,8 +53,12 @@ build-x86.bat
 
 ```
 "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86_amd64
-cd C:\Users\user\lighthouse\coverage\pin   # Location of this repo / pintool source
-set PIN_ROOT=C:\pin                        # Location where you extracted Pin
+
+REM Location of this repo / pintool source
+cd C:\Users\user\lighthouse\coverage\pin
+
+REM Location where you extracted Pin
+set PIN_ROOT=C:\pin
 set PATH=%PATH%;%PIN_ROOT%
 build-x64.bat
 ```
@@ -57,7 +68,7 @@ The resulting binaries will be labaled based on their architecture (eg, 64 is th
 * CodeCoverage.dll
 * CodeCoverage64.dll
 
-Compiling a pintool on Windows can be more arduous. Because of this, we have provided compiled binaries for Windows on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.6.0) page. 
+Compiling a pintool on Windows can be more arduous. Because of this, we have provided compiled binaries for Windows on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.7.0) page. 
 
 # Usage
 

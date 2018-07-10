@@ -1,12 +1,13 @@
 import time
 import string
 import logging
-import weakref
 import threading
 import collections
 
+import idaapi # TODO: remove in v0.8
+
 from lighthouse.util import *
-from lighthouse.metadata import DatabaseMetadata, MetadataDelta
+from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.composer.parser import *
 
@@ -46,7 +47,7 @@ class CoverageDirector(object):
         self._palette = palette
 
         # database metadata cache
-        self._database_metadata = DatabaseMetadata()
+        self.metadata = DatabaseMetadata()
 
         # flag to suspend/resume the automatic coverage aggregation
         self._aggregation_suspended = False
@@ -154,6 +155,7 @@ class CoverageDirector(object):
         #----------------------------------------------------------------------
 
         self._ast_queue = Queue.Queue()
+        self._composition_lock = threading.Lock()
         self._composition_cache = CompositionCache()
 
         self._composition_worker = threading.Thread(
@@ -171,14 +173,18 @@ class CoverageDirector(object):
         #   events or changes to the underlying data they consume.
         #
         #   Callbacks provide a way for us to notify any interested parties
-        #   of these key events.
+        #   of these key events. Below are lists of registered notification
+        #   callbacks. see 'Callbacks' section below for more info.
         #
 
-        # lists of registered notification callbacks, see 'Callbacks' below
+        # coverage callbacks
         self._coverage_switched_callbacks = []
         self._coverage_modified_callbacks = []
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
+
+        # metadata callbacks
+        self._metadata_modified_callbacks = []
 
     def terminate(self):
         """
@@ -189,19 +195,12 @@ class CoverageDirector(object):
         self._ast_queue.put(None)
         self._composition_worker.join()
 
-        # stop any ongoing metadata refresh
-        self.metadata.abort_refresh(join=True)
+	# spin down the live metadata object
+	self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # Properties
     #--------------------------------------------------------------------------
-
-    @property
-    def metadata(self):
-        """
-        The active database metadata cache.
-        """
-        return self._database_metadata
 
     @property
     def coverage(self):
@@ -246,126 +245,61 @@ class CoverageDirector(object):
         """
         Subscribe a callback for coverage switch events.
         """
-        self._register_callback(self._coverage_switched_callbacks, callback)
+        register_callback(self._coverage_switched_callbacks, callback)
 
     def _notify_coverage_switched(self):
         """
         Notify listeners of a coverage switch event.
         """
-        self._notify_callback(self._coverage_switched_callbacks)
+        notify_callback(self._coverage_switched_callbacks)
 
     def coverage_modified(self, callback):
         """
         Subscribe a callback for coverage modification events.
         """
-        self._register_callback(self._coverage_modified_callbacks, callback)
+        register_callback(self._coverage_modified_callbacks, callback)
 
     def _notify_coverage_modified(self):
         """
         Notify listeners of a coverage modification event.
         """
-        self._notify_callback(self._coverage_modified_callbacks)
+        notify_callback(self._coverage_modified_callbacks)
 
     def coverage_created(self, callback):
         """
         Subscribe a callback for coverage creation events.
         """
-        self._register_callback(self._coverage_created_callbacks, callback)
+        register_callback(self._coverage_created_callbacks, callback)
 
     def _notify_coverage_created(self):
         """
         Notify listeners of a coverage creation event.
         """
-        self._notify_callback(self._coverage_created_callbacks) # TODO: send list of names created?
+        notify_callback(self._coverage_created_callbacks) # TODO: send list of names created?
 
     def coverage_deleted(self, callback):
         """
         Subscribe a callback for coverage deletion events.
         """
-        self._register_callback(self._coverage_deleted_callbacks, callback)
+        register_callback(self._coverage_deleted_callbacks, callback)
 
     def _notify_coverage_deleted(self):
         """
         Notify listeners of a coverage deletion event.
         """
-        self._notify_callback(self._coverage_deleted_callbacks) # TODO: send list of names deleted?
+        notify_callback(self._coverage_deleted_callbacks) # TODO: send list of names deleted?
 
-    def _register_callback(self, callback_list, callback):
+    def metadata_modified(self, callback):
         """
-        Register a given callable (callback) to the given callback_list.
-
-        Adapted from http://stackoverflow.com/a/21941670
+        Subscribe a callback for metadata modification events.
         """
+        register_callback(self._metadata_modified_callbacks, callback)
 
-        # create a weakref callback to an object method
-        try:
-            callback_ref = weakref.ref(callback.__func__), weakref.ref(callback.__self__)
-
-        # create a wweakref callback to a stand alone function
-        except AttributeError:
-            callback_ref = weakref.ref(callback), None
-
-        # 'register' the callback
-        callback_list.append(callback_ref)
-
-    def _notify_callback(self, callback_list):
+    def _notify_metadata_modified(self):
         """
-        Notify the given list of registered callbacks.
-
-        The given list (callback_list) is a list of weakref'd callables
-        registered through the _register_callback function. To notify the
-        callbacks we simply loop through the list and call them.
-
-        This routine self-heals by removing dead callbacks for deleted objects.
-
-        Adapted from http://stackoverflow.com/a/21941670
+        Notify listeners of a metadata modification event.
         """
-        cleanup = []
-
-        #
-        # loop through all the registered callbacks in the given callback_list,
-        # notifying active callbacks, and removing dead ones.
-        #
-
-        for callback_ref in callback_list:
-            callback, obj_ref = callback_ref[0](), callback_ref[1]
-
-            #
-            # if the callback is an instance method, deference the instance
-            # (an object) first to check that it is still alive
-            #
-
-            if obj_ref:
-                obj = obj_ref()
-
-                # if the object instance is gone, mark this callback for cleanup
-                if obj is None:
-                    cleanup.append(callback_ref)
-                    continue
-
-                # call the object instance callback
-                try:
-                    callback(obj)
-
-                # assume a Qt cleanup/deletion occured
-                except RuntimeError as e:
-                    cleanup.append(callback_ref)
-                    continue
-
-            # if the callback is a static method...
-            else:
-
-                # if the static method is deleted, mark this callback for cleanup
-                if callback is None:
-                    cleanup.append(callback_ref)
-                    continue
-
-                # call the static callback
-                callback(self)
-
-        # remove the deleted callbacks
-        for callback_ref in cleanup:
-            callback_list.remove(callback_ref)
+        notify_callback(self._metadata_modified_callbacks)
 
     #----------------------------------------------------------------------
     # Batch Loading
@@ -508,15 +442,41 @@ class CoverageDirector(object):
         """
         Delete a database coverage object by name.
         """
-        assert coverage_name in self.coverage_names
 
         #
         # if the delete request targets the currently active coverage, we want
-        # to switch into a safer coverage to try and avoid any ill effects.
+        # to switch into a safer coverage set to try and avoid any ill effects.
         #
 
-        if self.coverage_name == coverage_name:
+        if coverage_name in [self.coverage_name, AGGREGATE]:
             self.select_coverage(NEW_COMPOSITION)
+
+        #
+        # the user is trying to delete one of their own loaded/created coverages
+        #
+
+        if coverage_name in self.coverage_names:
+            self._delete_user_coverage(coverage_name)
+
+        #
+        # the user is trying to delete the aggregate coverage set, which simply
+        # means clears *all* loaded coverages
+        #
+
+        elif coverage_name == AGGREGATE:
+            self._delete_aggregate_coverage(coverage_name)
+
+        # unsupported / unknown coverage
+        else:
+            raise ValueError("Cannot delete %s, does not exist" % coverage_name)
+
+        # notify any listeners that we have deleted coverage
+        self._notify_coverage_deleted()
+
+    def _delete_user_coverage(self, coverage_name):
+        """
+        Delete a user created database coverage object by name.
+        """
 
         # release the shorthand alias held by this coverage
         self._release_shorthand_alias(coverage_name)
@@ -529,8 +489,21 @@ class CoverageDirector(object):
         if not self._aggregation_suspended:
             self._refresh_aggregate()
 
-        # notify any listeners that we have deleted coverage
-        self._notify_coverage_deleted()
+    def _delete_aggregate_coverage(self, coverage_name):
+        """
+        Delete the aggregate set, effectiveely clearing all loaded covearge.
+        """
+
+        # loop through all the loaded coverage sets and release them
+        for coverage_name in self.coverage_names:
+            self._release_shorthand_alias(coverage_name)
+            self._database_coverage.pop(coverage_name)
+
+        # TODO: check if there's any references to the coverage aggregate...
+
+        # assign a new, blank aggregate set
+        self._special_coverage[AGGREGATE] = DatabaseCoverage(None, self._palette)
+        self._refresh_aggregate() # probably not needed
 
     def get_coverage(self, name):
         """
@@ -693,8 +666,6 @@ class CoverageDirector(object):
 
         # evaluate the last AST into a coverage set
         composite_coverage = self._evaluate_composition(ast)
-        composite_coverage.update_metadata(self.metadata)
-        composite_coverage.refresh() # TODO: hash refresh?
 
         # save the evaluated coverage under the given name
         self._update_coverage(composite_name, composite_coverage)
@@ -741,15 +712,14 @@ class CoverageDirector(object):
             # produce a single composite coverage object as described by the AST
             composite_coverage = self._evaluate_composition(ast)
 
-            # map the composited coverage data to the database metadata
-            composite_coverage.update_metadata(self.metadata)
-            composite_coverage.refresh()
-
             # we always save the most recent composite to the hotshell entry
             self._special_coverage[HOT_SHELL] = composite_coverage
 
+            #
             # if the hotshell entry is the active coverage selection, notify
             # listeners of its update
+            #
+
             if self.coverage_name == HOT_SHELL:
                 self._notify_coverage_modified()
 
@@ -767,8 +737,37 @@ class CoverageDirector(object):
         if isinstance(ast, TokenNull):
             return self._NULL_COVERAGE
 
+        #
+        # the director's composition evaluation code (this function) is most
+        # generally called via the background caching evaluation thread known
+        # as self._composition_worker. But this function can also be called
+        # inline via the 'add_composition' function from a different thread
+        # (namely, the main thread)
+        #
+        # because of this, we must control access to the resources the AST
+        # evaluation code operates by restricting the code to one thread
+        # at a time.
+        #
+        # should we call _evaluate_composition from the context of the main
+        # IDA thread, it is important that we do so in a pseudo non-blocking
+        # such that we don't hang IDA. await_lock(...) will allow the Qt/IDA
+        # main thread to yield to other threads while waiting for the lock
+        #
+
+        await_lock(self._composition_lock)
+
         # recursively evaluate the AST
-        return self._evaluate_composition_recursive(ast)
+        composite_coverage = self._evaluate_composition_recursive(ast)
+
+        # map the composited coverage data to the database metadata
+        composite_coverage.update_metadata(self.metadata)
+        composite_coverage.refresh() # TODO: hash refresh?
+
+        # done operating on shared data (coverage), release the lock
+        self._composition_lock.release()
+
+        # return the evaluated composition
+        return composite_coverage
 
     def _evaluate_composition_recursive(self, node):
         """
@@ -944,40 +943,60 @@ class CoverageDirector(object):
         logger.debug("Refreshing the CoverageDirector")
 
         # (re)build our metadata cache of the underlying database
-        delta = self._refresh_database_metadata()
+        future = self.refresh_metadata(metadata_progress, True)
+        await_future(future)
 
         # (re)map each set of loaded coverage data to the database
-        self._refresh_database_coverage(delta)
+        self._refresh_database_coverage()
 
-    def _refresh_database_metadata(self):
+    def refresh_metadata(self, progress_callback=None, force=False):
         """
         Refresh the database metadata cache utilized by the director.
+
+        Returns a future (Queue) that will carry the completion message.
         """
-        logger.debug("Refreshing database metadata")
 
-        # compute the metadata for the current state of the database
-        new_metadata = DatabaseMetadata()
-        new_metadata.build_metadata()
+        #
+        # if this is the first time the director is going to use / populate
+        # the database metadata, register the director for notifications of
+        # metadata modification (this should only happen once)
+        #
+        # TODO: this is a little dirty, but it will suffice.
+        #
 
-        # compute the delta between the old metadata, and latest
-        delta = MetadataDelta(new_metadata, self.metadata)
+        if not self.metadata.cached:
+            self.metadata.function_renamed(self._notify_metadata_modified)
 
-        # save the new metadata in place of the old metadata
-        self._database_metadata = new_metadata
+        #
+        # if the lighthouse has collected metadata previously for this IDB
+        # session (eg, it is cached), ignore a request to refresh it unless
+        # explicitly told to refresh via force=True
+        #
 
-        # finally, return the list of nodes that have changed (the delta)
-        return delta
+        if self.metadata.cached and not force:
+            fake_queue = Queue.Queue()
+            fake_queue.put(False)
+            return fake_queue
 
-    def _refresh_database_coverage(self, delta):
+        # start the asynchronous metadata refresh
+        result_queue = self.metadata.refresh(progress_callback=progress_callback)
+
+        # return the channel that will carry asynchronous result
+        return result_queue
+
+    def _refresh_database_coverage(self):
         """
         Refresh all the database coverage mappings managed by the director.
         """
         logger.debug("Refreshing database coverage mappings")
 
-        for name in self.all_names:
+        for i, name in enumerate(self.all_names, 1):
             logger.debug(" - %s" % name)
+            idaapi.replace_wait_box(
+                "Refreshing coverage mapping %u/%u" % (i, len(self.all_names))
+            )
             coverage = self.get_coverage(name)
-            coverage.update_metadata(self.metadata, delta)
+            coverage.update_metadata(self.metadata)
             coverage.refresh()
 
     def _refresh_aggregate(self):

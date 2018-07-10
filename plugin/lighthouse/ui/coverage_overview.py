@@ -8,7 +8,7 @@ import idaapi
 from lighthouse.util import *
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
-from lighthouse.metadata import FunctionMetadata
+from lighthouse.metadata import FunctionMetadata, metadata_progress
 from lighthouse.coverage import FunctionCoverage
 
 logger = logging.getLogger("Lighthouse.UI.Overview")
@@ -55,14 +55,56 @@ SAMPLE_CONTENTS = \
 # Pseudo Widget Filter
 #------------------------------------------------------------------------------
 
+debugger_docked = False
+
 class EventProxy(QtCore.QObject):
     def __init__(self, target):
         super(EventProxy, self).__init__()
         self._target = target
 
     def eventFilter(self, source, event):
+
+        #
+        # hook the destroy event of the coverage overview widget so that we can
+        # cleanup after ourselves in the interest of stability
+        #
+
         if int(event.type()) == 16: # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7?
             self._target.terminate()
+
+        #
+        # this is an unknown event, but it seems to fire when the widget is
+        # being saved/restored by a QMainWidget. We use this to try and ensure
+        # the Coverage Overview stays docked when flipping between Reversing
+        # and Debugging states in IDA.
+        #
+        # See issue #16 on github for more information.
+        #
+
+        if int(event.type()) == 2002:
+
+            #
+            # if the general registers IDA View exists, we make the assumption
+            # that the user has probably started debugging.
+            #
+
+            # NOTE / COMPAT:
+            if using_ida7api:
+                debug_mode = bool(idaapi.find_widget("General registers"))
+            else:
+                debug_mode = bool(idaapi.find_tform("General registers"))
+
+            #
+            # if this is the first time the user has started debugging, dock
+            # the coverage overview in the debug QMainWidget workspace. its
+            # dock status / position should persist future debugger launches.
+            #
+
+            global debugger_docked
+            if debug_mode and not debugger_docked:
+                idaapi.set_dock_pos(self._target._title, "Structures", idaapi.DP_TAB)
+                debugger_docked = True
+
         return False
 
 #------------------------------------------------------------------------------
@@ -80,7 +122,10 @@ class CoverageOverview(DockableShim):
             plugin_resource(os.path.join("icons", "overview.png"))
         )
 
-        # internal
+        # local reference to the director
+        self._director = director
+
+        # underlying data model for the coverage overview
         self._model = CoverageModel(director, self._widget)
 
         # pseudo widget science
@@ -89,7 +134,7 @@ class CoverageOverview(DockableShim):
         self._widget.installEventFilter(self._events)
 
         # initialize the plugin UI
-        self._ui_init(director)
+        self._ui_init()
 
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
@@ -121,7 +166,7 @@ class CoverageOverview(DockableShim):
     # Initialization - UI
     #--------------------------------------------------------------------------
 
-    def _ui_init(self, director):
+    def _ui_init(self):
         """
         Initialize UI elements.
         """
@@ -131,22 +176,24 @@ class CoverageOverview(DockableShim):
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # initialize our ui elements
-        self._ui_init_table(director)
-        self._ui_init_toolbar(director)
+        self._ui_init_table()
+        self._ui_init_toolbar()
+        self._ui_init_ctx_menu_actions()
         self._ui_init_signals()
 
         # layout the populated ui just before showing it
         self._ui_layout()
 
-    def _ui_init_table(self, director):
+    def _ui_init_table(self):
         """
         Initialize the coverage table.
         """
+        palette = self._director._palette
         self._table = QtWidgets.QTableView()
         self._table.setFocusPolicy(QtCore.Qt.NoFocus)
         self._table.setStyleSheet(
-            "QTableView { gridline-color: black; } " +
-            "QTableView::item:selected { color: white; background-color: %s; } " % director._palette.selection.name()
+            "QTableView { gridline-color: black; background-color: %s } " % palette.overview_bg.name()  +
+            "QTableView::item:selected { color: white; background-color: %s; } " % palette.selection.name()
         )
 
         # set these properties so the user can arbitrarily shrink the table
@@ -193,13 +240,13 @@ class CoverageOverview(DockableShim):
         self._table.setSortingEnabled(True)
         hh.setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
 
-    def _ui_init_toolbar(self, director):
+    def _ui_init_toolbar(self):
         """
         Initialize the coverage toolbar.
         """
 
         # initialize toolbar elements
-        self._ui_init_toolbar_elements(director)
+        self._ui_init_toolbar_elements()
 
         # populate the toolbar
         self._toolbar = QtWidgets.QToolBar()
@@ -225,20 +272,20 @@ class CoverageOverview(DockableShim):
         self._toolbar.addWidget(self._hide_zero_label)
         self._toolbar.addWidget(self._hide_zero_checkbox)
 
-    def _ui_init_toolbar_elements(self, director):
+    def _ui_init_toolbar_elements(self):
         """
         Initialize the coverage toolbar UI elements.
         """
 
         # the composing shell
         self._shell = ComposingShell(
-            director,
+            self._director,
             weakref.proxy(self._model),
             self._table
         )
 
         # the coverage combobox
-        self._combobox = CoverageComboBox(director)
+        self._combobox = CoverageComboBox(self._director)
 
         # the checkbox to hide 0% coverage entries
         self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
@@ -273,6 +320,23 @@ class CoverageOverview(DockableShim):
         # give the shell expansion preference over the combobox
         self._splitter.setStretchFactor(0, 1)
 
+    def _ui_init_ctx_menu_actions(self):
+        """
+        Initialize the right click context menu actions.
+        """
+
+        # function actions
+        self._action_rename = QtWidgets.QAction("Rename", None)
+        self._action_copy_name = QtWidgets.QAction("Copy name", None)
+        self._action_copy_address = QtWidgets.QAction("Copy address", None)
+
+        # function prefixing actions
+        self._action_prefix = QtWidgets.QAction("Prefix selected functions", None)
+        self._action_clear_prefix = QtWidgets.QAction("Clear prefixes", None)
+
+        # misc actions
+        self._action_refresh_metadata = QtWidgets.QAction("Full refresh (slow)", None)
+
     def _ui_init_signals(self):
         """
         Connect UI signals.
@@ -282,8 +346,8 @@ class CoverageOverview(DockableShim):
         self._table.doubleClicked.connect(self._ui_entry_double_click)
 
         # right click popup menu
-        #self._table.setContextMenuPolicy(Qt.CustomContextMenu)
-        #self._table.customContextMenuRequested.connect(...)
+        self._table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._ui_ctx_menu_handler)
 
         # toggle 0% coverage checkbox
         self._hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
@@ -307,18 +371,153 @@ class CoverageOverview(DockableShim):
 
     def _ui_entry_double_click(self, index):
         """
-        Handle double click event on the coverage table view.
+        Handle double click event on the coverage table.
 
         A double click on the coverage table view will jump the user to
         the corresponding function in the IDA disassembly view.
         """
         idaapi.jumpto(self._model.row2func[index.row()])
 
+    def _ui_ctx_menu_handler(self, position):
+        """
+        Handle right click context menu event on the coverage table.
+        """
+
+        # create a right click menu based on the state and context
+        ctx_menu = self._populate_ctx_menu()
+        if not ctx_menu:
+            return
+
+        # show the popup menu to the user, and wait for their selection
+        action = ctx_menu.exec_(self._table.viewport().mapToGlobal(position))
+
+        # process the user action
+        self._process_ctx_menu_action(action)
+
     def _ui_hide_zero_toggle(self, checked):
         """
         Handle state change of 'Hide 0% Coverage' checkbox.
         """
         self._model.filter_zero_coverage(checked)
+
+    #--------------------------------------------------------------------------
+    # Context Menu
+    #--------------------------------------------------------------------------
+
+    def _populate_ctx_menu(self):
+        """
+        Populate a context menu for the table view based on selection.
+
+        Returns a populated QMenu, or None.
+        """
+
+        # get the list rows currently selected in the coverage table
+        selected_rows = self._table.selectionModel().selectedRows()
+        if len(selected_rows) == 0:
+            return None
+
+        # the context menu we will dynamically populate
+        ctx_menu = QtWidgets.QMenu()
+
+        #
+        # if there is only one table entry (a function) selected, then
+        # show the menu actions available for a single function such as
+        # copy function name, address, or renaming the function.
+        #
+
+        if len(selected_rows) == 1:
+            ctx_menu.addAction(self._action_rename)
+            ctx_menu.addAction(self._action_copy_name)
+            ctx_menu.addAction(self._action_copy_address)
+            ctx_menu.addSeparator()
+
+        # function prefixing actions
+        ctx_menu.addAction(self._action_prefix)
+        ctx_menu.addAction(self._action_clear_prefix)
+        ctx_menu.addSeparator()
+
+        # misc actions
+        ctx_menu.addAction(self._action_refresh_metadata)
+
+        # return the completed context menu
+        return ctx_menu
+
+    def _process_ctx_menu_action(self, action):
+        """
+        Process the given (user selected) context menu action.
+        """
+
+        # a right click menu action was not clicked. nothing else to do
+        if not action:
+            return
+
+        # get the list rows currently selected in the coverage table
+        selected_rows = self._table.selectionModel().selectedRows()
+        if len(selected_rows) == 0:
+            return
+
+        #
+        # extract the function addresses for the list of selected rows
+        # as they will probably come in handy later.
+        #
+
+        function_addresses = []
+        for index in selected_rows:
+            address = self._model.row2func[index.row()]
+            function_addresses.append(address)
+
+        #
+        # check the universal actions first
+        #
+
+        # handle the 'Prefix functions' action
+        if action == self._action_prefix:
+            gui_prefix_functions(function_addresses)
+
+        # handle the 'Clear prefix' action
+        elif action == self._action_clear_prefix:
+            clear_prefixes(function_addresses)
+
+        # handle the 'Refresh metadata' action
+        elif action == self._action_refresh_metadata:
+
+            idaapi.show_wait_box("Building database metadata...")
+            self._director.refresh()
+
+            # ensure the table's model gets refreshed
+            idaapi.replace_wait_box("Refreshing Coverage Overview...")
+            self.refresh()
+
+            # all done
+            idaapi.hide_wait_box()
+
+        #
+        # the following actions are only applicable if there is only one
+        # row/function selected in the coverage overview table. don't
+        # bother to check multi-function selections against these
+        #
+
+        if len(selected_rows) != 1:
+            return
+
+        # unpack the single QModelIndex
+        index = selected_rows[0]
+        function_address = function_addresses[0]
+
+        # handle the 'Rename' action
+        if action == self._action_rename:
+            gui_rename_function(function_address)
+
+        # handle the 'Copy name' action
+        elif action == self._action_copy_name:
+            name_index = self._model.index(index.row(), FUNC_NAME)
+            function_name = self._model.data(name_index, QtCore.Qt.DisplayRole)
+            copy_to_clipboard(function_name)
+
+        # handle the 'Copy address' action
+        elif action == self._action_copy_address:
+            address_string = "0x%X" % function_address
+            copy_to_clipboard(address_string)
 
     #--------------------------------------------------------------------------
     # Refresh
@@ -346,7 +545,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         super(CoverageModel, self).__init__(parent)
         self._blank_coverage = FunctionCoverage(idaapi.BADADDR)
 
-        # the data source
+        # local reference to the director
         self._director = director
 
         # mapping to correlate a given row in the table to its function coverage
@@ -400,6 +599,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         # register for cues from the director
         self._director.coverage_switched(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
+        self._director.metadata_modified(self._data_changed)
 
     #--------------------------------------------------------------------------
     # AbstractItemModel Overloads
@@ -455,8 +655,27 @@ class CoverageModel(QtCore.QAbstractTableModel):
             column = index.column()
 
             # lookup the function info for this row
-            function_address  = self.row2func[index.row()]
-            function_metadata = self._director.metadata.functions[function_address]
+            try:
+                function_address  = self.row2func[index.row()]
+                function_metadata = self._director.metadata.functions[function_address]
+
+            #
+            # if we hit a KeyError, it is probably because the database metadata
+            # is being refreshed and the model (this object) has yet to be
+            # updated.
+            #
+            # this should only ever happen as a result of the user using the
+            # right click 'Refresh metadata' action. And even then, only when
+            # a function they undefined in the IDB is visible in the coverage
+            # overview table view.
+            #
+            # In theory, the table should get refreshed *after* the metadata
+            # refresh completes. So for now, we simply return return the filler
+            # string '?'
+            #
+
+            except KeyError:
+                return "?"
 
             #
             # remember, if a function does *not* have coverage data, it will
@@ -613,8 +832,19 @@ class CoverageModel(QtCore.QAbstractTableModel):
         """
         Get the coverage % represented by the current (visible) model.
         """
-        sum_coverage = sum(cov.instruction_percent for cov in self._visible_coverage.itervalues())
-        return (sum_coverage / (self._row_count or 1))*100
+
+        # sum the # of instructions in all the visible functions
+        instruction_count = sum(
+            meta.instruction_count for meta in self._visible_metadata.itervalues()
+        )
+
+        # sum the # of instructions executed in all the visible functions
+        instructions_executed = sum(
+            cov.instructions_executed for cov in self._visible_coverage.itervalues()
+        )
+
+        # compute coverage percentage of the visible functions
+        return (float(instructions_executed) / (instruction_count or 1))*100
 
     #--------------------------------------------------------------------------
     # Filters
@@ -665,6 +895,13 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # sort the data set according to the last selected sorted column
         self.sort(self._last_sort, self._last_sort_order)
+
+    @idafast
+    def _data_changed(self):
+        """
+        Notify attached views that simple model data has been updated/modified.
+        """
+        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
 
     def _refresh_data(self):
         """

@@ -317,7 +317,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
             # 'Aggregate', or the 'seperator' indexes
             #
 
-            if model.data(model.index(row, 0), QtCore.Qt.AccessibleDescriptionRole) != ENTRY_USER:
+            if not model.data(model.index(row, 1), QtCore.Qt.DecorationRole):
                 self.setSpan(row, 0, 1, model.columnCount())
 
             # this is a user entry, ensure there is no span present (clear it)
@@ -475,10 +475,27 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
             if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
                 return self._director.get_coverage_string(self._entries[index.row()])
 
-        # 'X' icon data request
+        # icon display request
         elif role == QtCore.Qt.DecorationRole:
-            if index.column() == COLUMN_DELETE and index.row() > self._seperator_index:
-                return self._delete_icon
+
+            # the icon request is for the 'X' column
+            if index.column() == COLUMN_DELETE:
+
+                #
+                # if the coverage entry is below the seperator, it is a user
+                # loaded coverage and should always be deletable
+                #
+
+                if index.row() > self._seperator_index:
+                    return self._delete_icon
+
+                #
+                # as a special case, we allow the aggregate to have a clear
+                # icon, which will clear all user loaded coverages
+                #
+
+                elif self._entries[index.row()] == "Aggregate":
+                    return self._delete_icon
 
         # entry type request
         elif role == QtCore.Qt.AccessibleDescriptionRole:
