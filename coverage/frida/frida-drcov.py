@@ -3,6 +3,8 @@ from __future__ import print_function
 
 import argparse
 import json
+import os
+import signal
 import sys
 
 import frida
@@ -164,11 +166,12 @@ Process.enumerateThreads({
 });
 """
 
-# These are global so we can easily access them from the frida callbacks
-# It's important that bbs is a set, as we're going to depend on it's uniquing
-#  behavior for deduplication
+# These are global so we can easily access them from the frida callbacks or
+# signal handlers. It's important that bbs is a set, as we're going to depend
+# on it's uniquing behavior for deduplication
 modules = []
 bbs = set([])
+outfile = 'frida-cov.log'
 
 # This converts the object frida sends which has string addresses into
 #  a python dict
@@ -240,7 +243,26 @@ def on_message(msg, data):
     else:
         populate_bbs(data)
 
+def sigint(signo, frame):
+    print('[!] SIGINT, saving %d blocks to \'%s\'' % (len(bbs), outfile))
+
+    save_coverage()
+
+    print('[!] Done')
+
+    os._exit(1)
+
+def save_coverage():
+    header = create_header(modules)
+    body = create_coverage(bbs)
+
+    with open(outfile, 'wb') as h:
+        h.write(header)
+        h.write(body)
+
 def main():
+    global outfile
+
     parser = argparse.ArgumentParser()
     parser.add_argument('target',
             help='target process name or pid',
@@ -260,6 +282,8 @@ def main():
 
     args = parser.parse_args()
 
+    outfile = args.outfile
+
     device = frida.get_device(args.device)
 
     target = -1
@@ -275,6 +299,8 @@ def main():
         print('[-] Error: could not find process matching '
               '\'%s\' on device \'%s\'' % (args.target, device.id))
         sys.exit(1)
+
+    signal.signal(signal.SIGINT, sigint)
 
     whitelist_modules = ['all']
     if len(args.whitelist_modules):
@@ -307,12 +333,7 @@ def main():
     print('[+] Detached. Got %d basic blocks.' % len(bbs))
     print('[*] Formatting coverage and saving...')
 
-    header = create_header(modules)
-    body = create_coverage(bbs)
-
-    with open(args.outfile, 'wb') as h:
-        h.write(header)
-        h.write(body)
+    save_coverage()
 
     print('[!] Done')
 
