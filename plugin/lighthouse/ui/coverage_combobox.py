@@ -1,5 +1,7 @@
 import logging
 from lighthouse.util import *
+from lighthouse.util.qt import *
+from lighthouse.util.disassembler_ui import execute_ui
 
 logger = logging.getLogger("Lighthouse.UI.ComboBox")
 
@@ -193,7 +195,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         """
         self._internal_refresh()
 
-    @idafast
+    @execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the coverage combobox.

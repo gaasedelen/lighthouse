@@ -5,7 +5,9 @@ import binascii
 import functools
 
 import idaapi
-from .shims import using_ida7api, using_pyqt5, QtCore, QtGui, QtWidgets
+
+from .qt import *
+from .disassembler import using_ida7api, using_pyqt5
 
 logger = logging.getLogger("Lighthouse.Util.IDA")
 
@@ -377,19 +379,6 @@ def predict_bg_color(image):
 # http://www.williballenthin.com/blog/2015/09/04/idapython-synchronization-decorator
 #
 
-def idafast(f):
-    """
-    Decorator for marking a function as fast / UI event
-    """
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        ff = functools.partial(f, *args, **kwargs)
-        if idaapi.is_main_thread():
-            return ff()
-        else:
-            return idaapi.execute_sync(ff, idaapi.MFF_FAST)
-    return wrapper
-
 def idawrite_async(f):
     """
     Decorator for marking a function as completely async.
@@ -400,34 +389,6 @@ def idawrite_async(f):
         return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
     return wrapper
 
-def idawrite(f):
-    """
-    Decorator for marking a function as modifying the IDB.
-    """
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        ff = functools.partial(f, *args, **kwargs)
-        if idaapi.is_main_thread():
-            return ff()
-        else:
-            return idaapi.execute_sync(ff, idaapi.MFF_WRITE)
-    return wrapper
-
-def idaread(f):
-    """
-    Decorator for marking a function as reading from the IDB.
-
-    MFF_READ constant via: http://www.openrce.org/forums/posts/1827
-    """
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        ff = functools.partial(f, *args, **kwargs)
-        if idaapi.is_main_thread():
-            return ff()
-        else:
-            return idaapi.execute_sync(ff, idaapi.MFF_READ)
-    return wrapper
-
 def mainthread(f):
     """
     A debug decorator to assert main thread execution.
@@ -436,40 +397,6 @@ def mainthread(f):
         assert idaapi.is_main_thread()
         return f(*args, **kwargs)
     return wrapper
-
-def execute_sync(sync_flags=idaapi.MFF_FAST):
-    """
-    Synchronization decorator capable of providing return values.
-
-    From https://github.com/vrtadmin/FIRST-plugin-ida
-    """
-    def real_decorator(function):
-        @functools.wraps(function)
-        def wrapper(*args, **kwargs):
-            output = [None]
-
-            #
-            # this inline function definition is technically what will execute
-            # in the context of the main thread. we use this thunk to capture
-            # any output the function may want to return to the user.
-            #
-
-            def thunk():
-                output[0] = function(*args, **kwargs)
-                return 1
-
-            # already in the target (main) thread, execute thunk now
-            if idaapi.is_main_thread():
-                thunk()
-
-            # send the synchronization request to IDA
-            else:
-                idaapi.execute_sync(thunk, sync_flags)
-
-            # return the output of the synchronized function
-            return output[0]
-        return wrapper
-    return real_decorator
 
 #------------------------------------------------------------------------------
 # IDA Async Magic
@@ -640,73 +567,3 @@ def get_function_name(function_address):
 
     # return the function name
     return original_name
-
-#------------------------------------------------------------------------------
-# Interactive
-#------------------------------------------------------------------------------
-
-@mainthread
-def prompt_string(label, title, default=""):
-    """
-    Prompt the user with a dialog to enter a string.
-
-    This does not block the IDA main thread (unlike idaapi.askstr)
-    """
-    dlg = QtWidgets.QInputDialog(None)
-    dlg.setWindowFlags(dlg.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
-    dlg.setInputMode(QtWidgets.QInputDialog.TextInput)
-    dlg.setLabelText(label)
-    dlg.setWindowTitle(title)
-    dlg.setTextValue(default)
-    dlg.resize(
-        dlg.fontMetrics().averageCharWidth()*80,
-        dlg.fontMetrics().averageCharWidth()*10
-    )
-    ok = dlg.exec_()
-    text = str(dlg.textValue())
-    return (ok, text)
-
-@mainthread
-def gui_rename_function(function_address):
-    """
-    Interactive rename of a function in the IDB.
-    """
-    original_name = get_function_name(function_address)
-
-    # prompt the user for a new function name
-    ok, new_name = prompt_string(
-        "Please enter function name",
-        "Rename Function",
-        original_name
-       )
-
-    #
-    # if the user clicked cancel, or the name they entered
-    # is identical to the original, there's nothing to do
-    #
-
-    if not (ok or new_name != original_name):
-        return
-
-    # rename the function
-    idaapi.set_name(function_address, new_name, idaapi.SN_NOCHECK)
-
-@mainthread
-def gui_prefix_functions(function_addresses):
-    """
-    Interactive prefixing of functions in the IDB.
-    """
-
-    # prompt the user for a new function name
-    ok, prefix = prompt_string(
-        "Please enter a function prefix",
-        "Prefix Function(s)",
-        PREFIX_DEFAULT
-       )
-
-    # bail if the user clicked cancel or failed to enter a prefix
-    if not (ok and prefix):
-        return
-
-    # prefix the given functions with the user specified prefix
-    prefix_functions(function_addresses, prefix)

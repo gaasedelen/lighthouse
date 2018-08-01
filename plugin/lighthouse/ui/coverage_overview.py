@@ -6,6 +6,8 @@ from operator import itemgetter, attrgetter
 import idaapi
 
 from lighthouse.util import *
+from lighthouse.util.qt import *
+from lighthouse.util.disassembler_ui import execute_ui, DockableShim, gui_prefix_functions, gui_rename_function
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata, metadata_progress
@@ -533,7 +535,7 @@ class CoverageOverview(DockableShim):
     # Refresh
     #--------------------------------------------------------------------------
 
-    @idafast
+    @execute_ui
     def refresh(self):
         """
         Refresh the Coverage Overview.
@@ -896,7 +898,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         """
         self._internal_refresh()
 
-    @idafast
+    @execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the coverage model.
@@ -906,7 +908,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         # sort the data set according to the last selected sorted column
         self.sort(self._last_sort, self._last_sort_order)
 
-    @idafast
+    @execute_ui
     def _data_changed(self):
         """
         Notify attached views that simple model data has been updated/modified.

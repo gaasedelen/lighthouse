@@ -2,11 +2,7 @@ import os
 import sys
 import logging
 
-import idaapi
-
-#
-# shamelessly ripped from Solidarity
-#
+from .disassembler import is_msg_inited, get_user_dis_dir
 
 #------------------------------------------------------------------------------
 # Log / Print helpers
@@ -14,14 +10,14 @@ import idaapi
 
 def lmsg(message):
     """
-    Print a message to the IDA output window, prefixed with [Lighthouse]
+    Print a message to the disassembler output window, prefixed with [Lighthouse]
     """
 
     # prefix the message
     prefix_message = "[Lighthouse] %s" % message
 
-    # only print to IDA if the output window is alive
-    if idaapi.is_msg_inited():
+    # only print to disassembler if its output window is alive
+    if is_msg_inited():
         print prefix_message
     else:
         logger.info(message)
@@ -30,7 +26,7 @@ def get_log_dir():
     """
     Return the Lighthouse log directory.
     """
-    return os.path.join(idaapi.get_user_idadir(), "lighthouse_logs")
+    return os.path.join(get_user_dis_dir(), "lighthouse_logs")
 
 def logging_started():
     """

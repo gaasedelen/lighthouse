@@ -1,0 +1,203 @@
+import os
+import functools
+
+#
+# TODO: rewrite shim/compat comments in this file...
+#
+
+#------------------------------------------------------------------------------
+# Compatability File
+#------------------------------------------------------------------------------
+#
+#    This file is used to reduce the number of compatibility checks made
+#    throughout Lighthouse for varying versions of IDA.
+#
+#    As of July 2017, Lighthouse fully supports IDA 6.8 - 7.0. I expect that
+#    much of this compatibility layer and IDA 6.x support will be dropped for
+#    maintainability reasons sometime in 2018 as the userbase migrates up to
+#    IDA 7.0 and beyond.
+#
+
+#------------------------------------------------------------------------------
+# Disassembler Platform
+#------------------------------------------------------------------------------
+
+class platform(object):
+    UNKNOWN = -1
+    IDA     = 0
+    R2      = 1
+    BINJA   = 2
+    HOPPER  = 3
+
+# a global holding the disassembler platform type for this execution
+active_disassembler = platform.UNKNOWN
+
+# attempt to load IDA imports
+if active_disassembler == platform.UNKNOWN:
+    try:
+        import idaapi
+        active_disassembler = platform.IDA
+    except ImportError:
+        pass
+
+# attempt to load Binary Ninja imports
+if active_disassembler == platform.UNKNOWN:
+    try:
+        import binaryninja
+        from binaryninja.plugin import BackgroundTaskThread
+        active_disassembler = platform.BINJA
+    except ImportError:
+        pass
+
+# throw a hard error on unknown disassembly frameworks
+if active_disassembler == platform.UNKNOWN:
+    raise RuntimeError("Unknown disassembler! Cannot shim!")
+
+def get_disassembler_platform():
+    """
+    Return the the disassembler platform this script is executing in.
+    """
+    return active_disassembler
+
+#------------------------------------------------------------------------------
+# Disassembler Build Versioning
+#------------------------------------------------------------------------------
+
+# globals holding the disassembler build number
+disassembler_version = ""
+version_major = 0
+version_minor = 0
+version_patch = 0
+
+if active_disassembler == platform.IDA:
+    disassembler_version = idaapi.get_kernel_version()
+    version_major, version_minor = map(int, disassembler_version.split("."))
+elif active_disassembler == platform.BINJA:
+    disassembler_version = binaryninja.core_version
+    version_major, version_minor, version_patch = map(int, disassembler_version.split("."))
+else:
+    raise RuntimeError("Unknown disassembler! Cannot get version info!")
+
+#------------------------------------------------------------------------------
+# IDA 7 API - COMPAT
+#------------------------------------------------------------------------------
+#
+#    In IDA 7.0, Hex-Rays refactored the IDA API quite a bit. This impacts
+#    Lighthouse in a few places, so we have had to apply a compatibility
+#    fixup to a few places throughout the code.
+#
+#    We use the 'using_ida7api' global throughout the code to determine if
+#    the IDA 7 API is available, and should be used.
+#
+
+using_ida7api = active_disassembler == platform.IDA and (version_major > 6)
+
+#------------------------------------------------------------------------------
+# PySide --> PyQt5 - COMPAT
+#------------------------------------------------------------------------------
+#
+#    As of IDA 6.9, Hex-Rays has started using PyQt5 versus PySide on Qt4.
+#
+#    This file tries to help us cut back from having as much compatibility
+#    checks/churn by in every other file that consumes them.
+#
+
+using_pyqt5 = False
+
+# only specific versions of IDA use PyQt5
+if active_disassembler == platform.IDA:
+    if using_ida7api:
+        using_pyqt5 = True
+    elif (version_major == 6 and version_minor >= 9):
+        using_pyqt5 = True
+
+# assume all versions of binja use PyQt5
+elif active_disassembler == platform.BINJA:
+    using_pyqt5 = True
+
+# unknown platform
+else:
+    raise RuntimeError("Unknown disassembler! Cannot determine Qt support!")
+
+#------------------------------------------------------------------------------
+# Synchronization Decorators
+#------------------------------------------------------------------------------
+
+def execute_read(function):
+    """
+    Safe database read decorator, capable of providing return values.
+
+    Modified from https://github.com/vrtadmin/FIRST-plugin-ida
+    """
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        output = [None]
+
+        #
+        # this inline function definition is technically what will execute
+        # in the context of the main thread. we use this thunk to capture
+        # any output the function may want to return to the user.
+        #
+
+        def thunk():
+            output[0] = function(*args, **kwargs)
+            return 1
+
+        # ida
+        if active_disassembler == platform.IDA:
+            if idaapi.is_main_thread():
+                thunk()
+            else:
+                idaapi.execute_sync(thunk, idaapi.MFF_READ)
+
+        # binja
+        elif active_disassembler == platform.BINJA:
+
+            class DatabaseRead(BackgroundTaskThread):
+                """
+                A stub task to safely read from the BNDB.
+                """
+                def __init__(self, text, function):
+                    super(BackgroundTaskThread, self).__init__(text, False)
+                    self._task_to_run = function
+                def run(self):
+                    self._task_to_run()
+                    self.finish()
+
+            # schedule the read and wait for its completion
+            t = DatabaseTask("Reading database...", thunk)
+            t.start()
+            t.join()
+
+        # unknown
+        else:
+            raise RuntimeError("Unknown disassembler! Cannot read from database!")
+
+        # return the output of the synchronized function
+        return output[0]
+    return wrapper
+
+#------------------------------------------------------------------------------
+# API Shims
+#------------------------------------------------------------------------------
+
+def is_msg_inited():
+    """
+    Is the disassembler ready to recieve messages to its output window?
+    """
+    if active_disassembler == platform.IDA:
+        return idaapi.is_msg_inited()
+    if active_disassembler == platform.BINJA:
+        return True
+    raise RuntimeError("API not shimmed for the active disassembler")
+
+def get_user_dis_dir():
+    """
+    Return the 'user' directory for the disassembler.
+    """
+    if active_disassembler == platform.IDA:
+        return idaapi.get_user_idadir()
+    if active_disassembler == platform.BINJA:
+        return os.path.split(binaryninja.user_plugin_path)[0]
+    raise RuntimeError("API not shimmed for the active disassembler")

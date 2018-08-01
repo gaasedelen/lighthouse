@@ -9,6 +9,8 @@ import idaapi
 import idautils
 
 from lighthouse.util import *
+from lighthouse.util.disassembler import execute_read, using_ida7api
+from lighthouse.util.disassembler_ui import execute_ui
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
@@ -572,7 +574,7 @@ class DatabaseMetadata(object):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    @mainthread
+    #@mainthread # TODO: re-enable once binja supports is_main_thread()?
     def _name_changed(self, address, new_name, local_name):
         """
         Handler for rename event in IDA.
@@ -1083,14 +1085,14 @@ class MetadataDelta(object):
 # Async Metadata Helpers
 #--------------------------------------------------------------------------
 
-@execute_sync(idaapi.MFF_READ)
+@execute_read
 def collect_function_metadata(function_addresses):
     """
     Collect function metadata for a list of addresses.
     """
     return { ea: FunctionMetadata(ea) for ea in function_addresses }
 
-@idafast
+@execute_ui
 def metadata_progress(completed, total):
     """
     Handler for metadata collection callback, updates progress dialog.
