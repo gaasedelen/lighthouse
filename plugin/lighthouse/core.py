@@ -5,6 +5,7 @@ from lighthouse.util import *
 from lighthouse.util.qt import *
 from lighthouse.util.ida import await_future
 from lighthouse.util.disassembler import get_database_directory, get_root_filename, get_imagebase
+from lighthouse.util.disassembler_ui import *
 from lighthouse.parsers import DrcovData
 from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
@@ -217,23 +218,22 @@ class Lighthouse(object):
         # block until it completes. the user will be shown a progress dialog.
         #
 
-        waitbox = WaitBox("Building database metadata...")
-        waitbox.show()
+        show_wait_box("Building database metadata...")
         await_future(future)
 
         # aggregate all the selected files into one new coverage set
-        new_coverage = self._aggregate_batch(loaded_files, waitbox)
+        new_coverage = self._aggregate_batch(loaded_files)
 
         # inject the the aggregated coverage set
-        waitbox.set_text("Mapping coverage...")
+        replace_wait_box("Mapping coverage...")
         self.director.create_coverage(coverage_name, new_coverage.data)
 
         # select the newly created batch coverage
-        waitbox.set_text("Selecting coverage...")
+        replace_wait_box("Selecting coverage...")
         self.director.select_coverage(coverage_name)
 
         # all done, hide the IDA wait box
-        waitbox.hide()
+        hide_wait_box()
         lmsg("Successfully loaded batch %s..." % coverage_name)
 
         # show the coverage overview
@@ -271,8 +271,7 @@ class Lighthouse(object):
         # block until it completes. the user will be shown a progress dialog.
         #
 
-        waitbox = WaitBox("Building database metadata...")
-        waitbox.show()
+        show_wait_box("Building database metadata...")
         await_future(future)
 
         #
@@ -292,7 +291,7 @@ class Lighthouse(object):
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
-            waitbox.set_text(
+            replace_wait_box(
                 "Normalizing and mapping coverage %u/%u" % (i, len(loaded_files))
             )
 
@@ -321,24 +320,24 @@ class Lighthouse(object):
         # to recompute the aggregate with the newly loaded coverage
         #
 
-        waitbox.set_text("Recomputing coverage aggregate...")
+        replace_wait_box("Recomputing coverage aggregate...")
         self.director.resume_aggregation()
 
         # if nothing was mapped, then there's nothing else to do
         if not created_coverage:
             lmsg("No coverage files could be mapped...")
-            waitbox.hide()
+            hide_wait_box()
             return
 
         #
         # select one (the first) of the newly loaded coverage file(s)
         #
 
-        waitbox.set_text("Selecting coverage...")
+        show_wait_box("Selecting coverage...")
         self.director.select_coverage(created_coverage[0])
 
         # all done, hide the IDA wait box
-        waitbox.hide()
+        hide_wait_box()
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
@@ -348,11 +347,11 @@ class Lighthouse(object):
     # Internal
     #--------------------------------------------------------------------------
 
-    def _aggregate_batch(self, loaded_files, waitbox):
+    def _aggregate_batch(self, loaded_files):
         """
         Aggregate the given loaded_files data into a single coverage object.
         """
-        waitbox.set_text("Aggregating coverage batch...")
+        show_wait_box("Aggregating coverage batch...")
 
         # create a new coverage set to manually aggregate data into
         coverage = DatabaseCoverage({}, self.palette)
@@ -366,7 +365,7 @@ class Lighthouse(object):
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
-            waitbox.set_text(
+            show_wait_box(
                 "Aggregating batch data %u/%u" % (i, len(loaded_files))
             )
 

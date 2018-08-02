@@ -10,7 +10,7 @@ import idautils
 
 from lighthouse.util import *
 from lighthouse.util.disassembler import execute_read, using_ida7api
-from lighthouse.util.disassembler_ui import execute_ui
+from lighthouse.util.disassembler_ui import execute_ui, replace_wait_box
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
@@ -1097,7 +1097,7 @@ def metadata_progress(completed, total):
     """
     Handler for metadata collection callback, updates progress dialog.
     """
-    idaapi.replace_wait_box("Collected metadata for %u/%u Functions" % (completed, total))
+    replace_wait_box("Collected metadata for %u/%u Functions" % (completed, total))
 
 #--------------------------------------------------------------------------
 # Event Hooks

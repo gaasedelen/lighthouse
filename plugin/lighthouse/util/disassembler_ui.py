@@ -164,3 +164,22 @@ def gui_prefix_functions(function_addresses):
 
     # prefix the given functions with the user specified prefix
     prefix_functions(function_addresses, prefix)
+
+#------------------------------------------------------------------------------
+# Global Waitbox
+#------------------------------------------------------------------------------
+
+g_waitbox = WaitBox("Please wait...")
+
+def replace_wait_box(text):
+    global g_waitbox
+    g_waitbox.set_text(text)
+
+def show_wait_box(text):
+    global g_waitbox
+    g_waitbox.set_text(text)
+    g_waitbox.show()
+
+def hide_wait_box():
+    global g_waitbox
+    g_waitbox.hide()

@@ -7,7 +7,7 @@ import idaapi
 
 from lighthouse.util import *
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler_ui import execute_ui, DockableShim, gui_prefix_functions, gui_rename_function
+from lighthouse.util.disassembler_ui import *
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata, metadata_progress
@@ -489,15 +489,15 @@ class CoverageOverview(DockableShim):
         # handle the 'Refresh metadata' action
         elif action == self._action_refresh_metadata:
 
-            idaapi.show_wait_box("Building database metadata...")
+            show_wait_box("Building database metadata...")
             self._director.refresh()
 
             # ensure the table's model gets refreshed
-            idaapi.replace_wait_box("Refreshing Coverage Overview...")
+            replace_wait_box("Refreshing Coverage Overview...")
             self.refresh()
 
             # all done
-            idaapi.hide_wait_box()
+            hide_wait_box()
 
         # handle the 'Rename' action (only applies to a single function)
         if action == self._action_rename and len(selected_rows) == 1:

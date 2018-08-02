@@ -5,8 +5,6 @@ import logging
 import threading
 import collections
 
-import idaapi # TODO: remove in v0.8
-
 from lighthouse.util import *
 from lighthouse.util.ida import await_future, await_lock
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
@@ -994,7 +992,7 @@ class CoverageDirector(object):
 
         for i, name in enumerate(self.all_names, 1):
             logger.debug(" - %s" % name)
-            idaapi.replace_wait_box(
+            replace_wait_box(
                 "Refreshing coverage mapping %u/%u" % (i, len(self.all_names))
             )
             coverage = self.get_coverage(name)
