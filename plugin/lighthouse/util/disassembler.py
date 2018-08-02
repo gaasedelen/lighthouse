@@ -239,3 +239,35 @@ def get_database_directory():
         return os.path.dirname(bv.file.filename)
     raise RuntimeError("API not shimmed for the active disassembler")
 
+def get_root_filename():
+    """
+    Return the root filename used to generate the database.
+    """
+    if active_disassembler == platform.IDA:
+        return idaapi.get_root_filename()
+
+    #
+    # TODO: This is the best we can do without getting really ugly.
+    #       Binja really needs to expose original filenames...
+    #
+
+    if active_disassembler == platform.BINJA:
+        bv = _binja_get_bv()
+        if not bv:
+            return None
+        return os.path.basename(os.path.splitext(bv.file.filename)[0])
+
+    raise RuntimeError("API not shimmed for the active disassembler")
+
+def get_imagebase():
+    """
+    Return the base address of the current database.
+    """
+    if active_disassembler == platform.IDA:
+        return idaapi.get_imagebase()
+    if active_disassembler == platform.BINJA:
+        bv = _binja_get_bv()
+        if not bv:
+            return None # TODO: probably need a universal failure code
+        return bv.start
+

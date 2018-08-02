@@ -1,14 +1,11 @@
 import os
 
-import idaapi
-import idautils
-
 from lighthouse.ui import *
 from lighthouse.util import *
+from lighthouse.util.qt import *
 from lighthouse.util.ida import await_future
-from lighthouse.util.disassembler import get_database_directory
-from lighthouse.util.disassembler_ui import prompt_string
-from lighthouse.parsers import *
+from lighthouse.util.disassembler import get_database_directory, get_root_filename, get_imagebase
+from lighthouse.parsers import DrcovData
 from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
@@ -220,22 +217,23 @@ class Lighthouse(object):
         # block until it completes. the user will be shown a progress dialog.
         #
 
-        idaapi.show_wait_box("Building database metadata...")
+        waitbox = WaitBox("Building database metadata...")
+        waitbox.show()
         await_future(future)
 
         # aggregate all the selected files into one new coverage set
-        new_coverage = self._aggregate_batch(loaded_files)
+        new_coverage = self._aggregate_batch(loaded_files, waitbox)
 
         # inject the the aggregated coverage set
-        idaapi.replace_wait_box("Mapping coverage...")
+        waitbox.set_text("Mapping coverage...")
         self.director.create_coverage(coverage_name, new_coverage.data)
 
         # select the newly created batch coverage
-        idaapi.replace_wait_box("Selecting coverage...")
+        waitbox.set_text("Selecting coverage...")
         self.director.select_coverage(coverage_name)
 
         # all done, hide the IDA wait box
-        idaapi.hide_wait_box()
+        waitbox.hide()
         lmsg("Successfully loaded batch %s..." % coverage_name)
 
         # show the coverage overview
@@ -273,7 +271,8 @@ class Lighthouse(object):
         # block until it completes. the user will be shown a progress dialog.
         #
 
-        idaapi.show_wait_box("Building database metadata...")
+        waitbox = WaitBox("Building database metadata...")
+        waitbox.show()
         await_future(future)
 
         #
@@ -293,7 +292,7 @@ class Lighthouse(object):
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
-            idaapi.replace_wait_box(
+            waitbox.set_text(
                 "Normalizing and mapping coverage %u/%u" % (i, len(loaded_files))
             )
 
@@ -322,24 +321,24 @@ class Lighthouse(object):
         # to recompute the aggregate with the newly loaded coverage
         #
 
-        idaapi.replace_wait_box("Recomputing coverage aggregate...")
+        waitbox.set_text("Recomputing coverage aggregate...")
         self.director.resume_aggregation()
 
         # if nothing was mapped, then there's nothing else to do
         if not created_coverage:
             lmsg("No coverage files could be mapped...")
-            idaapi.hide_wait_box()
+            waitbox.hide()
             return
 
         #
         # select one (the first) of the newly loaded coverage file(s)
         #
 
-        idaapi.replace_wait_box("Selecting coverage...")
+        waitbox.set_text("Selecting coverage...")
         self.director.select_coverage(created_coverage[0])
 
         # all done, hide the IDA wait box
-        idaapi.hide_wait_box()
+        waitbox.hide()
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
@@ -349,11 +348,11 @@ class Lighthouse(object):
     # Internal
     #--------------------------------------------------------------------------
 
-    def _aggregate_batch(self, loaded_files):
+    def _aggregate_batch(self, loaded_files, waitbox):
         """
         Aggregate the given loaded_files data into a single coverage object.
         """
-        idaapi.replace_wait_box("Aggregating coverage batch...")
+        waitbox.set_text("Aggregating coverage batch...")
 
         # create a new coverage set to manually aggregate data into
         coverage = DatabaseCoverage({}, self.palette)
@@ -367,7 +366,7 @@ class Lighthouse(object):
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
-            idaapi.replace_wait_box(
+            waitbox.set_text(
                 "Aggregating batch data %u/%u" % (i, len(loaded_files))
             )
 
@@ -485,11 +484,11 @@ def normalize_coverage(coverage_data, metadata):
     """
 
     # extract the coverage relevant to this IDB (well, the root binary)
-    root_filename   = idaapi.get_root_filename()
+    root_filename   = get_root_filename()
     coverage_blocks = coverage_data.get_blocks_by_module(root_filename)
 
     # rebase the basic blocks
-    base = idaapi.get_imagebase()
+    base = get_imagebase()
     rebased_blocks = rebase_blocks(base, coverage_blocks)
 
     # coalesce the blocks into larger contiguous blobs
