@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 
-from .disassembler import is_msg_inited, get_user_dis_dir
+from .disassembler import is_msg_inited, get_disassembler_user_directory
 
 #------------------------------------------------------------------------------
 # Log / Print helpers
@@ -26,7 +26,7 @@ def get_log_dir():
     """
     Return the Lighthouse log directory.
     """
-    return os.path.join(get_user_dis_dir(), "lighthouse_logs")
+    return os.path.join(get_disassembler_user_directory(), "lighthouse_logs")
 
 def logging_started():
     """

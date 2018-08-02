@@ -197,8 +197,8 @@ class CoverageDirector(object):
         self._ast_queue.put(None)
         self._composition_worker.join()
 
-	# spin down the live metadata object
-	self.metadata.terminate()
+        # spin down the live metadata object
+        self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # Properties

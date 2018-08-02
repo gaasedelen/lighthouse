@@ -36,6 +36,7 @@ active_disassembler = platform.UNKNOWN
 if active_disassembler == platform.UNKNOWN:
     try:
         import idaapi
+        import idautils
         active_disassembler = platform.IDA
     except ImportError:
         pass
@@ -179,6 +180,29 @@ def execute_read(function):
     return wrapper
 
 #------------------------------------------------------------------------------
+# Binary Ninja Hacks XXX / TODO
+#------------------------------------------------------------------------------
+
+def _binja_get_scripting_instance():
+    """
+    Get the python scripting console in Binary Ninja.
+    """
+    try:
+        python = [o for o in gc.get_objects() if isinstance(o, PythonScriptingInstance.InterpreterThread)][0]
+    except IndexError:
+        return None
+    return python
+
+def _binja_get_bv():
+    """
+    Get the current BinaryView in Binary Ninja.
+    """
+    python = _binja_get_scripting_instance()
+    if not python:
+        return None
+    return python.current_view
+
+#------------------------------------------------------------------------------
 # API Shims
 #------------------------------------------------------------------------------
 
@@ -192,7 +216,7 @@ def is_msg_inited():
         return True
     raise RuntimeError("API not shimmed for the active disassembler")
 
-def get_user_dis_dir():
+def get_disassembler_user_directory():
     """
     Return the 'user' directory for the disassembler.
     """
@@ -201,3 +225,17 @@ def get_user_dis_dir():
     if active_disassembler == platform.BINJA:
         return os.path.split(binaryninja.user_plugin_path)[0]
     raise RuntimeError("API not shimmed for the active disassembler")
+
+def get_database_directory():
+    """
+    Return the directory for the current database.
+    """
+    if active_disassembler == platform.IDA:
+        return idautils.GetIdbDir()
+    if active_disassembler == platform.BINJA:
+        bv = _binja_get_bv()
+        if not bv:
+            return None
+        return os.path.dirname(bv.file.filename)
+    raise RuntimeError("API not shimmed for the active disassembler")
+

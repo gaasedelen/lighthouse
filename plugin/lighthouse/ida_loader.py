@@ -1,15 +1,15 @@
 import idaapi
 
-from lighthouse.core import Lighthouse
 from lighthouse.util.log import logger
+from lighthouse.ida_integration import LighthouseIDA
 
 def PLUGIN_ENTRY():
     """
     Required plugin entry point for IDAPython Plugins.
     """
-    return LighthouseIDA()
+    return LighthouseIDAPlugin()
 
-class LighthouseIDA(idaapi.plugin_t):
+class LighthouseIDAPlugin(idaapi.plugin_t):
     """
     The Lighthouse IDA Plugin Loader.
     """
@@ -28,11 +28,11 @@ class LighthouseIDA(idaapi.plugin_t):
         """
         This is called by IDA when it is loading the plugin.
         """
-        self._lighthouse = Lighthouse()
+        self._lighthouse = LighthouseIDA()
 
         # attempt plugin initialization
         try:
-            self._lighthouse._install_plugin()
+            self._lighthouse.load()
 
         # failed to initialize or integrate the plugin, log and skip loading
         except Exception as e:
@@ -55,7 +55,7 @@ class LighthouseIDA(idaapi.plugin_t):
 
         # attempt to cleanup and uninstall our plugin instance
         try:
-            self._lighthouse._uninstall_plugin()
+            self._lighthouse.unload()
 
         # failed to cleanly remove the plugin, log failure
         except Exception as e:
