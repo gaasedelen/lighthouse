@@ -28,6 +28,8 @@ logger = logging.getLogger("Lighthouse.Coverage")
 #    refreshed by the user.
 #
 
+BADADDR = -1
+
 #------------------------------------------------------------------------------
 # Database Coverage / Data Mapping
 #------------------------------------------------------------------------------
@@ -108,7 +110,7 @@ class DatabaseCoverage(object):
         #
 
         self._unmapped_data = set(self._hitmap.keys())
-        self._unmapped_data.add(idaapi.BADADDR)
+        self._unmapped_data.add(BADADDR)
 
         #
         # self._map_coverage is responsible for mapping coverage data to the
@@ -502,7 +504,7 @@ class DatabaseCoverage(object):
         Unmap all mapped data.
         """
         self._unmapped_data = set(self._hitmap.keys())
-        self._unmapped_data.add(idaapi.BADADDR)
+        self._unmapped_data.add(BADADDR)
         self.nodes     = {}
         self.functions = {}
 
@@ -587,7 +589,7 @@ class FunctionCoverage(object):
         self.node_percent = 0.0
 
         # baked colors
-        if function_address == idaapi.BADADDR:
+        if function_address == BADADDR:
             self.coverage_color = QtGui.QColor(30, 30, 30)
         else:
             self.coverage_color = 0
