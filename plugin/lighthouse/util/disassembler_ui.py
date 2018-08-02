@@ -121,27 +121,6 @@ class DockableShim(object):
 #------------------------------------------------------------------------------
 
 #@mainthread # TODO: re-enable
-def prompt_string(label, title, default=""):
-    """
-    Prompt the user with a dialog to enter a string.
-
-    This does not block the IDA main thread (unlike idaapi.askstr)
-    """
-    dlg = QtWidgets.QInputDialog(None)
-    dlg.setWindowFlags(dlg.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
-    dlg.setInputMode(QtWidgets.QInputDialog.TextInput)
-    dlg.setLabelText(label)
-    dlg.setWindowTitle(title)
-    dlg.setTextValue(default)
-    dlg.resize(
-        dlg.fontMetrics().averageCharWidth()*80,
-        dlg.fontMetrics().averageCharWidth()*10
-    )
-    ok = dlg.exec_()
-    text = str(dlg.textValue())
-    return (ok, text)
-
-#@mainthread # TODO: re-enable
 def gui_rename_function(function_address):
     """
     Interactive rename of a function in the IDB.

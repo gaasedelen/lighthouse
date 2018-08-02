@@ -1,7 +1,7 @@
 from .parser import *
 from lighthouse.util import *
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler_ui import execute_ui, prompt_string
+from lighthouse.util.disassembler_ui import execute_ui
 
 #------------------------------------------------------------------------------
 # Composing Shell
