@@ -7,6 +7,7 @@ import functools
 import idaapi
 
 from .qt import *
+from .misc import is_mainthread
 from .disassembler import using_ida7api, using_pyqt5
 
 logger = logging.getLogger("Lighthouse.Util.IDA")
@@ -184,195 +185,6 @@ def lex_citem_indexes(line):
     return indexes
 
 #------------------------------------------------------------------------------
-# Misc
-#------------------------------------------------------------------------------
-
-def touch_window(target):
-    """
-    Touch a window/widget/form to ensure it gets drawn by IDA.
-
-    XXX/HACK:
-
-      We need to ensure that widget we will analyze actually gets drawn
-      so that there are colors for us to steal.
-
-      To do this, we switch to it, and switch back. I tried a few different
-      ways to trigger this from Qt, but could only trigger the full
-      painting by going through the IDA routines.
-
-    """
-
-    # get the currently active widget/form title (the form itself seems transient...)
-    if using_ida7api:
-        twidget = idaapi.get_current_widget()
-        title = idaapi.get_widget_title(twidget)
-    else:
-        form = idaapi.get_current_tform()
-        title = idaapi.get_tform_title(form)
-
-    # touch/draw the widget by playing musical chairs
-    if using_ida7api:
-
-        # touch the target window by switching to it
-        idaapi.activate_widget(target, True)
-        flush_ida_sync_requests()
-
-        # locate our previous selection
-        previous_twidget = idaapi.find_widget(title)
-
-        # return us to our previous selection
-        idaapi.activate_widget(previous_twidget, True)
-        flush_ida_sync_requests()
-
-    else:
-
-        # touch the target window by switching to it
-        idaapi.switchto_tform(target, True)
-        flush_ida_sync_requests()
-
-        # locate our previous selection
-        previous_form = idaapi.find_tform(title)
-
-        # lookup our original form and switch back to it
-        idaapi.switchto_tform(previous_form, True)
-        flush_ida_sync_requests()
-
-def get_ida_bg_color():
-    """
-    Get the background color of an IDA disassembly view.
-
-    -----------------------------------------------------------------------
-
-    The necessity of this function is pretty silly. I would like lighthouse
-    to be color-aware of the user's IDA theme such that it selects reasonable
-    colors that maintain readability.
-
-    Since there is no supported way to probe the palette & colors in use by
-    IDA, we must get creative. This function attempts to locate an IDA
-    disassembly view, and take a screenshot of said widget. It will then
-    attempt to extract the color of a single background pixel (hopefully).
-
-    PS: please expose the get_graph_color(...) palette accessor, Ilfak ;_;
-    """
-    if using_ida7api:
-        return get_ida_bg_color_ida7()
-    else:
-        return get_ida_bg_color_ida6()
-
-def get_ida_bg_color_ida7():
-    """
-    Get the background color of an IDA disassembly view. (IDA 7+)
-    """
-    names  = ["Enums", "Structures"]
-    names += ["Hex View-%u" % i for i in range(5)]
-    names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
-
-    # find a form (eg, IDA view) to analyze colors from
-    for window_name in names:
-        twidget = idaapi.find_widget(window_name)
-        if twidget:
-            break
-    else:
-        raise RuntimeError("Failed to find donor view")
-
-    # touch the target form so we know it is populated
-    touch_window(twidget)
-
-    # locate the Qt Widget for a form and take 1px image slice of it
-    import sip
-    widget = sip.wrapinstance(long(twidget), QtWidgets.QWidget)
-    pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
-
-    # convert the raw pixmap into an image (easier to interface with)
-    image = QtGui.QImage(pixmap.toImage())
-
-    # return the predicted background color
-    return QtGui.QColor(predict_bg_color(image))
-
-def get_ida_bg_color_ida6():
-    """
-    Get the background color of an IDA disassembly view. (IDA 6.x)
-    """
-    names  = ["Enums", "Structures"]
-    names += ["Hex View-%u" % i for i in range(5)]
-    names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
-
-    # find a form (eg, IDA view) to analyze colors from
-    for window_name in names:
-        form = idaapi.find_tform(window_name)
-        if form:
-            break
-    else:
-        raise RuntimeError("Failed to find donor View")
-
-    # touch the target form so we know it is populated
-    touch_window(form)
-
-    # locate the Qt Widget for a form and take 1px image slice of it
-    if using_pyqt5:
-        widget = idaapi.PluginForm.FormToPyQtWidget(form)
-        pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
-    else:
-        widget = idaapi.PluginForm.FormToPySideWidget(form)
-        region = QtCore.QRect(0, 10, widget.width(), 1)
-        pixmap = QtGui.QPixmap.grabWidget(widget, region)
-
-    # convert the raw pixmap into an image (easier to interface with)
-    image = QtGui.QImage(pixmap.toImage())
-
-    # return the predicted background color
-    return QtGui.QColor(predict_bg_color(image))
-
-def predict_bg_color(image):
-    """
-    Predict the background color of an IDA View from a given image slice.
-
-    We hypothesize that the 'background color' of a given image slice of an
-    IDA form will be the color that appears in the longest 'streaks' or
-    continuous sequences. This will probably be true 99% of the time.
-
-    This function takes an image, and analyzes its first row of pixels. It
-    will return the color that it believes to be the 'background color' based
-    on its sequence length.
-    """
-    assert image.width() and image.height()
-
-    # the details for the longest known color streak will be saved in these
-    longest = 1
-    speculative_bg = image.pixel(0, 0)
-
-    # this will be the computed length of the current color streak
-    sequence = 1
-
-    # find the longest streak of color in a single pixel slice
-    for x in xrange(1, image.width()):
-
-        # the color of this pixel matches the last pixel, extend the streak count
-        if image.pixel(x, 0) == image.pixel(x-1,0):
-            sequence += 1
-
-            #
-            # this catches the case where the longest color streak is in fact
-            # the last one. this ensures the streak color will get saved.
-            #
-
-            if x != image.width():
-                continue
-
-        # color change, determine if this was the longest continuous color streak
-        if sequence > longest:
-
-            # save the last pixel as the longest seqeuence / most likely BG color
-            longest = sequence
-            speculative_bg = image.pixel(x-1, 0)
-
-            # reset the sequence counter
-            sequence = 1
-
-    # return the color we speculate to be the background color
-    return speculative_bg
-
-#------------------------------------------------------------------------------
 # IDA execute_sync decorators
 #------------------------------------------------------------------------------
 # from: Will Ballenthin
@@ -387,15 +199,6 @@ def idawrite_async(f):
     def wrapper(*args, **kwargs):
         ff = functools.partial(f, *args, **kwargs)
         return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
-    return wrapper
-
-def mainthread(f):
-    """
-    A debug decorator to assert main thread execution.
-    """
-    def wrapper(*args, **kwargs):
-        assert idaapi.is_main_thread()
-        return f(*args, **kwargs)
     return wrapper
 
 #------------------------------------------------------------------------------
@@ -435,8 +238,8 @@ def await_future(future):
         # to flush the event loop so IDA does not hang
         #
 
-        if idaapi.is_main_thread():
-            flush_ida_sync_requests()
+        if qt_available and is_mainthread():
+            flush_qt_events()
 
 def await_lock(lock):
     """
@@ -475,8 +278,8 @@ def await_lock(lock):
         # to flush the event loop so IDA does not hang
         #
 
-        if idaapi.is_main_thread():
-            flush_ida_sync_requests()
+        if qt_available and is_mainthread():
+            flush_qt_events()
 
     #
     # we spent 60 seconds trying to acquire the lock, but never got it...
@@ -484,16 +287,6 @@ def await_lock(lock):
     #
 
     raise RuntimeError("Failed to acquire lock after %f seconds!" % timeout)
-
-@mainthread
-def flush_ida_sync_requests():
-    """
-    Flush all execute_sync requests.
-    """
-
-    # this will trigger/flush the IDA UI loop
-    qta = QtCore.QCoreApplication.instance()
-    qta.processEvents()
 
 #------------------------------------------------------------------------------
 # IDA Util

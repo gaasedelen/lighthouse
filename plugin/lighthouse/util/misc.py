@@ -1,5 +1,6 @@
 import os
 import weakref
+import threading
 import collections
 
 #------------------------------------------------------------------------------
@@ -22,6 +23,21 @@ def plugin_resource(resource_name):
 #------------------------------------------------------------------------------
 # Python Util
 #------------------------------------------------------------------------------
+
+def is_mainthread():
+    """
+    Return a bool indicating main thread execution.
+    """
+    return isinstance(threading.current_thread(), threading._MainThread)
+
+def mainthread(f):
+    """
+    A debug decorator to assert main thread execution.
+    """
+    def wrapper(*args, **kwargs):
+        assert is_mainthread()
+        return f(*args, **kwargs)
+    return wrapper
 
 def chunks(l, n):
     """

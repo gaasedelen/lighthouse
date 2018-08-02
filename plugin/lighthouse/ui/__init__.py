@@ -1,3 +1,1 @@
-import idaapi
-
-from .coverage_overview import *
+from .coverage_overview import * # TODO: can we remove this?

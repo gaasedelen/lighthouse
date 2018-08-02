@@ -1,26 +1,47 @@
 from .disassembler import using_ida7api, using_pyqt5
 
+# TODO: explain global
+
+qt_available = False
+
 #
+# TODO: update commeet
 # From Qt4 --> Qt5, the organization of some of the code / objects has
 # changed. We use this file to shim/re-alias a few of these to reduce the
 # number of compatibility checks / code churn in the code that consumes them.
 #
 
-if using_pyqt5:
-    import PyQt5.QtGui as QtGui
-    import PyQt5.QtCore as QtCore
-    import PyQt5.QtWidgets as QtWidgets
+try:
 
-else:
-    import PySide.QtGui as QtGui
-    import PySide.QtCore as QtCore
-    QtWidgets = QtGui
-    QtCore.pyqtSignal = QtCore.Signal
-    QtCore.pyqtSlot = QtCore.Slot
+    if using_pyqt5:
+        import PyQt5.QtGui as QtGui
+        import PyQt5.QtCore as QtCore
+        import PyQt5.QtWidgets as QtWidgets
+
+    else:
+        import PySide.QtGui as QtGui
+        import PySide.QtCore as QtCore
+        QtWidgets = QtGui
+        QtCore.pyqtSignal = QtCore.Signal
+        QtCore.pyqtSlot = QtCore.Slot
+
+    # importing went okay, qt must be available for use
+    qt_available = True
+
+# import failed, PyQt5/PySide not available
+except ImportError:
+    pass
 
 #------------------------------------------------------------------------------
 # UI Util
 #------------------------------------------------------------------------------
+
+def flush_qt_events():
+    """
+    Flush the Qt event pipeline.
+    """
+    qta = QtCore.QCoreApplication.instance()
+    qta.processEvents()
 
 def MonospaceFont():
     """

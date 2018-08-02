@@ -1,6 +1,8 @@
 import os
 import functools
 
+from .misc import is_mainthread
+
 #
 # TODO: rewrite shim/compat comments in this file...
 #
@@ -145,15 +147,26 @@ def execute_read(function):
             output[0] = function(*args, **kwargs)
             return 1
 
-        # ida
+        #
+        # IDA
+        #
+
         if active_disassembler == platform.IDA:
-            if idaapi.is_main_thread():
+            if is_mainthread():
                 thunk()
             else:
                 idaapi.execute_sync(thunk, idaapi.MFF_READ)
 
-        # binja
+        #
+        # Binary Ninja
+        #
+
         elif active_disassembler == platform.BINJA:
+
+            #
+            # It is *only* safe to access the BNDB from a background task,
+            # so we must schedule all read/writes this way...
+            #
 
             class DatabaseRead(BackgroundTaskThread):
                 """
@@ -171,11 +184,14 @@ def execute_read(function):
             t.start()
             t.join()
 
+        #
         # unknown
+        #
+
         else:
             raise RuntimeError("Unknown disassembler! Cannot read from database!")
 
-        # return the output of the synchronized function
+        # return the output of the synchronized execution / read
         return output[0]
     return wrapper
 
@@ -248,7 +264,7 @@ def get_root_filename():
 
     #
     # TODO: This is the best we can do without getting really ugly.
-    #       Binja really needs to expose original filenames...
+    #       Binja needs to expose original filename API's ...
     #
 
     if active_disassembler == platform.BINJA:

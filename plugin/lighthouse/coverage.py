@@ -28,7 +28,7 @@ logger = logging.getLogger("Lighthouse.Coverage")
 #    refreshed by the user.
 #
 
-BADADDR = -1
+BADADDR = 0xFFFFFFFFFFFFFFFF
 
 #------------------------------------------------------------------------------
 # Database Coverage / Data Mapping

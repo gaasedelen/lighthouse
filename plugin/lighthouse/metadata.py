@@ -9,6 +9,7 @@ import idaapi
 import idautils
 
 from lighthouse.util import *
+from lighthouse.util.misc import mainthread
 from lighthouse.util.disassembler import execute_read, using_ida7api
 from lighthouse.util.disassembler_ui import execute_ui, replace_wait_box
 
@@ -574,7 +575,7 @@ class DatabaseMetadata(object):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    #@mainthread # TODO: re-enable once binja supports is_main_thread()?
+    @mainthread
     def _name_changed(self, address, new_name, local_name):
         """
         Handler for rename event in IDA.

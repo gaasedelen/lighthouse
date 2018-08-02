@@ -1,6 +1,6 @@
 import os
 
-from lighthouse.ui import *
+from lighthouse.ui import CoverageOverview
 from lighthouse.util import *
 from lighthouse.util.qt import *
 from lighthouse.util.ida import await_future
