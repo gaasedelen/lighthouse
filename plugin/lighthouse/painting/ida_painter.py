@@ -1,5 +1,4 @@
 import time
-import bisect
 import logging
 import threading
 
@@ -8,31 +7,26 @@ import idaapi
 
 from lighthouse.util import *
 from lighthouse.util.ida import *
+from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting")
 
-class CoveragePainter(object):
+def idawrite_async(f):
     """
-    Asynchronous database painter.
+    Decorator for marking a function as completely async.
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        ff = functools.partial(f, *args, **kwargs)
+        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
+    return wrapper
+
+class IDAPainter(DatabasePainter):
+    """
+    Asynchronous IDA database painter.
     """
 
     def __init__(self, director, palette):
-
-        # color palette
-        self.palette = palette
-        self._director = director
-
-        #----------------------------------------------------------------------
-        # Painted State
-        #----------------------------------------------------------------------
-
-        #
-        # the coverage painter maintains its own internal record of what
-        # instruction addresses and graph nodes it has painted.
-        #
-
-        self._painted_nodes = set()
-        self._painted_instructions = set()
 
         #----------------------------------------------------------------------
         # HexRays Hooking
@@ -46,67 +40,8 @@ class CoveragePainter(object):
 
         self._attempted_hook = False
 
-        #----------------------------------------------------------------------
-        # Async
-        #----------------------------------------------------------------------
-
-        #
-        # to communicate with the asynchronous painting thread, we send a
-        # a message via the thread event to signal a new paint request, and
-        # use the repaint_requested bool to interrupt a running paint request.
-        #
-
-        self._action_complete = threading.Event()
-        self._repaint_request = threading.Event()
-        self._repaint_requested = False
-        self._end_threads = False
-
-        #
-        # asynchronous database painting thread
-        #
-
-        self._painting_worker = threading.Thread(
-            target=self._async_database_painter,
-            name="DatabasePainter"
-        )
-        self._painting_worker.start()
-
-        #----------------------------------------------------------------------
-        # Callbacks
-        #----------------------------------------------------------------------
-
-        # register for cues from the director
-        self._director.coverage_switched(self.repaint)
-        self._director.coverage_modified(self.repaint)
-
-    def terminate(self):
-        """
-        Cleanup & terminate the painter.
-        """
-        self._end_threads = True
-        self._repaint_requested = True
-        self._repaint_request.set()
-        self._painting_worker.join()
-
-    #--------------------------------------------------------------------------
-    # Initialization
-    #--------------------------------------------------------------------------
-
-    def _init_hexrays_hooks(self):
-        """
-        Install Hex-Rrays hooks (when available).
-        """
-        result = False
-
-        if idaapi.init_hexrays_plugin():
-            logger.debug("HexRays present, installing hooks...")
-            result = idaapi.install_hexrays_callback(self._hxe_callback)
-
-        logger.debug("HexRays hooked: %r" % result)
-
-    #------------------------------------------------------------------------------
-    # Painting
-    #------------------------------------------------------------------------------
+        # continue normal painter initialization
+        super(IDAPainter, self).__init__(director, palette)
 
     def repaint(self):
         """
@@ -118,29 +53,12 @@ class CoveragePainter(object):
             self._init_hexrays_hooks()
             self._attempted_hook = True
 
-        # signal the painting thread that it's time to repaint coverage
-        self._repaint_requested = True
-        self._repaint_request.set()
+        # execute underlying repaint function
+        super(IDAPainter, self).repaint()
 
     #------------------------------------------------------------------------------
-    # Painting - Instructions / Items (Lines)
+    # Paint Actions
     #------------------------------------------------------------------------------
-
-    def paint_instructions(self, instructions):
-        """
-        Paint instruction level coverage defined by the current database mapping.
-        """
-        for address in instructions:
-            idaapi.set_item_color(address, self.palette.ida_coverage)
-            self._painted_instructions.add(address)
-
-    def clear_instructions(self, instructions):
-        """
-        Clear paint from the given instructions.
-        """
-        for address in instructions:
-            idaapi.set_item_color(address, idc.DEFCOLOR)
-            self._painted_instructions.discard(address)
 
     @idawrite_async
     def _paint_instructions(self, instructions):
@@ -162,9 +80,45 @@ class CoveragePainter(object):
         self._action_complete.set()
         time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
 
+    @idawrite_async
+    def _paint_nodes(self, nodes_coverage):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
+        self.paint_nodes(nodes_coverage)
+        self._action_complete.set()
+        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
+
+    @idawrite_async
+    def _clear_nodes(self, nodes_metadata):
+        """
+        Internal routine to force called action to the main thread.
+        """
+        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
+        self.clear_nodes(nodes_metadata)
+        self._action_complete.set()
+        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
+
     #------------------------------------------------------------------------------
-    # Painting - Nodes (Basic Blocks)
+    # Paint Actions
     #------------------------------------------------------------------------------
+
+    def paint_instructions(self, instructions):
+        """
+        Paint instruction level coverage defined by the current database mapping.
+        """
+        for address in instructions:
+            idaapi.set_item_color(address, self.palette.ida_coverage)
+            self._painted_instructions.add(address)
+
+    def clear_instructions(self, instructions):
+        """
+        Clear paint from the given instructions.
+        """
+        for address in instructions:
+            idaapi.set_item_color(address, idc.DEFCOLOR)
+            self._painted_instructions.discard(address)
 
     def paint_nodes(self, nodes_coverage):
         """
@@ -232,26 +186,6 @@ class CoveragePainter(object):
             )
 
             self._painted_nodes.discard(node_metadata.address)
-
-    @idawrite_async
-    def _paint_nodes(self, nodes_coverage):
-        """
-        Internal routine to force called action to the main thread.
-        """
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
-        self.paint_nodes(nodes_coverage)
-        self._action_complete.set()
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
-
-    @idawrite_async
-    def _clear_nodes(self, nodes_metadata):
-        """
-        Internal routine to force called action to the main thread.
-        """
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
-        self.clear_nodes(nodes_metadata)
-        self._action_complete.set()
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
 
     #------------------------------------------------------------------------------
     # Painting - Functions
@@ -327,6 +261,18 @@ class CoveragePainter(object):
     #------------------------------------------------------------------------------
     # Painting - HexRays (Decompilation / Source)
     #------------------------------------------------------------------------------
+
+    def _init_hexrays_hooks(self):
+        """
+        Install Hex-Rrays hooks (when available).
+        """
+        result = False
+
+        if idaapi.init_hexrays_plugin():
+            logger.debug("HexRays present, installing hooks...")
+            result = idaapi.install_hexrays_callback(self._hxe_callback)
+
+        logger.debug("HexRays hooked: %r" % result)
 
     def paint_hexrays(self, cfunc, database_coverage):
         """

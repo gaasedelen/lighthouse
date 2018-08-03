@@ -185,24 +185,6 @@ def lex_citem_indexes(line):
     return indexes
 
 #------------------------------------------------------------------------------
-# IDA execute_sync decorators
-#------------------------------------------------------------------------------
-# from: Will Ballenthin
-# http://www.williballenthin.com/blog/2015/09/04/idapython-synchronization-decorator
-#
-
-def idawrite_async(f):
-    """
-    Decorator for marking a function as completely async.
-    """
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
-    return wrapper
-
-
-#------------------------------------------------------------------------------
 # IDA Util
 #------------------------------------------------------------------------------
 

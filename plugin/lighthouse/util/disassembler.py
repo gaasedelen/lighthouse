@@ -1,5 +1,6 @@
 import os
 import gc
+import time
 import functools
 
 from .misc import is_mainthread

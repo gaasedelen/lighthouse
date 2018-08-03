@@ -9,7 +9,7 @@ from lighthouse.util.disassembler_ui import *
 
 from lighthouse.parsers import DrcovData
 from lighthouse.palette import LighthousePalette
-#from lighthouse.painting import CoveragePainter
+from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
@@ -57,7 +57,7 @@ class Lighthouse(object):
         self.director = CoverageDirector(self.palette)
 
         # the coverage painter
-        #self.painter = CoveragePainter(self.director, self.palette)
+        self.painter = CoveragePainter(self.director, self.palette)
 
         # the coverage overview widget
         self._ui_coverage_overview = None
@@ -99,7 +99,7 @@ class Lighthouse(object):
         """
         IDB closing event, last chance to spin down threaded workers.
         """
-        #self.painter.terminate()
+        self.painter.terminate()
         self.director.terminate()
 
     #--------------------------------------------------------------------------
@@ -240,7 +240,7 @@ class Lighthouse(object):
         lmsg("Successfully loaded batch %s..." % coverage_name)
 
         # show the coverage overview
-        self.open_coverage_overview()
+        #self.open_coverage_overview() # TODO: uncomment once UI working in binja
 
     def interactive_load_file(self):
         """
@@ -344,7 +344,7 @@ class Lighthouse(object):
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
-        self.open_coverage_overview()
+        #self.open_coverage_overview() # TODO: uncomment once UI working in binja
 
     #--------------------------------------------------------------------------
     # Internal
