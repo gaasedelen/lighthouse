@@ -91,6 +91,7 @@ class LighthousePalette(object):
         Depending on if IDA is using a dark or light theme, we *try*
         to select colors that will hopefully keep things most readable.
         """
+        self._initialized = True # TODO/HACK/XXX/BIJA
 
         # TODO: temporary until I have a better mechanism to do one-time init
         if self._initialized:

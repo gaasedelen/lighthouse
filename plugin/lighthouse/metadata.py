@@ -301,7 +301,13 @@ class DatabaseMetadata(object):
         if function_addresses is None:
 
             # retrieve a full function address list from the underlying database
-            function_addresses = list(idautils.Functions())
+            if active_disassembler == platform.IDA:
+                function_addresses = list(idautils.Functions())
+            elif active_disassembler == platform.BINJA:
+                bv = binja_get_bv()
+                function_addresses = [x.start for x in bv.functions]
+            else:
+                raise RuntimeError("Code has not been shimmed for the given disassembler")
 
             #
             # immediately drop function entries that are no longer present in the
@@ -815,7 +821,7 @@ class FunctionMetadata(object):
             #
 
             node_metadata.function = function_metadata
-            function_metadata.nodes[node_start] = node_metadata
+            function_metadata.nodes[node.start] = node_metadata
 
             #
             # enumerate the edges produced by this node with a destination

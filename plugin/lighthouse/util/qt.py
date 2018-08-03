@@ -180,3 +180,90 @@ class WaitBox(QtWidgets.QDialog):
 
         # compute the dialog layout
         self.setLayout(v_layout)
+
+#------------------------------------------------------------------------------
+# IDA Async Magic
+#------------------------------------------------------------------------------
+
+def await_future(future):
+    """
+    This is effectively a technique I use to get around completely blocking
+    IDA's mainthread while waiting for a threaded result that may need to make
+    use of the execute_sync operators.
+
+    Waiting for a 'future' thread result to come through via this function
+    lets other execute_sync actions to slip through (at least Read, Fast).
+    """
+    interval = 0.02    # the interval which we wait for a response
+
+    # run until the the future arrives
+    while True:
+
+        # block for a brief period to see if the future completes
+        try:
+            return future.get(timeout=interval)
+
+        #
+        # the future timed out, so perhaps it is blocked on a request
+        # to the mainthread. flush the requests now and try again
+        #
+
+        except Queue.Empty as e:
+            pass
+
+        logger.debug("Awaiting future...")
+
+        #
+        # if we are executing (well, blocking) as the main thread, we need
+        # to flush the event loop so IDA does not hang
+        #
+
+        if qt_available and is_mainthread():
+            flush_qt_events()
+
+def await_lock(lock):
+    """
+    Attempt to acquire a lock without blocking the IDA mainthread.
+
+    See await_future() for more details.
+    """
+
+    elapsed  = 0       # total time elapsed waiting for the lock
+    interval = 0.02    # the interval (in seconds) between acquire attempts
+    timeout  = 60.0    # the total time allotted to acquiring the lock
+    end_time = time.time() + timeout
+
+    # wait until the the lock is available
+    while time.time() < end_time:
+
+        #
+        # attempt to acquire the given lock without blocking (via 'False').
+        # if we succesfully aquire the lock, then we can return (success)
+        #
+
+        if lock.acquire(False):
+            logger.debug("Acquired lock!")
+            return
+
+        #
+        # the lock is not available yet. we need to sleep so we don't choke
+        # the cpu, and try to acquire the lock again next time through...
+        #
+
+        logger.debug("Awaiting lock...")
+        time.sleep(interval)
+
+        #
+        # if we are executing (well, blocking) as the main thread, we need
+        # to flush the event loop so IDA does not hang
+        #
+
+        if qt_available and is_mainthread():
+            flush_qt_events()
+
+    #
+    # we spent 60 seconds trying to acquire the lock, but never got it...
+    # to avoid hanging IDA indefinitely (or worse), we abort via signal
+    #
+
+    raise RuntimeError("Failed to acquire lock after %f seconds!" % timeout)

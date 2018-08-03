@@ -1,4 +1,5 @@
 import os
+import gc
 import functools
 
 from .misc import is_mainthread
@@ -47,6 +48,7 @@ if active_disassembler == platform.UNKNOWN:
 if active_disassembler == platform.UNKNOWN:
     try:
         import binaryninja
+        from binaryninja import PythonScriptingInstance
         from binaryninja.plugin import BackgroundTaskThread
         active_disassembler = platform.BINJA
     except ImportError:
@@ -173,14 +175,14 @@ def execute_read(function):
                 A stub task to safely read from the BNDB.
                 """
                 def __init__(self, text, function):
-                    super(BackgroundTaskThread, self).__init__(text, False)
+                    super(DatabaseRead, self).__init__(text, False)
                     self._task_to_run = function
                 def run(self):
                     self._task_to_run()
                     self.finish()
 
             # schedule the read and wait for its completion
-            t = DatabaseTask("Reading database...", thunk)
+            t = DatabaseRead("Reading database...", thunk)
             t.start()
             t.join()
 
@@ -209,7 +211,7 @@ def _binja_get_scripting_instance():
         return None
     return python
 
-def _binja_get_bv():
+def binja_get_bv():
     """
     Get the current BinaryView in Binary Ninja.
     """
@@ -222,7 +224,7 @@ def binja_get_function_at(address):
     """
     Get the function object at the given address.
     """
-    bv = _binja_get_bv()
+    bv = binja_get_bv()
     if not bv:
         return None
     return bv.get_function_at(address)
@@ -258,7 +260,7 @@ def get_database_directory():
     if active_disassembler == platform.IDA:
         return idautils.GetIdbDir()
     if active_disassembler == platform.BINJA:
-        bv = _binja_get_bv()
+        bv = binja_get_bv()
         if not bv:
             return None
         return os.path.dirname(bv.file.filename)
@@ -277,7 +279,7 @@ def get_root_filename():
     #
 
     if active_disassembler == platform.BINJA:
-        bv = _binja_get_bv()
+        bv = binja_get_bv()
         if not bv:
             return None # TODO: probably need a universal failure code
         return os.path.basename(os.path.splitext(bv.file.filename)[0])
@@ -291,7 +293,7 @@ def get_imagebase():
     if active_disassembler == platform.IDA:
         return idaapi.get_imagebase()
     if active_disassembler == platform.BINJA:
-        bv = _binja_get_bv()
+        bv = binja_get_bv()
         if not bv:
             return None # TODO: probably need a universal failure code
         return bv.start
@@ -304,7 +306,7 @@ def get_function_name_at(address):
     if active_disassembler == platform.IDA:
         return idaapi.get_short_name(address)
     if active_disassembler == platform.BINJA:
-        func = _binja_get_function_at(address)
+        func = binja_get_function_at(address)
         if not func:
             return None # TODO: probably need a universal failure code
         return func.name
@@ -317,7 +319,7 @@ def navigate(address):
     if active_disassembler == platform.IDA:
         return idaapi.jumpto(address)
     if active_disassembler == platform.BINJA:
-        bv = _binja_get_bv()
+        bv = binja_get_bv()
         if not bv:
             return None # TODO: probably need a universal failure code
         return bv.navigate(bv.view, address) # NOTE: BN returns None
@@ -341,7 +343,10 @@ if active_disassembler == platform.IDA:
 # TODO: BINJA DOESN'T HAVE A RENAME EVENT YET...
 elif active_disassembler == platform.BINJA:
     class RenameHooks(object):
-        pass
+        def hook(self):
+            pass
+        def unhook(self):
+            pass
 
 else:
     raise RuntimeError("API not shimmed for the active disassembler")

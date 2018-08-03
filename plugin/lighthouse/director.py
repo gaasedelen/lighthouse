@@ -6,7 +6,7 @@ import threading
 import collections
 
 from lighthouse.util import *
-from lighthouse.util.ida import await_future, await_lock
+from lighthouse.util.qt import await_future, await_lock
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.composer.parser import *

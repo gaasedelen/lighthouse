@@ -4,13 +4,12 @@ import logging
 from lighthouse.ui import CoverageOverview
 from lighthouse.util import *
 from lighthouse.util.qt import *
-from lighthouse.util.ida import await_future
 from lighthouse.util.disassembler import get_database_directory, get_root_filename, get_imagebase
 from lighthouse.util.disassembler_ui import *
 
 from lighthouse.parsers import DrcovData
 from lighthouse.palette import LighthousePalette
-from lighthouse.painting import CoveragePainter
+#from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
@@ -58,7 +57,7 @@ class Lighthouse(object):
         self.director = CoverageDirector(self.palette)
 
         # the coverage painter
-        self.painter = CoveragePainter(self.director, self.palette)
+        #self.painter = CoveragePainter(self.director, self.palette)
 
         # the coverage overview widget
         self._ui_coverage_overview = None
@@ -100,7 +99,7 @@ class Lighthouse(object):
         """
         IDB closing event, last chance to spin down threaded workers.
         """
-        self.painter.terminate()
+        #self.painter.terminate()
         self.director.terminate()
 
     #--------------------------------------------------------------------------
