@@ -3,15 +3,14 @@ import logging
 import weakref
 from operator import itemgetter, attrgetter
 
-import idaapi
-
 from lighthouse.util import *
 from lighthouse.util.qt import *
+from lighthouse.util.disassembler import navigate
 from lighthouse.util.disassembler_ui import *
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata, metadata_progress
-from lighthouse.coverage import FunctionCoverage
+from lighthouse.coverage import FunctionCoverage, BADADDR
 
 logger = logging.getLogger("Lighthouse.UI.Overview")
 
@@ -60,6 +59,10 @@ SAMPLE_CONTENTS = \
 debugger_docked = False
 
 class EventProxy(QtCore.QObject):
+    """
+    TODO explain the point of this
+    """
+
     def __init__(self, target):
         super(EventProxy, self).__init__()
         self._target = target
@@ -84,6 +87,7 @@ class EventProxy(QtCore.QObject):
         #
 
         if int(event.type()) == 2002:
+            import idaapi
 
             #
             # if the general registers IDA View exists, we make the assumption
@@ -383,7 +387,7 @@ class CoverageOverview(DockableShim):
         A double click on the coverage table view will jump the user to
         the corresponding function in the IDA disassembly view.
         """
-        idaapi.jumpto(self._model.row2func[index.row()])
+        navigate(self._model.row2func[index.row()])
 
     def _ui_ctx_menu_handler(self, position):
         """
@@ -555,7 +559,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
     def __init__(self, director, parent=None):
         super(CoverageModel, self).__init__(parent)
-        self._blank_coverage = FunctionCoverage(idaapi.BADADDR)
+        self._blank_coverage = FunctionCoverage(BADADDR)
 
         # local reference to the director
         self._director = director

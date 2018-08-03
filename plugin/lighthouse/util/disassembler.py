@@ -287,3 +287,15 @@ def get_imagebase():
             return None # TODO: probably need a universal failure code
         return bv.start
 
+def navigate(address):
+    """
+    Jump to the given addreess.
+    """
+    if active_disassembler == platform.IDA:
+        return idaapi.jumpto(address)
+    if active_disassembler == platform.BINJA:
+        bv = _binja_get_bv()
+        if not bv:
+            return None # TODO: probably need a universal failure code
+        return bv.navigate(bv.view, address) # NOTE: BN returns None
+

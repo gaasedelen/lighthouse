@@ -1,7 +1,6 @@
 import functools
 
 from .qt import *
-from .ida import *
 from .misc import is_mainthread, mainthread
 from .disassembler import *
 
