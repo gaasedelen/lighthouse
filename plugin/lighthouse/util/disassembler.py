@@ -218,6 +218,15 @@ def _binja_get_bv():
         return None
     return python.current_view
 
+def binja_get_function_at(address):
+    """
+    Get the function object at the given address.
+    """
+    bv = _binja_get_bv()
+    if not bv:
+        return None
+    return bv.get_function_at(address)
+
 #------------------------------------------------------------------------------
 # API Shims
 #------------------------------------------------------------------------------
@@ -270,7 +279,7 @@ def get_root_filename():
     if active_disassembler == platform.BINJA:
         bv = _binja_get_bv()
         if not bv:
-            return None
+            return None # TODO: probably need a universal failure code
         return os.path.basename(os.path.splitext(bv.file.filename)[0])
 
     raise RuntimeError("API not shimmed for the active disassembler")
@@ -286,6 +295,20 @@ def get_imagebase():
         if not bv:
             return None # TODO: probably need a universal failure code
         return bv.start
+    raise RuntimeError("API not shimmed for the active disassembler")
+
+def get_function_name_at(address):
+    """
+    Return the name of the function at the given address.
+    """
+    if active_disassembler == platform.IDA:
+        return idaapi.get_short_name(address)
+    if active_disassembler == platform.BINJA:
+        func = _binja_get_function_at(address)
+        if not func:
+            return None # TODO: probably need a universal failure code
+        return func.name
+    raise RuntimeError("API not shimmed for the active disassembler")
 
 def navigate(address):
     """
@@ -298,4 +321,28 @@ def navigate(address):
         if not bv:
             return None # TODO: probably need a universal failure code
         return bv.navigate(bv.view, address) # NOTE: BN returns None
+    raise RuntimeError("API not shimmed for the active disassembler")
+
+#--------------------------------------------------------------------------
+# Event Hooks
+#--------------------------------------------------------------------------
+#
+# TODO: explain...
+#
+
+if active_disassembler == platform.IDA:
+    if using_ida7api:
+        class RenameHooks(idaapi.IDB_Hooks):
+            pass
+    else:
+        class RenameHooks(idaapi.IDP_Hooks):
+            pass
+
+# TODO: BINJA DOESN'T HAVE A RENAME EVENT YET...
+elif active_disassembler == platform.BINJA:
+    class RenameHooks(object):
+        pass
+
+else:
+    raise RuntimeError("API not shimmed for the active disassembler")
 
