@@ -63,7 +63,7 @@ class Lighthouse(object):
         self._ui_coverage_overview = None
 
         # the directory to start the coverage file dialog in
-        self._last_directory = get_database_directory()
+        self._last_directory = None
 
     def print_banner(self):
         """
@@ -166,16 +166,19 @@ class Lighthouse(object):
         """
         Open the 'Coverage Overview' dialog.
         """
-        self.palette.refresh_colors()
+        try:
+            self.palette.refresh_colors()
 
-        # the coverage overview is already open & visible, simply refresh it
-        if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
-            self._ui_coverage_overview.refresh()
-            return
+            # the coverage overview is already open & visible, simply refresh it
+            if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
+                self._ui_coverage_overview.refresh()
+                return
 
-        # create a new coverage overview if there is not one visible
-        self._ui_coverage_overview = CoverageOverview(self.director)
-        self._ui_coverage_overview.show()
+            # create a new coverage overview if there is not one visible
+            self._ui_coverage_overview = CoverageOverview(self.director)
+            self._ui_coverage_overview.show()
+        except Exception as e:
+            logger.exception(e)
 
     def interactive_load_batch(self):
         """
@@ -240,7 +243,7 @@ class Lighthouse(object):
         lmsg("Successfully loaded batch %s..." % coverage_name)
 
         # show the coverage overview
-        #self.open_coverage_overview() # TODO: uncomment once UI working in binja
+        self.open_coverage_overview()
 
     def interactive_load_file(self):
         """
@@ -344,7 +347,7 @@ class Lighthouse(object):
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
-        #self.open_coverage_overview() # TODO: uncomment once UI working in binja
+        self.open_coverage_overview() # TODO: uncomment once UI working in binja
 
     #--------------------------------------------------------------------------
     # Internal
@@ -393,6 +396,8 @@ class Lighthouse(object):
         """
         Internal - prompt a file selection dialog, returning file selections
         """
+        if not self._last_directory:
+            self._last_directory = get_database_directory()
 
         # create & configure a Qt File Dialog for immediate use
         file_dialog = QtWidgets.QFileDialog(
@@ -472,7 +477,7 @@ def load_coverage_files(filenames):
             lmsg("Failed to load coverage %s" % filename)
             lmsg(" - Error: %s" % str(e))
             logger.exception(" - Traceback:")
-            contkinue
+            continue
 
         # save the loaded coverage data to the output list
         loaded_coverage.append(coverage_data)

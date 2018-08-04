@@ -22,8 +22,8 @@ class LighthousePalette(object):
         self._initialized = False
 
         # the active theme name
-        self._qt_theme  = "Light"
-        self._ida_theme = "Light"
+        self._qt_theme  = "Dark"
+        self._ida_theme = "Dark"
 
         # the list of available themes
         self._themes = \

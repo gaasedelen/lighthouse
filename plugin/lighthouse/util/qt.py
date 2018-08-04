@@ -1,4 +1,9 @@
+import time
+import logging
+
 from .disassembler import using_ida7api, using_pyqt5
+
+logger = logging.getLogger("Lighthouse.Qt")
 
 # TODO: explain global
 

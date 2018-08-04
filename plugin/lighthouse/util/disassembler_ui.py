@@ -65,7 +65,7 @@ def execute_ui(f):
     return wrapper
 
 #------------------------------------------------------------------------------
-# Dockable Widget Shim (for IDA)
+# Dockable Widget Shim
 #------------------------------------------------------------------------------
 
 class DockableShim(object):
@@ -80,11 +80,26 @@ class DockableShim(object):
         self._title = title
         self._icon = QtGui.QIcon(icon_path)
 
+        if active_disassembler == platform.IDA:
+            self._ida_init()
+        elif active_disassembler == platform.BINJA:
+            self._widget = QtWidgets.QDialog()
+            self._widget.setMinimumSize(800, 600)
+            self._widget.setWindowTitle(title)
+        else:
+            raise RuntimeError("SHIM")
+
+        self._widget.setWindowIcon(self._icon)
+
+    def _ida_init(self):
+        """
+        TODO
+        """
         # IDA 7+ Widgets
         if using_ida7api:
             import sip
 
-            self._form   = idaapi.create_empty_widget(self._title)
+            self._form = idaapi.create_empty_widget(self._title)
             self._widget = sip.wrapinstance(long(self._form), QtWidgets.QWidget) # NOTE: LOL
 
         # legacy IDA PluginForm's
@@ -95,11 +110,9 @@ class DockableShim(object):
             else:
                 self._widget = idaapi.PluginForm.FormToPySideWidget(self._form)
 
-        self._widget.setWindowIcon(self._icon)
-
-    def show(self):
+    def _ida_show(self):
         """
-        Show the dockable widget.
+        TODO
         """
 
         # IDA 7+ Widgets
@@ -118,6 +131,18 @@ class DockableShim(object):
                     idaapi.PluginForm.FORM_PERSIST | \
                     0x80 #idaapi.PluginForm.FORM_QWIDGET
             idaapi.open_tform(self._form, flags)
+
+    def show(self):
+        """
+        Show the dockable widget.
+        """
+
+        if active_disassembler == platform.IDA:
+            self._ida_show()
+        elif active_disassembler == platform.BINJA:
+            self._widget.show()
+        else:
+            raise RuntimeError("SHIM")
 
 #------------------------------------------------------------------------------
 # Interactive

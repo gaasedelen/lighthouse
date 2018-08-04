@@ -81,8 +81,7 @@ class BinjaPainter(DatabasePainter):
         """
         bv = binja_get_bv()
         color = HighlightStandardColor.NoHighlightColor
-        for node_coverage in nodes_coverage:
-            node_metadata = node_coverage._database._metadata.nodes[node_coverage.address]
+        for node_metadata in nodes_metadata:
 
             # TODO: change to containing??
             nodes = bv.get_basic_blocks_starting_at(node_metadata.address)

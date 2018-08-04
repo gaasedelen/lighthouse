@@ -4,8 +4,8 @@ import itertools
 import collections
 
 from lighthouse.util import *
+from lighthouse.util.qt import QtGui #TODO remove
 from lighthouse.palette import compute_color_on_gradiant
-from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata
 
 logger = logging.getLogger("Lighthouse.Coverage")
@@ -590,7 +590,7 @@ class FunctionCoverage(object):
 
         # baked colors
         if function_address == BADADDR:
-            self.coverage_color = QtGui.QColor(30, 30, 30)
+            self.coverage_color = QtGui.QColor(30, 30, 30) #TODO: remove
         else:
             self.coverage_color = 0
 
