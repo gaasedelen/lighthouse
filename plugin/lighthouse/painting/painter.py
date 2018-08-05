@@ -1,3 +1,4 @@
+import abc
 import time
 import logging
 import threading
@@ -10,6 +11,7 @@ class DatabasePainter(object):
     """
     An asynchronous disassembler database painting engine.
     """
+    __metaclass__ = abc.ABCMeta
 
     def __init__(self, director, palette):
 
@@ -77,57 +79,56 @@ class DatabasePainter(object):
         self._repaint_requested = True
         self._repaint_request.set()
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Paint Actions
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
+    @abc.abstractmethod
     def _paint_instructions(self, instructions):
         """
-        Paint instruction level coverage defined by the current database mapping.
-
-        Internal routine to force called action to the main thread.
+        Paint instruction coverage defined by the current database mapping.
         """
-        raise NotImplementedError
+        pass
 
+    @abc.abstractmethod
     def _clear_instructions(self, instructions):
         """
         Clear paint from the given instructions.
-
-        Internal routine to force called action to the main thread.
         """
-        raise NotImplementedError
+        pass
 
+    @abc.abstractmethod
     def _paint_nodes(self, nodes_coverage):
         """
-        Paint node level coverage defined by the current database mappings.
-
-        Internal routine to force called action to the main thread.
+        Paint node coverage defined by the current database mappings.
         """
-        raise NotImplementedError
+        pass
 
+    @abc.abstractmethod
     def _clear_nodes(self, nodes_metadata):
         """
         Clear paint from the given graph nodes.
-
-        Internal routine to force called action to the main thread.
         """
-        raise NotImplementedError
+        pass
 
+    @abc.abstractmethod
     def _cancel_action(self, job):
         """
         Cancel a paint action using something representing its job.
         """
-        raise NotImplementedError
+        pass
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Priority Painting
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def _priority_paint(self):
         """
         Immediately repaint regions of the database visible to the user.
+
+        Return True upon completion, or False if interrupted.
         """
-        return True # optional, but recommended
+        return True # NOTE: optional, but recommended
 
     def _priority_paint_functions(self, target_address):
         """
@@ -135,7 +136,7 @@ class DatabasePainter(object):
 
         This will paint both the instructions & graph nodes of defined functions.
         """
-        pass # optional, organizational
+        pass # NOTE: optional, organizational
 
     def _priority_paint_instructions(self, target_address, ignore=set()):
         """
@@ -143,20 +144,13 @@ class DatabasePainter(object):
 
         Optionally, one can provide a set of addresses to ignore while painting.
         """
-        pass # optional, organizational
+        pass # NOTE: optional, organizational
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Asynchronous Painting
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
-    # TODO: remove after testing
     def _async_database_painter(self):
-        try:
-            self._async_database_painter2()
-        except Exception as e:
-            logger.error(e)
-
-    def _async_database_painter2(self):
         """
         Asynchronous database painting worker loop.
         """
@@ -179,15 +173,15 @@ class DatabasePainter(object):
             self._repaint_request.clear()
             self._repaint_requested = False
 
-            # more code-friendly, readable aliases
-            database_coverage = self._director.coverage
-            database_metadata = self._director.metadata
+            # more code-friendly, readable aliases (db_XX == database_XX)
+            db_coverage = self._director.coverage
+            db_metadata = self._director.metadata
 
             start = time.time()
             #------------------------------------------------------------------
 
             #
-            # immediately paint the regions of the database the user is looking at
+            # immediately paint user-visible regions of the the database
             #
 
             if not self._priority_paint():
@@ -197,33 +191,36 @@ class DatabasePainter(object):
             # perform a more comprehensive paint
             #
 
-            # TODO: sort these for better binja painting?
             # compute the painted instructions that will not get painted over
-            stale_instructions = self._painted_instructions - database_coverage.coverage
+            stale_inst = self._painted_instructions - db_coverage.coverage
 
             # compute the painted nodes that will not get painted over
-            stale_nodes_ea = self._painted_nodes - database_coverage.nodes.viewkeys()
-            stale_nodes = [database_metadata.nodes[ea] for ea in stale_nodes_ea]
+            stale_nodes_ea = self._painted_nodes - db_coverage.nodes.viewkeys()
+            stale_nodes = [db_metadata.nodes[ea] for ea in stale_nodes_ea]
 
-            # clear instructions
-            if not self._async_action(self._clear_instructions, stale_instructions):
+            # clear old instruction paint
+            if not self._async_action(self._clear_instructions, stale_inst):
                 continue # a repaint was requested
 
-            # clear nodes
+            # clear old node paint
             if not self._async_action(self._clear_nodes, stale_nodes):
                 continue # a repaint was requested
 
-            # paint instructions
-            if not self._async_action(self._paint_instructions, database_coverage.coverage):
+            # paint new instructions
+            if not self._async_action(self._paint_instructions, db_coverage.coverage):
                 continue # a repaint was requested
 
-            # paint nodes
-            if not self._async_action(self._paint_nodes, database_coverage.nodes.itervalues()):
+            # paint new nodes
+            if not self._async_action(self._paint_nodes, db_coverage.nodes.itervalues()):
                 continue # a repaint was requested
 
             #------------------------------------------------------------------
             end = time.time()
             logger.debug("Full Paint took %s seconds" % (end - start))
+            logger.debug(" stale_inst:   %s" % "{:,}".format(len(stale_inst)))
+            logger.debug(" fresh inst:   %s" % "{:,}".format(len(db_coverage.coverage)))
+            logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
+            logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(db_coverage.nodes)))
 
         # thread exit
         logger.debug("Exiting DatabasePainter thread...")

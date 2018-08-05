@@ -1,6 +1,5 @@
 import time
 import logging
-import threading
 
 import idc
 import idaapi
@@ -10,6 +9,9 @@ from lighthouse.util.ida import *
 from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting")
+
+# TODO: perf overhaul
+# TODO: IDA 7.1 speed fix
 
 def idawrite_async(f):
     """
@@ -100,6 +102,9 @@ class IDAPainter(DatabasePainter):
         self._action_complete.set()
         time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
 
+    def _cancel_action(self, job_id):
+        pass
+
     #------------------------------------------------------------------------------
     # Paint Actions
     #------------------------------------------------------------------------------
@@ -110,7 +115,7 @@ class IDAPainter(DatabasePainter):
         """
         for address in instructions:
             idaapi.set_item_color(address, self.palette.ida_coverage)
-            self._painted_instructions.add(address)
+            self._painted_instructions.add(address) # TODO: perf
 
     def clear_instructions(self, instructions):
         """
@@ -118,7 +123,7 @@ class IDAPainter(DatabasePainter):
         """
         for address in instructions:
             idaapi.set_item_color(address, idc.DEFCOLOR)
-            self._painted_instructions.discard(address)
+            self._painted_instructions.discard(address) # TODO: perf
 
     def paint_nodes(self, nodes_coverage):
         """
@@ -274,14 +279,14 @@ class IDAPainter(DatabasePainter):
 
         logger.debug("HexRays hooked: %r" % result)
 
-    def paint_hexrays(self, cfunc, database_coverage):
+    def paint_hexrays(self, cfunc, db_coverage):
         """
         Paint decompilation text for the given HexRays Window.
         """
         logger.debug("Painting HexRays for 0x%X" % cfunc.entry_ea)
 
         # more code-friendly, readable aliases
-        database_metadata = database_coverage._metadata
+        db_metadata = db_coverage._metadata
         decompilation_text = cfunc.get_pseudocode()
 
         #
@@ -306,7 +311,7 @@ class IDAPainter(DatabasePainter):
         # relationship that ties graph nodes (basic blocks) to individual lines.
         #
 
-        line2node = map_line2node(cfunc, database_metadata, line2citem)
+        line2node = map_line2node(cfunc, db_metadata, line2citem)
 
         # great, now we have all the information we need to paint
 
@@ -317,7 +322,7 @@ class IDAPainter(DatabasePainter):
         lines_painted = 0
 
         # extract the node addresses that have been hit by our function's mapping data
-        executed_nodes = set(database_coverage.functions[cfunc.entry_ea].nodes.iterkeys())
+        executed_nodes = set(db_coverage.functions[cfunc.entry_ea].nodes.iterkeys())
 
         #
         # now we loop through every line_number of the decompiled text that claims
@@ -411,20 +416,20 @@ class IDAPainter(DatabasePainter):
 
         This will paint both the instructions & graph nodes of defined functions.
         """
-        database_metadata = self._director.metadata
-        database_coverage = self._director.coverage
+        db_metadata = self._director.metadata
+        db_coverage = self._director.coverage
         function_instructions = set()
 
         # the number of functions before and after the cursor to paint
         FUNCTION_BUFFER = 1
 
         # get the function metadata for the function closest to our cursor
-        function_metadata = database_metadata.get_closest_function(target_address)
+        function_metadata = db_metadata.get_closest_function(target_address)
         if not function_metadata:
             return function_instructions # this will be empty
 
         # select the range of functions around us that we would like to paint
-        func_num = database_metadata.get_function_num(function_metadata.address)
+        func_num = db_metadata.get_function_num(function_metadata.address)
         func_num_start = max(func_num - FUNCTION_BUFFER, 0)
         func_num_end   = func_num + FUNCTION_BUFFER + 1
 
@@ -433,7 +438,7 @@ class IDAPainter(DatabasePainter):
 
             # get the next function to paint
             try:
-                function_metadata = database_metadata.get_function_by_num(current_num)
+                function_metadata = db_metadata.get_function_by_num(current_num)
             except IndexError:
                 continue
 
@@ -442,7 +447,7 @@ class IDAPainter(DatabasePainter):
                 break # paint interrupted
 
             # get the function coverage data for the target address
-            function_coverage = database_coverage.functions.get(function_metadata.address, None)
+            function_coverage = db_coverage.functions.get(function_metadata.address, None)
             if not function_coverage:
                 continue
 
@@ -462,8 +467,8 @@ class IDAPainter(DatabasePainter):
 
         Optionally, one can provide a set of addresses to ignore while painting.
         """
-        database_metadata = self._director.metadata
-        database_coverage = self._director.coverage
+        db_metadata = self._director.metadata
+        db_coverage = self._director.coverage
 
         # the number of instruction bytes before and after the cursor to paint
         INSTRUCTION_BUFFER = 200
@@ -471,13 +476,13 @@ class IDAPainter(DatabasePainter):
         # determine range of instructions to repaint
         start_address = max(target_address - INSTRUCTION_BUFFER, 0)
         end_address   = target_address + INSTRUCTION_BUFFER
-        instructions  = set(database_metadata.get_instructions_slice(start_address, end_address))
+        instructions  = set(db_metadata.get_instructions_slice(start_address, end_address))
 
         # remove any instructions painted by the function paints
         instructions -= ignore
 
         # mask only the instructions with coverage data in this region
-        instructions_coverage = instructions & database_coverage.coverage
+        instructions_coverage = instructions & db_coverage.coverage
 
         #
         # clear all instructions in this region, repaint the coverage data
@@ -493,143 +498,3 @@ class IDAPainter(DatabasePainter):
 
         # return the instruction addresses painted
         return instructions_coverage
-
-    #------------------------------------------------------------------------------
-    # Asynchronous Painting
-    #------------------------------------------------------------------------------
-
-    def _async_database_painter(self):
-        """
-        Asynchronous database painting worker loop.
-        """
-        logger.debug("Starting DatabasePainter thread...")
-
-        #
-        # Asynchronous Database Painting Loop
-        #
-
-        while True:
-
-            # wait for the next external repaint request
-            self._repaint_request.wait()
-
-            # if we've been signaled to spindown the painting thread, exit now
-            if self._end_threads:
-                break
-
-            # clear the repaint flag
-            self._repaint_request.clear()
-            self._repaint_requested = False
-
-            # more code-friendly, readable aliases
-            database_coverage = self._director.coverage
-            database_metadata = self._director.metadata
-
-            start = time.time()
-            #------------------------------------------------------------------
-
-            #
-            # immediately paint the regions of the database the user is looking at
-            #
-
-            if not self._priority_paint():
-                continue # a repaint was requested
-
-            #
-            # perform a more comprehensive paint
-            #
-
-            # compute the painted instructions that will not get painted over
-            stale_instructions = self._painted_instructions - database_coverage.coverage
-
-            # compute the painted nodes that will not get painted over
-            stale_nodes_ea = self._painted_nodes - database_coverage.nodes.viewkeys()
-            stale_nodes = [database_metadata.nodes[ea] for ea in stale_nodes_ea]
-
-            # clear instructions
-            if not self._async_action(self._clear_instructions, stale_instructions):
-                continue # a repaint was requested
-
-            # clear nodes
-            if not self._async_action(self._clear_nodes, stale_nodes):
-                continue # a repaint was requested
-
-            # paint instructions
-            if not self._async_action(self._paint_instructions, database_coverage.coverage):
-                continue # a repaint was requested
-
-            # paint nodes
-            if not self._async_action(self._paint_nodes, database_coverage.nodes.itervalues()):
-                continue # a repaint was requested
-
-            #------------------------------------------------------------------
-            end = time.time()
-            logger.debug("Full Paint took %s seconds" % (end - start))
-
-        # thread exit
-        logger.debug("Exiting DatabasePainter thread...")
-
-    def _async_action(self, paint_action, work_iterable):
-        """
-        Split a normal paint routine into interruptable chunks.
-
-        Internal routine for asynchrnous painting.
-        """
-        CHUNK_SIZE = 800 # somewhat arbitrary
-
-        # split the given nodes into multiple paints
-        for work_chunk in chunks(list(work_iterable), CHUNK_SIZE):
-
-            #
-            # reset the paint event signal so that it is ready for the next
-            # paint request. it will let us know when the asynchrnous paint
-            # action has completed in the IDA main thread
-            #
-
-            self._action_complete.clear()
-
-            #
-            # paint or unpaint a chunk of 'work' (nodes, or instructions) with
-            # the given paint function (eg, paint_nodes, clear_instructions)
-            #
-
-            job_id = paint_action(work_chunk)
-            assert job_id != -1
-
-            #
-            # wait for the asynchrnous paint event to complete or a signal that
-            # we should end this thread (via end_threads)
-            #
-
-            while not (self._action_complete.wait(timeout=0.1) or self._end_threads):
-                continue
-
-            #
-            # our end_threads signal/bool can only originate from the main IDA
-            # thread (plugin termination). we make the assumption that no more
-            # MFF_WRITE requests (eg, 'paint_action') will get processed.
-            #
-            # we do a best effort to cancel the in-flight job (just in case)
-            # and return so we can exit the thread.
-            #
-
-            if self._end_threads:
-                idaapi.cancel_exec_request(job_id)
-                return False
-
-            #
-            # the operation has been interrupted by a repaint request, bail
-            # immediately so that we can process the next repaint
-            #
-
-            if self._repaint_requested:
-                return False
-
-            #
-            # sleep some so we don't choke the main IDA thread
-            #
-
-            time.sleep(.001)
-
-        # operation completed successfully
-        return True

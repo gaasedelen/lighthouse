@@ -1,6 +1,8 @@
 import time
+import Queue
 import logging
 
+from .misc import is_mainthread
 from .disassembler import using_ida7api, using_pyqt5
 
 logger = logging.getLogger("Lighthouse.Qt")

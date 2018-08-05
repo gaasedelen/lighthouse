@@ -1,6 +1,7 @@
 import logging
 
 from binaryninja import HighlightStandardColor
+from binaryninja.highlight import HighlightColor
 
 from lighthouse.util.disassembler import *
 from lighthouse.painting import DatabasePainter
@@ -15,6 +16,14 @@ class BinjaPainter(DatabasePainter):
     def __init__(self, director, palette):
         super(BinjaPainter, self).__init__(director, palette)
 
+    def repaint(self):
+        """
+        TODO this is ugly, fix this later
+        """
+        if not self._director.bv:
+            self._director.bv = binja_get_bv()
+        super(BinjaPainter, self).repaint()
+
     #------------------------------------------------------------------------------
     # Paint Actions
     #------------------------------------------------------------------------------
@@ -27,15 +36,12 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = binja_get_bv()
+        bv = self._director.bv
         for address in instructions:
-            funcs = bv.get_functions_containing(address)
-            if len(funcs) != 1:
-                logger.warning("Painting may be incorrect (abnormal # funcs)")
-                logger.warning(funcs)
-            # TODO:  self.palette.ida_coverage
-            funcs[0].set_auto_instr_highlight(address, HighlightStandardColor.BlueHighlightColor)
-            self._painted_instructions.add(address)
+            for func in bv.get_functions_containing(address):
+                # TODO:  self.palette.ida_coverage
+                func.set_auto_instr_highlight(address, HighlightStandardColor.BlueHighlightColor)
+        self._painted_instructions |= set(instructions)
         self._action_complete.set()
 
     def _clear_instructions(self, instructions):
@@ -44,14 +50,11 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = binja_get_bv()
+        bv = self._director.bv
         for address in instructions:
-            funcs = bv.get_functions_containing(address)
-            if len(funcs) != 1:
-                logger.warning("Clearing may be incorrect (abnormal # funcs)")
-                logger.warning(funcs)
-            funcs[0].set_auto_instr_highlight(address, HighlightStandardColor.NoHighlightColor)
-            self._painted_instructions.add(address)
+            for func in bv.get_functions_containing(address):
+                func.set_auto_instr_highlight(address, HighlightStandardColor.NoHighlightColor)
+        self._painted_instructions -= set(instructions)
         self._action_complete.set()
 
     def _paint_nodes(self, nodes_coverage):
@@ -60,14 +63,13 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = binja_get_bv()
+        bv = self._director.bv
         color = HighlightStandardColor.BlueHighlightColor
         for node_coverage in nodes_coverage:
             node_metadata = node_coverage._database._metadata.nodes[node_coverage.address]
 
             # TODO: change to containing??
-            nodes = bv.get_basic_blocks_starting_at(node_metadata.address)
-            for node in nodes:
+            for node in bv.get_basic_blocks_starting_at(node_metadata.address):
                 node.highlight = color
 
             self._painted_nodes.add(node_metadata.address)
@@ -79,19 +81,17 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = binja_get_bv()
-        color = HighlightStandardColor.NoHighlightColor
+        bv = self._director.bv
         for node_metadata in nodes_metadata:
 
             # TODO: change to containing??
-            nodes = bv.get_basic_blocks_starting_at(node_metadata.address)
-            for node in nodes:
-                node.highlight = color
+            for node in bv.get_basic_blocks_starting_at(node_metadata.address):
+                node.highlight = HighlightStandardColor.NoHighlightColor
 
             self._painted_nodes.discard(node_metadata.address)
         self._action_complete.set()
 
-    def _cancel_job(self, job):
+    def _cancel_action(self, job):
         pass # TODO
         #job.cancel()
 

@@ -17,3 +17,4 @@ if active_disassembler == platform.IDA:
 elif active_disassembler == platform.BINJA:
     logger.info("Selecting Binary Ninja loader...")
     from lighthouse.binja_loader import *
+

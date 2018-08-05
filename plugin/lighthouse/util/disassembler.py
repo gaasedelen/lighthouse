@@ -1,6 +1,6 @@
 import os
-import gc
 import time
+import threading
 import functools
 
 from .misc import is_mainthread
@@ -206,11 +206,10 @@ def _binja_get_scripting_instance():
     """
     Get the python scripting console in Binary Ninja.
     """
-    try:
-        python = [o for o in gc.get_objects() if isinstance(o, PythonScriptingInstance.InterpreterThread)][0]
-    except IndexError:
-        return None
-    return python
+    for t in threading.enumerate():
+        if type(t) == PythonScriptingInstance.InterpreterThread:
+            return t
+    return None
 
 def binja_get_bv():
     """
