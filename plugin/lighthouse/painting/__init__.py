@@ -1,9 +1,9 @@
 from .painter import DatabasePainter
-from lighthouse.util.disassembler import active_disassembler, platform
+from lighthouse.util.disassembler import disassembler
 
-if active_disassembler == platform.IDA:
+if disassembler.NAME == "IDA":
     from .ida_painter import IDAPainter as CoveragePainter
-elif active_disassembler == platform.BINJA:
+elif disassembler.NAME == "BINJA":
     from .binja_painter import BinjaPainter as CoveragePainter
 else:
     raise RuntimeError("DISASSEMBLER-SPECIFIC SHIM MISSING")

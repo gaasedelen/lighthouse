@@ -1,7 +1,7 @@
 from .parser import *
 from lighthouse.util import *
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler_ui import execute_ui
+from lighthouse.util.disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # Composing Shell
@@ -171,7 +171,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
         self._internal_refresh()
 
-    @execute_ui
+    @disassembler.execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the shell.

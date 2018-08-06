@@ -1,11 +1,13 @@
 import time
 import logging
+import functools
 
 import idc
 import idaapi
 
 from lighthouse.util import *
-from lighthouse.util.ida import *
+from lighthouse.util.disassembler.ida import * # TODO: can we get rid of this dep?
+from lighthouse.util.disassembler import disassembler
 from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting")
@@ -134,7 +136,7 @@ class IDAPainter(DatabasePainter):
         node_info = idaapi.node_info_t()
 
         # NOTE/COMPAT:
-        if using_ida7api:
+        if disassembler.using_ida7api:
             set_node_info = idaapi.set_node_info
         else:
             set_node_info = idaapi.set_node_info2
@@ -170,7 +172,7 @@ class IDAPainter(DatabasePainter):
         node_info.bg_color = idc.DEFCOLOR
 
         # NOTE/COMPAT:
-        if using_ida7api:
+        if disassembler.using_ida7api:
             set_node_info = idaapi.set_node_info
         else:
             set_node_info = idaapi.set_node_info2

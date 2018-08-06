@@ -5,8 +5,8 @@ from operator import itemgetter, attrgetter
 
 from lighthouse.util import *
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler import navigate
-from lighthouse.util.disassembler_ui import *
+from lighthouse.util.disassembler import disassembler
+from lighthouse.util.disassembler.ui import DockableShim
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata, metadata_progress
@@ -95,7 +95,7 @@ class EventProxy(QtCore.QObject):
             #
 
             # NOTE / COMPAT:
-            if using_ida7api:
+            if disassembler.using_ida7api:
                 debug_mode = bool(idaapi.find_widget("General registers"))
             else:
                 debug_mode = bool(idaapi.find_tform("General registers"))
@@ -387,7 +387,7 @@ class CoverageOverview(DockableShim):
         A double click on the coverage table view will jump the user to
         the corresponding function in the IDA disassembly view.
         """
-        navigate(self._model.row2func[index.row()])
+        disassembler.navigate(self._model.row2func[index.row()])
 
     def _ui_ctx_menu_handler(self, position):
         """
@@ -539,7 +539,7 @@ class CoverageOverview(DockableShim):
     # Refresh
     #--------------------------------------------------------------------------
 
-    @execute_ui
+    @disassembler.execute_ui
     def refresh(self):
         """
         Refresh the Coverage Overview.
@@ -902,7 +902,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         """
         self._internal_refresh()
 
-    @execute_ui
+    @disassembler.execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the coverage model.
@@ -912,7 +912,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         # sort the data set according to the last selected sorted column
         self.sort(self._last_sort, self._last_sort_order)
 
-    @execute_ui
+    @disassembler.execute_ui
     def _data_changed(self):
         """
         Notify attached views that simple model data has been updated/modified.

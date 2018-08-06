@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 
-from .disassembler import is_msg_inited, get_disassembler_user_directory
+from .disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # Log / Print helpers
@@ -17,7 +17,7 @@ def lmsg(message):
     prefix_message = "[Lighthouse] %s" % message
 
     # only print to disassembler if its output window is alive
-    if is_msg_inited():
+    if disassembler.is_msg_inited():
         print prefix_message
     else:
         logger.info(message)
@@ -26,7 +26,11 @@ def get_log_dir():
     """
     Return the Lighthouse log directory.
     """
-    return os.path.join(get_disassembler_user_directory(), "lighthouse_logs")
+    log_directory = os.path.join(
+        disassembler.get_disassembler_user_directory(),
+        "lighthouse_logs"
+    )
+    return log_directory
 
 def logging_started():
     """

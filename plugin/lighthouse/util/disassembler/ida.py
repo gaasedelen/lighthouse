@@ -6,9 +6,9 @@ import functools
 
 import idaapi
 
-from .qt import *
-from .misc import is_mainthread
-from .disassembler import using_ida7api, using_pyqt5
+#from .qt import *
+from lighthouse.util.misc import is_mainthread
+from lighthouse.util.disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Util.IDA")
 
@@ -245,7 +245,7 @@ def get_function_name(function_address):
     """
 
     # get the original function name from the database
-    if using_ida7api:
+    if disassembler.using_ida7api:
         original_name = idaapi.get_name(function_address)
     else:
         original_name = idaapi.get_true_name(idaapi.BADADDR, function_address)

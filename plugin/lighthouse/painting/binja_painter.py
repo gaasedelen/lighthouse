@@ -3,7 +3,7 @@ import logging
 from binaryninja import HighlightStandardColor
 from binaryninja.highlight import HighlightColor
 
-from lighthouse.util.disassembler import *
+from lighthouse.util.disassembler import disassembler
 from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting")
@@ -15,14 +15,6 @@ class BinjaPainter(DatabasePainter):
 
     def __init__(self, director, palette):
         super(BinjaPainter, self).__init__(director, palette)
-
-    def repaint(self):
-        """
-        TODO this is ugly, fix this later
-        """
-        if not self._director.bv:
-            self._director.bv = binja_get_bv()
-        super(BinjaPainter, self).repaint()
 
     #------------------------------------------------------------------------------
     # Paint Actions
@@ -36,7 +28,7 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = self._director.bv
+        bv = disassembler.bv
         for address in instructions:
             for func in bv.get_functions_containing(address):
                 # TODO:  self.palette.ida_coverage
@@ -50,7 +42,7 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = self._director.bv
+        bv = disassembler.bv
         for address in instructions:
             for func in bv.get_functions_containing(address):
                 func.set_auto_instr_highlight(address, HighlightStandardColor.NoHighlightColor)
@@ -63,7 +55,7 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = self._director.bv
+        bv = disassembler.bv
         color = HighlightStandardColor.BlueHighlightColor
         for node_coverage in nodes_coverage:
             node_metadata = node_coverage._database._metadata.nodes[node_coverage.address]
@@ -81,7 +73,7 @@ class BinjaPainter(DatabasePainter):
 
         Internal routine to force called action to the main thread.
         """
-        bv = self._director.bv
+        bv = disassembler.bv
         for node_metadata in nodes_metadata:
 
             # TODO: change to containing??

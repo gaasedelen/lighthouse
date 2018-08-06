@@ -1,8 +1,8 @@
 import functools
 
-from .qt import *
-from .misc import is_mainthread, mainthread
-from .disassembler import *
+from lighthouse.util.qt import *
+from lighthouse.util.misc import is_mainthread, mainthread
+from lighthouse.util.disassembler import disassembler
 
 #
 # TODO: explain the reason for seperating off the disassembler UI
@@ -24,50 +24,10 @@ except ImportError:
     pass
 
 #------------------------------------------------------------------------------
-# Dockable Widget Shim (for IDA)
-#------------------------------------------------------------------------------
-
-def execute_ui(f):
-    """
-    Decorator to execute a function in the disassembler main thread.
-
-    This is generally used for scheduling UI (Qt) events originating from
-    a background thread.
-    """
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        ff = functools.partial(f, *args, **kwargs)
-
-        # ida
-        if active_disassembler == platform.IDA:
-            if is_mainthread():
-                return ff()
-            else:
-                return idaapi.execute_sync(ff, idaapi.MFF_FAST)
-
-        # binja
-        elif active_disassembler == platform.BINJA:
-
-            if is_mainthread():
-                return ff()
-            else:
-                try:
-                    binaryninja.execute_on_main_thread(ff)
-                except AttributeError: # XXX: binja bug, reported on 5/31/2018
-                    pass
-            return None # TODO
-
-        # unknown
-        else:
-            raise RuntimeError("Unknown disassembler! Cannot schedule UI execution!")
-
-    return wrapper
-
-#------------------------------------------------------------------------------
 # Dockable Widget Shim
 #------------------------------------------------------------------------------
 
+# TODO split this out?
 class DockableShim(object):
     """
     A compatibility layer for dockable widgets (IDA 6.8 --> IDA 7.0)
@@ -80,9 +40,9 @@ class DockableShim(object):
         self._title = title
         self._icon = QtGui.QIcon(icon_path)
 
-        if active_disassembler == platform.IDA:
+        if disassembler.NAME == "IDA":
             self._ida_init()
-        elif active_disassembler == platform.BINJA:
+        elif disassembler.NAME == "BINJA":
             self._widget = QtWidgets.QDialog()
             self._widget.setMinimumSize(800, 600)
             self._widget.setWindowTitle(title)
@@ -96,7 +56,7 @@ class DockableShim(object):
         TODO
         """
         # IDA 7+ Widgets
-        if using_ida7api:
+        if disassembler.using_ida7api:
             import sip
 
             self._form = idaapi.create_empty_widget(self._title)
@@ -116,7 +76,7 @@ class DockableShim(object):
         """
 
         # IDA 7+ Widgets
-        if using_ida7api:
+        if disassembler.using_ida7api:
             flags = idaapi.PluginForm.WOPN_TAB     | \
                     idaapi.PluginForm.WOPN_MENU    | \
                     idaapi.PluginForm.WOPN_RESTORE | \
@@ -137,9 +97,9 @@ class DockableShim(object):
         Show the dockable widget.
         """
 
-        if active_disassembler == platform.IDA:
+        if disassembler.NAME == "IDA":
             self._ida_show()
-        elif active_disassembler == platform.BINJA:
+        elif disassembler.NAME == "BINJA":
             self._widget.show()
         else:
             raise RuntimeError("SHIM")
@@ -232,7 +192,7 @@ def touch_ida_window(target):
     """
 
     # get the currently active widget/form title (the form itself seems transient...)
-    if using_ida7api:
+    if disassembler.using_ida7api:
         twidget = idaapi.get_current_widget()
         title = idaapi.get_widget_title(twidget)
     else:
@@ -240,7 +200,7 @@ def touch_ida_window(target):
         title = idaapi.get_tform_title(form)
 
     # touch/draw the widget by playing musical chairs
-    if using_ida7api:
+    if disassembler.using_ida7api:
 
         # touch the target window by switching to it
         idaapi.activate_widget(target, True)
@@ -283,7 +243,7 @@ def get_ida_bg_color():
 
     PS: please expose the get_graph_color(...) palette accessor, Ilfak ;_;
     """
-    if using_ida7api:
+    if disassembler.using_ida7api:
         return get_ida_bg_color_ida7()
     else:
         return get_ida_bg_color_ida6()
@@ -338,7 +298,7 @@ def get_ida_bg_color_ida6():
     touch_ida_window(form)
 
     # locate the Qt Widget for a form and take 1px image slice of it
-    if using_pyqt5:
+    if disassembler.using_ida7api:
         widget = idaapi.PluginForm.FormToPyQtWidget(form)
         pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
     else:

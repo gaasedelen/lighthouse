@@ -1,5 +1,5 @@
 from lighthouse.util.log import *
-from lighthouse.util.disassembler import active_disassembler, platform
+from lighthouse.util.disassembler import disassembler
 
 # start the global logger *once*
 if not logging_started():
@@ -10,11 +10,13 @@ if not logging_started():
 #------------------------------------------------------------------------------
 
 logger.debug("Resolving platform for plugin...")
-if active_disassembler == platform.IDA:
+
+if disassembler.NAME == "IDA":
     logger.info("Selecting IDA loader...")
     from lighthouse.ida_loader import *
-
-elif active_disassembler == platform.BINJA:
+elif disassembler.NAME == "BINJA":
     logger.info("Selecting Binary Ninja loader...")
     from lighthouse.binja_loader import *
+else:
+    raise RuntimeError("DISASSEMBLER-SPECIFIC SHIM MISSING")
 

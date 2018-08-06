@@ -1,9 +1,12 @@
 import os
+import logging
+
 import idaapi
 
 from lighthouse.core import Lighthouse
-from lighthouse.util.log import logger
 from lighthouse.util.misc import plugin_resource
+
+logger = logging.getLogger("Lighthouse.Integration.IDA")
 
 #------------------------------------------------------------------------------
 # Lighthouse IDA Integration

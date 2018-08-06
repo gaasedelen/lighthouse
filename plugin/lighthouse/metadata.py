@@ -7,8 +7,8 @@ import threading
 
 from lighthouse.util import *
 from lighthouse.util.misc import mainthread
-from lighthouse.util.disassembler import *
-from lighthouse.util.disassembler_ui import execute_ui, replace_wait_box
+from lighthouse.util.disassembler import disassembler
+from lighthouse.util.disassembler.ui import replace_wait_box
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
@@ -82,7 +82,7 @@ class DatabaseMetadata(object):
         self._function_addresses = []
 
         # hook to listen for rename events from IDA
-        self._rename_hooks = RenameHooks()
+        self._rename_hooks = disassembler.create_rename_hooks()
         self._rename_hooks.renamed = self._name_changed
 
         # metadata callbacks (see director for more info)
@@ -301,13 +301,7 @@ class DatabaseMetadata(object):
         if function_addresses is None:
 
             # retrieve a full function address list from the underlying database
-            if active_disassembler == platform.IDA:
-                function_addresses = list(idautils.Functions())
-            elif active_disassembler == platform.BINJA:
-                bv = binja_get_bv()
-                function_addresses = [x.start for x in bv.functions]
-            else:
-                raise RuntimeError("Code has not been shimmed for the given disassembler")
+            function_addresses = disassembler.get_function_addresses()
 
             #
             # immediately drop function entries that are no longer present in the
@@ -606,7 +600,7 @@ class DatabaseMetadata(object):
         if address == function.address:
             logger.debug("Name changing @ 0x%X" % address)
             logger.debug("  Old name: %s" % function.name)
-            function.name = get_function_name_at(address)
+            function.name = disassembler.get_function_name_at(address)
             logger.debug("  New name: %s" % function.name)
 
         # notify any listeners that a function rename occurred
@@ -687,7 +681,7 @@ class FunctionMetadata(object):
         """
         Refresh the function name against the open database.
         """
-        self.name = get_function_name_at(self.address)
+        self.name = disassembler.get_function_name_at(self.address)
 
     def _refresh_nodes(self):
         """
@@ -720,7 +714,7 @@ class FunctionMetadata(object):
             node = flowchart[node_id]
 
             # NOTE/COMPAT:
-            if using_ida7api:
+            if disassembler.using_ida7api:
                 node_start = node.start_ea
                 node_end   = node.end_ea
             else:
@@ -781,7 +775,7 @@ class FunctionMetadata(object):
             edge_src = node_metadata.instructions[-1]
 
             # NOTE/COMPAT: we do a single api check *outside* the loop for perf
-            if using_ida7api:
+            if disassembler.using_ida7api:
                 for edge_dst in idautils.CodeRefsFrom(edge_src, True):
                     edge_function = idaapi.get_func(edge_dst)
                     if edge_function and edge_function.start_ea == function.start_ea: # NOTE: start_ea vs startEA
@@ -801,8 +795,8 @@ class FunctionMetadata(object):
         function_metadata = self        # alias for code readability
         function_metadata.nodes = {}
 
-        # get function & flowchart object from IDA database
-        function = binja_get_function_at(self.address) # TODO: profile this...
+        # get the function from the Binja database
+        function = disassembler.bv.get_function_at(self.address)
 
         #
         # now we will walk the flowchart for this function, collecting
@@ -1155,14 +1149,14 @@ class MetadataDelta(object):
 # Async Metadata Helpers
 #--------------------------------------------------------------------------
 
-@execute_read
+@disassembler.execute_read
 def collect_function_metadata(function_addresses):
     """
     Collect function metadata for a list of addresses.
     """
     return { ea: FunctionMetadata(ea) for ea in function_addresses }
 
-@execute_ui
+@disassembler.execute_ui
 def metadata_progress(completed, total):
     """
     Handler for metadata collection callback, updates progress dialog.
@@ -1175,7 +1169,7 @@ def metadata_progress(completed, total):
 
 # TODO: explain this
 
-if active_disassembler == platform.IDA:
+if disassembler.NAME == "IDA":
     import idaapi
     import idautils
 
@@ -1183,10 +1177,13 @@ if active_disassembler == platform.IDA:
     FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
     NodeMetadata._build_metadata = NodeMetadata._ida_build_metadata
 
-elif active_disassembler == platform.BINJA:
+elif disassembler.NAME == "BINJA":
     import binaryninja
 
     # monky patch
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
     NodeMetadata._build_metadata = NodeMetadata._binja_build_metadata
+
+else:
+    raise RuntimeError("DISASSEMBLER-SPECIFIC SHIM MISSING")
 

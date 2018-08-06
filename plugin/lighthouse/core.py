@@ -4,8 +4,8 @@ import logging
 from lighthouse.ui import CoverageOverview
 from lighthouse.util import *
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler import get_database_directory, get_root_filename, get_imagebase
-from lighthouse.util.disassembler_ui import *
+from lighthouse.util.disassembler import disassembler
+from lighthouse.util.disassembler.ui import *
 
 from lighthouse.parsers import DrcovData
 from lighthouse.palette import LighthousePalette
@@ -397,7 +397,7 @@ class Lighthouse(object):
         Internal - prompt a file selection dialog, returning file selections
         """
         if not self._last_directory:
-            self._last_directory = get_database_directory()
+            self._last_directory = disassembler.get_database_directory()
 
         # create & configure a Qt File Dialog for immediate use
         file_dialog = QtWidgets.QFileDialog(
@@ -491,11 +491,11 @@ def normalize_coverage(coverage_data, metadata):
     """
 
     # extract the coverage relevant to this IDB (well, the root binary)
-    root_filename   = get_root_filename()
+    root_filename   = disassembler.get_root_filename()
     coverage_blocks = coverage_data.get_blocks_by_module(root_filename)
 
     # rebase the basic blocks
-    base = get_imagebase()
+    base = disassembler.get_imagebase()
     rebased_blocks = rebase_blocks(base, coverage_blocks)
 
     # coalesce the blocks into larger contiguous blobs

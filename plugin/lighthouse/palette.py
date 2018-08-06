@@ -1,6 +1,6 @@
 
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler_ui import get_ida_bg_color
+from lighthouse.util.disassembler.ui import get_ida_bg_color
 
 #------------------------------------------------------------------------------
 # IDA Plugin Palette

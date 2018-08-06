@@ -137,7 +137,7 @@ class DatabaseCoverage(object):
         self._weak_self = weakref.proxy(self)
 
     #--------------------------------------------------------------------------
-    # Propertiens
+    # Properties
     #--------------------------------------------------------------------------
 
     @property

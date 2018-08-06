@@ -1,1 +1,1 @@
-from .coverage_overview import * # TODO: can we remove this?
+from .coverage_overview import CoverageOverview
