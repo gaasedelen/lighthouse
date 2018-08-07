@@ -80,7 +80,7 @@ class DatabasePainter(object):
         self._repaint_request.set()
 
     #--------------------------------------------------------------------------
-    # Paint Actions
+    # Paint Primitives
     #--------------------------------------------------------------------------
 
     @abc.abstractmethod
@@ -117,6 +117,73 @@ class DatabasePainter(object):
         Cancel a paint action using something representing its job.
         """
         pass
+
+    #------------------------------------------------------------------------------
+    # Painting - Functions
+    #------------------------------------------------------------------------------
+
+    def _paint_function(self, address):
+        """
+        Paint function instructions & nodes with the current database mappings.
+        """
+
+        # collect function information
+        function_metadata = self._director.metadata.functions[address]
+        function_coverage = self._director.coverage.functions.get(address, None)
+
+        # if no coverage, just clear the function's instruction & nodes
+        if not function_coverage:
+
+            # clear instructions
+            if not self._async_action(self._clear_instructions, function_metadata.instructions):
+                return False
+
+            # clear nodes
+            if not self._async_action(self._clear_nodes, function_metadata.nodes.itervalues()):
+                return False
+
+            # not interrupted
+            return True
+
+        #
+        # ~ compute paint job ~
+        #
+
+        # compute the painted instructions within this function
+        painted = self._painted_instructions & function_metadata.instructions
+
+        # compute the painted instructions that will not get painted over
+        stale_instructions = painted - function_coverage.instructions
+
+        # compute the painted nodes within this function
+        painted = self._painted_nodes & function_metadata.nodes.viewkeys()
+
+        # compute the painted nodes that will not get painted over
+        stale_nodes_ea = painted - function_coverage.nodes.viewkeys()
+        stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
+
+        #
+        # ~ painting ~
+        #
+
+        # clear instructions
+        if not self._async_action(self._clear_instructions, stale_instructions):
+            return False
+
+        # clear nodes
+        if not self._async_action(self._clear_nodes, stale_nodes):
+            return False
+
+        # paint instructions
+        if not self._async_action(self._paint_instructions, function_coverage.instructions):
+            return False
+
+        # paint nodes
+        if not self._async_action(self._paint_nodes, function_coverage.nodes.itervalues()):
+            return False
+
+        # not interrupted
+        return True
 
     #--------------------------------------------------------------------------
     # Priority Painting

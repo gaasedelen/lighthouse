@@ -708,6 +708,3 @@ class NodeCoverage(object):
         # the estimated number of executions this node has experienced.
         self.executions = float(self.hits) / node_metadata.instruction_count
 
-        # bake colors
-        self.coverage_color = palette.ida_coverage
-

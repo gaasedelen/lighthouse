@@ -115,7 +115,7 @@ class IDAPainter(DatabasePainter):
         Paint instruction level coverage defined by the current database mapping.
         """
         for address in instructions:
-            idaapi.set_item_color(address, self.palette.ida_coverage)
+            idaapi.set_item_color(address, self.palette.coverage_paint)
             self._painted_instructions.add(address) # TODO/PERF
 
     def clear_instructions(self, instructions):
@@ -146,10 +146,10 @@ class IDAPainter(DatabasePainter):
         #
 
         for node_coverage in nodes_coverage:
-            node_metadata = node_coverage._database._metadata.nodes[node_coverage.address]
+            node_metadata = node_coverage._database._metadata.nodes[node_coverage.address] # TODO/PERF ?
 
             # assign the background color we would like to paint to this node
-            node_info.bg_color = node_coverage.coverage_color
+            node_info.bg_color = self.palette.coverage_paint
 
             # do the *actual* painting of a single node instance
             set_node_info(
@@ -192,77 +192,6 @@ class IDAPainter(DatabasePainter):
             )
 
             self._painted_nodes.discard(node_metadata.address)
-
-    #------------------------------------------------------------------------------
-    # Painting - Functions
-    #------------------------------------------------------------------------------
-
-    def paint_function(self, address):
-        """
-        Paint function instructions & nodes with the current database mappings.
-        """
-
-        # collect function information
-        function_metadata = self._director.metadata.functions[address]
-        function_coverage = self._director.coverage.functions.get(address, None)
-
-        # function coverage exists, so let's do a cleaner paint
-        if function_coverage:
-
-            #
-            # ~ instructions ~
-            #
-
-            # compute the painted instructions within this function
-            painted = self._painted_instructions & function_metadata.instructions
-
-            # compute the painted instructions that will not get painted over
-            stale_instructions = painted - function_coverage.instructions
-
-            #
-            # ~ nodes ~
-            #
-
-            # compute the painted nodes within this function
-            painted = self._painted_nodes & function_metadata.nodes.viewkeys()
-
-            # compute the painted nodes that will not get painted over
-            stale_nodes_ea = painted - function_coverage.nodes.viewkeys()
-            stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
-
-            #
-            # ~ painting ~
-            #
-
-            # clear instructions
-            if not self._async_action(self._clear_instructions, stale_instructions):
-                return False
-
-            # clear nodes
-            if not self._async_action(self._clear_nodes, stale_nodes):
-                return False
-
-            # paint instructions
-            if not self._async_action(self._paint_instructions, function_coverage.instructions):
-                return False
-
-            # paint nodes
-            if not self._async_action(self._paint_nodes, function_coverage.nodes.itervalues()):
-                return False
-
-        # no coverage, just clear the function's instruction & nodes
-        else:
-
-            # clear instructions
-            if not self._async_action(self._clear_instructions, function_metadata.instructions):
-                return False
-
-            # clear nodes
-            if not self._async_action(self._clear_nodes, function_metadata.nodes.itervalues()):
-                return False
-
-        # not interrupted
-        return True
 
     #------------------------------------------------------------------------------
     # Painting - HexRays (Decompilation / Source)
@@ -444,7 +373,7 @@ class IDAPainter(DatabasePainter):
                 continue
 
             # repaint the function
-            if not self.paint_function(function_metadata.address):
+            if not self._paint_function(function_metadata.address):
                 break # paint interrupted
 
             # get the function coverage data for the target address

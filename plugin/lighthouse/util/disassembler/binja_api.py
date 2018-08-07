@@ -1,5 +1,6 @@
 import os
 import functools
+import threading
 
 from .api import DisassemblerAPI
 from lighthouse.util.misc import is_mainthread
@@ -16,6 +17,7 @@ class BinjaAPI(DisassemblerAPI):
 
     def __init__(self, bv=None):
         self._bv = bv
+        self._python = _binja_get_scripting_instance()
         self._init_version()
 
     def _init_version(self):
@@ -71,6 +73,13 @@ class BinjaAPI(DisassemblerAPI):
             def unhook(self):
                 pass
         return RenameHooks()
+
+    def get_current_address(self):
+        if not self._python:
+            self._python = _binja_get_scripting_instance()
+            if not self._python:
+                return -1
+        return self._python.current_addr
 
     def get_database_directory(self):
         return os.path.dirname(self.bv.file.filename)

@@ -44,7 +44,7 @@ class LighthousePalette(object):
         # IDA Views / HexRays
         #
 
-        self._ida_coverage = [0x990000, 0xFFE2A8] # NOTE: IDA uses BBGGRR
+        self._coverage_paint = [0x990000, 0xFFE2A8] # NOTE: IDA uses BBGGRR
 
         #
         # Composing Shell
@@ -203,8 +203,8 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
 
     @property
-    def ida_coverage(self):
-        return self._ida_coverage[self.ida_theme]
+    def coverage_paint(self):
+        return self._coverage_paint[self.ida_theme]
 
     #--------------------------------------------------------------------------
     # Composing Shell
@@ -279,6 +279,9 @@ class LighthousePalette(object):
 #------------------------------------------------------------------------------
 # Palette Util
 #------------------------------------------------------------------------------
+
+def to_rgb(color):
+    return ((color >> 16 & 0xFF), (color >> 8 & 0xFF), (color & 0xFF))
 
 def test_color_brightness(color):
     """
