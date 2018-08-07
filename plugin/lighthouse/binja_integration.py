@@ -13,7 +13,7 @@ logger = logging.getLogger("Lighthouse.Integration.Binja")
 
 class LighthouseBinja(Lighthouse):
     """
-    TODO
+    The Binary Ninja specific Lighthouse (UI) integration code.
     """
 
     def __init__(self):
@@ -23,18 +23,31 @@ class LighthouseBinja(Lighthouse):
         disassembler.bv = bv
         super(LighthouseBinja, self).interactive_load_file()
 
-    def _install_load_batch(self):
-        pass
+    def interactive_load_batch(self, bv):
+        disassembler.bv = bv
+        super(LighthouseBinja, self).interactive_load_batch()
 
-    def _install_open_coverage_overview(self):
-        pass
+    def interactive_load_batch(self, bv):
+        disassembler.bv = bv
+        super(LighthouseBinja, self).open_coverage_overview()
 
     def _install_load_file(self):
-        """
-        TODO
-        """
         PluginCommand.register(
-            "Load code coverage file...",
+            "Lighthouse - Load code coverage file...",
             "Load individual code coverage file(s)",
             self.interactive_load_file
+        )
+
+    def _install_load_batch(self):
+        PluginCommand.register(
+            "Lighthouse - Load code coverage batch...",
+            "Load and aggregate code coverage files",
+            self.interactive_load_batch
+        )
+
+    def _install_open_coverage_overview(self):
+        PluginCommand.register(
+            "Lighthouse - Coverage Overview",
+            "Open the database code covereage overview",
+            self.interactive_load_batch
         )
