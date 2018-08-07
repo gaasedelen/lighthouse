@@ -10,7 +10,7 @@ class LighthousePalette(object):
     """
     Color Palette for the Lighthouse plugin.
 
-    TODO: external theme customization, controls
+    TODO/FUTURE: add external theme customization, controls
     """
 
     def __init__(self):
@@ -91,14 +91,14 @@ class LighthousePalette(object):
         Depending on if IDA is using a dark or light theme, we *try*
         to select colors that will hopefully keep things most readable.
         """
-        self._initialized = True # TODO/HACK/XXX/BIJA
+        self._initialized = True # TODO/HACK/XXX/BINJA
 
-        # TODO: temporary until I have a better mechanism to do one-time init
+        # TODO/FUTURE: temporary until I have a cleaner way to do one-time init
         if self._initialized:
             return
 
         #
-        # NOTE/TODO:
+        # TODO/THEME:
         #
         #   the dark table (Qt) theme is way better than the light theme
         #   right now, so we're just going to force that on for everyone
@@ -293,7 +293,7 @@ def compute_color_on_gradiant(percent, color1, color2):
     """
     Compute the color specified by a percent between two colors.
 
-    TODO: This is silly, heavy, and can be refactored.
+    TODO/PERF: This is silly, heavy, and can be refactored.
     """
 
     # dump the rgb values from QColor objects

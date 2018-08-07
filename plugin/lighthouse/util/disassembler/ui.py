@@ -5,8 +5,7 @@ from lighthouse.util.misc import is_mainthread, mainthread
 from lighthouse.util.disassembler import disassembler
 
 #
-# TODO: explain the reason for seperating off the disassembler UI
-# TODO: this file is kind of a hodge-podge of crap
+# TODO/COMMENT: explain the reason for seperating off the disassembler UI
 #
 
 #------------------------------------------------------------------------------

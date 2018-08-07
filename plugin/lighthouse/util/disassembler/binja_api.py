@@ -10,7 +10,7 @@ from binaryninja.plugin import BackgroundTaskThread
 
 class BinjaAPI(DisassemblerAPI):
     """
-    TODO
+    TODO/COMMENT
     """
     NAME = "BINJA"
 
@@ -63,7 +63,7 @@ class BinjaAPI(DisassemblerAPI):
 
     def create_rename_hooks(self):
         """
-        TODO: BINJA DOESN'T HAVE RENAME HOOKS
+        TODO/BINJA: IMPLEMENT RENAME HOOKS!
         """
         class RenameHooks(object):
             def hook(self):
@@ -92,8 +92,9 @@ class BinjaAPI(DisassemblerAPI):
 
     def get_root_filename(self):
         """
-        TODO: This is the best we can do without getting really ugly. Binja
-        needs to expose original filename API's ...
+        TODO/V35: Binja needs to expose original filename API's ...
+
+        This is the best we can do without getting really ugly.
         """
         return os.path.basename(os.path.splitext(self.bv.file.filename)[0])
 
@@ -152,6 +153,8 @@ class BinjaAPI(DisassemblerAPI):
 
         This is generally used for scheduling UI (Qt) events originating from
         a background thread.
+
+        NOTE: Using this decorator waives your right to a return value.
         """
 
         @functools.wraps(function)
@@ -160,16 +163,13 @@ class BinjaAPI(DisassemblerAPI):
 
             # if we are already in the main (UI) thread, execute now
             if is_mainthread():
-                return ff()
+                ff()
 
             # schedule the task to run in the main thread
             try:
                 binaryninja.execute_on_main_thread(ff)
-            except AttributeError: # XXX: binja bug, reported on 5/31/2018
+            except AttributeError: # TODO/V35: binja bug, reported on 5/31/2018
                 pass
-
-            # TODO: this won't give us a real return value
-            return None
 
         return wrapper
 

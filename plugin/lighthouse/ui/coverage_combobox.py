@@ -260,8 +260,10 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         self.verticalHeader().setVisible(False)
         self.setShowGrid(False)
 
-        # TODO
+        # TODO: is this necessary? maybe it was a cross-platform/pyside thing
         self.resizeColumnToContents(0)
+
+        # let Qt automatically elide (...) long row text (coverage names)
         self.setTextElideMode(QtCore.Qt.ElideRight)
         self.setWordWrap(False)
 

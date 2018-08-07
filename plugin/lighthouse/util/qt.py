@@ -7,11 +7,11 @@ from .disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Qt")
 
-# TODO: explain global
+# TODO/COMMENT: explain the global
 
 qt_available = False
 
-# TODO: update comment
+# TODO/COMMENT: update this
 #------------------------------------------------------------------------------
 # PyQt5 <--> PySide (Qt4) Interoperability
 #------------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def flush_qt_events():
 
 def get_dpi_scale():
     """
-    TODO
+    Get a DPI-afflicted value useful for consistent UI scaling.
     """
     font = QtGui.QFont("Times", 15)
     return QtGui.QFontMetrics(font).xHeight()

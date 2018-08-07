@@ -116,7 +116,7 @@ class DrcovData(object):
         """
         Parse drcov coverage from the given data blob.
         """
-        pass # TODO
+        pass # TODO/DRCOV
 
     #--------------------------------------------------------------------------
     # Parsing Routines - Internals

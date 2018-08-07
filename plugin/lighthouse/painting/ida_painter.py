@@ -6,14 +6,13 @@ import idc
 import idaapi
 
 from lighthouse.util import *
-from lighthouse.util.disassembler.ida import * # TODO: can we get rid of this dep?
+from lighthouse.util.disassembler.ida import * # TODO/IDA: can we get rid of this dep?
 from lighthouse.util.disassembler import disassembler
 from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting")
 
-# TODO: perf overhaul
-# TODO: IDA 7.1 speed fix
+# TODO/PERF: IDA 7.1 bugfix, remove decorators (?), use single set() action
 
 def idawrite_async(f):
     """
@@ -117,7 +116,7 @@ class IDAPainter(DatabasePainter):
         """
         for address in instructions:
             idaapi.set_item_color(address, self.palette.ida_coverage)
-            self._painted_instructions.add(address) # TODO: perf
+            self._painted_instructions.add(address) # TODO/PERF
 
     def clear_instructions(self, instructions):
         """
@@ -125,7 +124,7 @@ class IDAPainter(DatabasePainter):
         """
         for address in instructions:
             idaapi.set_item_color(address, idc.DEFCOLOR)
-            self._painted_instructions.discard(address) # TODO: perf
+            self._painted_instructions.discard(address) # TODO/PERF
 
     def paint_nodes(self, nodes_coverage):
         """
@@ -393,7 +392,7 @@ class IDAPainter(DatabasePainter):
         """
         Immediately repaint regions of the database visible to the user.
         """
-        cursor_address = idaapi.get_screen_ea() # TODO: threadsafe?
+        cursor_address = idaapi.get_screen_ea() # TODO/IDA: threadsafe?
 
         # paint functions around the cursor address
         painted = self._priority_paint_functions(cursor_address)

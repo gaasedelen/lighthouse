@@ -8,7 +8,7 @@ from lighthouse.util.misc import is_mainthread
 
 class IDAAPI(DisassemblerAPI):
     """
-    TODO
+    TODO/COMMENT
     """
     NAME = "IDA"
 
@@ -129,6 +129,8 @@ class IDAAPI(DisassemblerAPI):
 
         This is generally used for scheduling UI (Qt) events originating from
         a background thread.
+
+        NOTE: Using this decorator waives your right to a return value.
         """
 
         @functools.wraps(function)
@@ -137,12 +139,9 @@ class IDAAPI(DisassemblerAPI):
 
             # if we are already in the main (UI) thread, execute now
             if is_mainthread():
-                return ff()
+                ff()
 
-            # schedule the task to run in the main thread
-            # TODO: this won't give us a real return value
-            result = idaapi.execute_sync(ff, idaapi.MFF_FAST)
-            return None
-
+            # otherwise, schedule the task to run in the main thread
+            idaapi.execute_sync(ff, idaapi.MFF_FAST)
         return wrapper
 

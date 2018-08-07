@@ -15,7 +15,7 @@ import abc
 
 class DisassemblerAPI(object):
     """
-    TODO
+    TODO/COMMENT
     """
     __metaclass__ = abc.ABCMeta
 
@@ -124,7 +124,7 @@ class DisassemblerAPI(object):
 
 class RenameHooks(object):
     """
-    TODO
+    TODO/COMMENT
     """
     __metaclass__ = abc.ABCMeta
 

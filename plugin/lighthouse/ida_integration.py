@@ -13,6 +13,9 @@ logger = logging.getLogger("Lighthouse.Integration.IDA")
 #------------------------------------------------------------------------------
 
 class LighthouseIDA(Lighthouse):
+    """
+    The IDA specific Lighthouse (UI) integration code.
+    """
 
     def __init__(self):
 

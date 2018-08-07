@@ -135,7 +135,7 @@ class DatabaseMetadata(object):
         #   entirely seperate list of addresses for quick bisection.
         #
         #   but I don't want to hassle people with a dependency on an external
-        #   package for lightouse. so we'll keep it in-house and old school.
+        #   package for lighthouse. so we'll keep it in-house and old school.
         #
 
         #found = self.nodes.iloc[(self.nodes.bisect_left(address) - 1)]
@@ -154,6 +154,9 @@ class DatabaseMetadata(object):
         #
         #  This means that 99.9% of the time, this call will add virtually
         #  no overhead to the 'get_node' call.
+        #
+        #  TODO/PERF: double check that this is actually performant, because
+        #  I am not so sure the overhead is non-zero anymore...
         #
 
         self._refresh_lookup()
@@ -476,7 +479,7 @@ class DatabaseMetadata(object):
             # update the database metadata with the collected metadata
             delta = self._update_functions(fresh_metadata)
 
-            # TODO: delta callback
+            # TODO/FUTURE: delta callback?
 
             # report progress to an external subscriber
             if progress_callback:
@@ -685,7 +688,7 @@ class FunctionMetadata(object):
 
     def _refresh_nodes(self):
         """
-        TODO: explain
+        TODO/COMMENT
         """
         raise RuntimeError("This function should have been monkey patched...")
 
@@ -788,7 +791,7 @@ class FunctionMetadata(object):
 
     def _binja_refresh_nodes(self):
         """
-        TODO: comment
+        TODO/COMMENT
         """
 
         # dispose of stale information
@@ -807,7 +810,8 @@ class FunctionMetadata(object):
         for node in function.basic_blocks:
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node.start, node.end, node) # TODO explain
+            # TODO/BINJA/COMMENT: explain why we pass node here ...
+            node_metadata = NodeMetadata(node.start, node.end, node)
 
             #
             # establish a relationship between this node (basic block) and
@@ -889,7 +893,7 @@ class NodeMetadata(object):
 
     def _build_metadata(self):
         """
-        TODO
+        TODO/COMMENT
         """
         raise RuntimeError("This function should have been monkey patched...")
 
@@ -920,7 +924,7 @@ class NodeMetadata(object):
         self.instructions = [x.address for x in self.id.disassembly_text]
         self.instruction_count = len(self.instructions)
 
-        # TODO: explain this (we are cheating)
+        # TODO/BINJA/COMMENT: explain this (we are cheating)
         self.id = self.id.index
 
     #--------------------------------------------------------------------------
@@ -1166,8 +1170,7 @@ def metadata_progress(completed, total):
 #--------------------------------------------------------------------------
 # Shim HAX
 #--------------------------------------------------------------------------
-
-# TODO: explain this
+# TODO/COMMENT
 
 if disassembler.NAME == "IDA":
     import idaapi

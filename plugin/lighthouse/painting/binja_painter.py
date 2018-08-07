@@ -20,7 +20,7 @@ class BinjaPainter(DatabasePainter):
     # Paint Actions
     #------------------------------------------------------------------------------
 
-    # TODO: these technicallly need to be called in a background task I think ...
+    # TODO/BINJA: these technicallly need to be called in a background task...
 
     def _paint_instructions(self, instructions):
         """
@@ -31,7 +31,7 @@ class BinjaPainter(DatabasePainter):
         bv = disassembler.bv
         for address in instructions:
             for func in bv.get_functions_containing(address):
-                # TODO:  self.palette.ida_coverage
+                # TODO/BINJA:  self.palette.ida_coverage
                 func.set_auto_instr_highlight(address, HighlightStandardColor.BlueHighlightColor)
         self._painted_instructions |= set(instructions)
         self._action_complete.set()
@@ -60,7 +60,7 @@ class BinjaPainter(DatabasePainter):
         for node_coverage in nodes_coverage:
             node_metadata = node_coverage._database._metadata.nodes[node_coverage.address]
 
-            # TODO: change to containing??
+            # TODO/BINJA: change to containing??
             for node in bv.get_basic_blocks_starting_at(node_metadata.address):
                 node.highlight = color
 
@@ -76,7 +76,7 @@ class BinjaPainter(DatabasePainter):
         bv = disassembler.bv
         for node_metadata in nodes_metadata:
 
-            # TODO: change to containing??
+            # TODO/BINJA: change to containing??
             for node in bv.get_basic_blocks_starting_at(node_metadata.address):
                 node.highlight = HighlightStandardColor.NoHighlightColor
 
@@ -84,7 +84,7 @@ class BinjaPainter(DatabasePainter):
         self._action_complete.set()
 
     def _cancel_action(self, job):
-        pass # TODO
+        pass # TODO/BINJA
 
     #------------------------------------------------------------------------------
     # Painting - Functions
@@ -94,7 +94,7 @@ class BinjaPainter(DatabasePainter):
         """
         Paint function instructions & nodes with the current database mappings.
         """
-        return # TODO
+        return # TODO/BINJA
 
     #------------------------------------------------------------------------------
     # Priority Painting
@@ -104,4 +104,4 @@ class BinjaPainter(DatabasePainter):
         """
         Immediately repaint regions of the database visible to the user.
         """
-        return True # TODO
+        return True # TODO/BINJA

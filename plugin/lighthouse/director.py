@@ -274,8 +274,10 @@ class CoverageDirector(object):
     def _notify_coverage_created(self):
         """
         Notify listeners of a coverage creation event.
+
+        TODO/FUTURE: send list of names created?
         """
-        notify_callback(self._coverage_created_callbacks) # TODO: send list of names created?
+        notify_callback(self._coverage_created_callbacks)
 
     def coverage_deleted(self, callback):
         """
@@ -286,8 +288,10 @@ class CoverageDirector(object):
     def _notify_coverage_deleted(self):
         """
         Notify listeners of a coverage deletion event.
+
+        TODO/FUTURE: send list of names deleted?
         """
-        notify_callback(self._coverage_deleted_callbacks) # TODO: send list of names deleted?
+        notify_callback(self._coverage_deleted_callbacks)
 
     def metadata_modified(self, callback):
         """
@@ -483,7 +487,7 @@ class CoverageDirector(object):
 
         # delete the database coverage object
         coverage = self._database_coverage.pop(coverage_name)
-        # TODO: check if there's any references to the coverage object here...
+        # TODO/FUTURE: check if there's any references to the coverage object?
 
         self.aggregate.subtract_data(coverage.data)
         if not self._aggregation_suspended:
@@ -499,7 +503,7 @@ class CoverageDirector(object):
             self._release_shorthand_alias(coverage_name)
             self._database_coverage.pop(coverage_name)
 
-        # TODO: check if there's any references to the coverage aggregate...
+        # TODO/FUTURE: check if there's any references to the coverage aggregate?
 
         # assign a new, blank aggregate set
         self._special_coverage[AGGREGATE] = DatabaseCoverage(None, self._palette)
@@ -761,7 +765,7 @@ class CoverageDirector(object):
 
         # map the composited coverage data to the database metadata
         composite_coverage.update_metadata(self.metadata)
-        composite_coverage.refresh() # TODO: hash refresh?
+        composite_coverage.refresh() # TODO/FUTURE: hash refresh?
 
         # done operating on shared data (coverage), release the lock
         self._composition_lock.release()
@@ -961,7 +965,7 @@ class CoverageDirector(object):
         # the database metadata, register the director for notifications of
         # metadata modification (this should only happen once)
         #
-        # TODO: this is a little dirty, but it will suffice.
+        # TODO/FUTURE: this is a little dirty, but it will suffice.
         #
 
         if not self.metadata.cached:

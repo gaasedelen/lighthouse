@@ -61,7 +61,7 @@ debugger_docked = False
 
 class EventProxy(QtCore.QObject):
     """
-    TODO explain the point of this
+    TODO/COMMENT
     """
 
     def __init__(self, target):
@@ -822,7 +822,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # column has not been enlightened to sorting
         except KeyError as e:
-            logger.warning("TODO: implement column %u sorting" % column)
+            logger.warning("TODO/FUTURE: implement column %u sorting?" % column)
             self.layoutChanged.emit()
             return
 

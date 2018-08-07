@@ -347,7 +347,7 @@ class Lighthouse(object):
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
-        self.open_coverage_overview() # TODO: uncomment once UI working in binja
+        self.open_coverage_overview()
 
     #--------------------------------------------------------------------------
     # Internal
