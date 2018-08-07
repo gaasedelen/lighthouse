@@ -21,7 +21,7 @@ class BinjaAPI(DisassemblerAPI):
     def _init_version(self):
 
         # retrieve Binja's version #
-        disassembler_version = binaryninja.core_version
+        disassembler_version = binaryninja.core_version.split("-", 1)[0]
         major, minor, patch = map(int, disassembler_version.split("."))
 
         # save the version number components for later use
