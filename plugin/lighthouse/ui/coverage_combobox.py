@@ -10,7 +10,7 @@ logger = logging.getLogger("Lighthouse.UI.ComboBox")
 #------------------------------------------------------------------------------
 
 SEPARATOR = "seperator"
-SEPARATOR_HEIGHT = 5 # pixels
+SEPARATOR_HEIGHT = 1 # pixels
 
 ENTRY_USER    = "USER"
 ENTRY_SPECIAL = "SPECIAL"
@@ -52,7 +52,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         """
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
+        self._font = MonospaceFont(9)
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
@@ -200,7 +200,6 @@ class CoverageComboBox(QtWidgets.QComboBox):
         """
         Internal refresh of the coverage combobox.
         """
-
         # refresh the comobobox internals
         self.model().refresh()
         self.view().refresh()
@@ -252,14 +251,16 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         """
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
+        self._font = MonospaceFont(9)
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
+        # hide dropdown table headers, and default grid
         self.horizontalHeader().setVisible(False)
         self.verticalHeader().setVisible(False)
         self.setShowGrid(False)
-        #self.resizeRowToContents(True)
+
+        # TODO
         self.resizeColumnToContents(0)
         self.setTextElideMode(QtCore.Qt.ElideRight)
         self.setWordWrap(False)
@@ -367,7 +368,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         self._seperator_index = 0
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
+        self._font = MonospaceFont(9)
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # load the raw 'X' delete icon from disk
@@ -592,8 +593,8 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
         super(ComboBoxDelegate, self).__init__(parent)
 
         # painting property definitions
-        self._grid_color = QtGui.QColor(0x505050)
-        self._separator_color = QtGui.QColor(0x909090)
+        self._grid_color = QtGui.QColor(0x909090)
+        self._separator_color = QtGui.QColor(0x505050)
 
     def sizeHint(self, option, index):
         """
@@ -612,15 +613,35 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
         if index.data(QtCore.Qt.AccessibleDescriptionRole) == ENTRY_USER:
             painter.save()
             painter.setPen(self._grid_color)
-            painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
+
+            # draw the grid line beneath the current row (a coverage entry)
+            tweak = QtCore.QPoint(0, 1) # 1px tweak provides better spacing
+            painter.drawLine(
+                option.rect.bottomLeft() + tweak,
+                option.rect.bottomRight() + tweak
+            )
+
+            #
+            # now we will re-draw the grid line *above* the current entry,
+            # fixing a minor graphical bug where grid lines could dissapear
+            # after hovering over a row / entry
+            #
+
+            previous = index.sibling(index.row()-1, 0)
+            painter.drawLine(
+                option.rect.topLeft(),
+                option.rect.topRight()
+            )
+
             painter.restore()
 
-        # custom paint the seperator entry
+        # custom paint the seperator entry between special & normal coverage
         if index.data(QtCore.Qt.AccessibleDescriptionRole) == SEPARATOR:
             painter.save()
             painter.setPen(self._separator_color)
-            painter.drawLine(option.rect.left(),  option.rect.center().y(),
-                             option.rect.right(), option.rect.center().y())
+            painter.drawRect(
+                option.rect
+            )
             painter.restore()
 
             # nothing else to paint for the seperator entry

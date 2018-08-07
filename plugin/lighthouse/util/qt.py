@@ -78,11 +78,11 @@ def flush_qt_events():
     qta = QtCore.QCoreApplication.instance()
     qta.processEvents()
 
-def MonospaceFont():
+def MonospaceFont(size=-1):
     """
     Convenience alias for creating a monospace Qt font object.
     """
-    font = QtGui.QFont("Monospace")
+    font = QtGui.QFont("Monospace", pointSize=size)
     font.setStyleHint(QtGui.QFont.TypeWriter)
     return font
 
