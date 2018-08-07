@@ -49,7 +49,8 @@ SAMPLE_CONTENTS = \
     " 100 / 100 ",
     " 1000 / 1000 ",
     " 10000000 ",
-    " 1000000 "
+    " 1000000 ",
+    ""
 ]
 
 #------------------------------------------------------------------------------
@@ -176,10 +177,7 @@ class CoverageOverview(DockableShim):
         """
         Initialize UI elements.
         """
-
-        # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
-        self._font_metrics = QtGui.QFontMetricsF(self._font)
+        self._font = MonospaceFont(9)
 
         # initialize our ui elements
         self._ui_init_table()
@@ -198,7 +196,7 @@ class CoverageOverview(DockableShim):
         self._table = QtWidgets.QTableView()
         self._table.setFocusPolicy(QtCore.Qt.NoFocus)
         self._table.setStyleSheet(
-            "QTableView { gridline-color: black; background-color: %s } " % palette.overview_bg.name()  +
+            "QTableView { gridline-color: black; background-color: %s } " % palette.overview_bg.name() +
             "QTableView::item:selected { color: white; background-color: %s; } " % palette.selection.name()
         )
 
@@ -212,10 +210,41 @@ class CoverageOverview(DockableShim):
         # install the underlying data source for the table
         self._table.setModel(self._model)
 
-        # set the initial column widths for the table
-        for i in xrange(len(SAMPLE_CONTENTS)):
-            rect = self._font_metrics.boundingRect(SAMPLE_CONTENTS[i])
-            self._table.setColumnWidth(i, rect.width())
+        #
+        # Column Width
+        #
+
+        # get the font used by the table headers
+        title_font = self._model.headerData(0, QtCore.Qt.Horizontal, QtCore.Qt.FontRole)
+        title_fm = QtGui.QFontMetricsF(title_font)
+
+        # get the font used by the table cell entries
+        entry_font = self._model.data(0, QtCore.Qt.FontRole)
+        entry_fm = QtGui.QFontMetricsF(entry_font)
+
+        # set the initial column widths based on their title or contents
+        for i in xrange(self._model.columnCount()):
+
+            # determine the pixel width of the column header text
+            title_text = self._model.headerData(i, QtCore.Qt.Horizontal)
+            title_rect = title_fm.boundingRect(title_text)
+
+            # determine the pixel width of sample column entry text
+            entry_text = SAMPLE_CONTENTS[i]
+            entry_rect = entry_fm.boundingRect(entry_text)
+
+            # select the lager of the two potential column widths
+            column_width = max(title_rect.width(), entry_rect.width())
+
+            # pad the final column width to make the table less dense
+            column_width = int(column_width * 1.2)
+
+            # save the final column width
+            self._table.setColumnWidth(i, column_width)
+
+        #
+        # Misc
+        #
 
         # table selection should be by row, not by cell
         self._table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -230,8 +259,15 @@ class CoverageOverview(DockableShim):
         else:
             vh.setResizeMode(QtWidgets.QHeaderView.Fixed)
 
-        # specify the fixed row height in pixels
-        vh.setDefaultSectionSize(int(self._font_metrics.height()))
+        # specify a fixed height for the table entries (rows)
+        entry_rect = entry_fm.boundingRect("TEST")
+        entry_height = int(entry_rect.height() * 1.2)
+        vh.setDefaultSectionSize(entry_height)
+
+        # specify a fixed height for the table header row
+        title_rect = title_fm.boundingRect("TEST")
+        title_height = int(title_rect.height() * 1.7)
+        hh.setFixedHeight(title_height)
 
         # hide the vertical header themselves as we don't need them
         vh.hide()
@@ -296,7 +332,9 @@ class CoverageOverview(DockableShim):
         # the checkbox to hide 0% coverage entries
         self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
         self._hide_zero_label.setFont(self._font)
+        #self._hide_zero_label.setStyleSheet("QLabel{background:red}")
         self._hide_zero_checkbox = QtWidgets.QCheckBox()
+        self._hide_zero_checkbox.setStyleSheet("QCheckBox{ padding-top: 1ex; }")
 
         # the splitter to make the shell / combobox resizable
         self._splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -587,8 +625,11 @@ class CoverageModel(QtCore.QAbstractTableModel):
         }
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
-        self._font_metrics = QtGui.QFontMetricsF(self._font)
+        self._entry_font = MonospaceFont(9)
+
+        # use the default / system font for the column tittles
+        self._title_font = QtGui.QFont()
+        self._title_font.setPointSize(9)
 
         #----------------------------------------------------------------------
         # Sorting
@@ -654,7 +695,11 @@ class CoverageModel(QtCore.QAbstractTableModel):
             elif role == QtCore.Qt.TextAlignmentRole:
 
                 # center align all columns
-                return QtCore.Qt.AlignHCenter
+                return QtCore.Qt.AlignCenter
+
+            # font format request
+            elif role == QtCore.Qt.FontRole:
+                return self._title_font
 
         # unhandeled header request
         return None
@@ -749,7 +794,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # font format request
         elif role == QtCore.Qt.FontRole:
-            return self._font
+            return self._entry_font
 
         # text alignment request
         elif role == QtCore.Qt.TextAlignmentRole:

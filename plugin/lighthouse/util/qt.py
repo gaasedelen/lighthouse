@@ -78,6 +78,13 @@ def flush_qt_events():
     qta = QtCore.QCoreApplication.instance()
     qta.processEvents()
 
+def get_dpi_scale():
+    """
+    TODO
+    """
+    font = QtGui.QFont("Times", 15)
+    return QtGui.QFontMetrics(font).xHeight()
+
 def MonospaceFont(size=-1):
     """
     Convenience alias for creating a monospace Qt font object.
@@ -176,8 +183,7 @@ class WaitBox(QtWidgets.QDialog):
         # configure the main widget / form
         self.setSizeGripEnabled(False)
         self.setModal(True)
-        self._dpi_scale = self.fontMetrics().averageCharWidth()
-        m = self._dpi_scale
+        self._dpi_scale = get_dpi_scale()
 
         # initialize abort button
         self._abort_button = QtWidgets.QPushButton("Cancel")
