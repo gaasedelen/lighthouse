@@ -469,6 +469,9 @@ class DatabaseMetadata(object):
         CHUNK_SIZE = 150
         completed = 0
 
+        start = time.time()
+        #----------------------------------------------------------------------
+
         # loop through every defined function (address) in the database
         for addresses_chunk in chunks(function_addresses, CHUNK_SIZE):
 
@@ -496,6 +499,10 @@ class DatabaseMetadata(object):
         # dedupe and sort the instructions
         self.instructions = list(set(self.instructions))
         self.instructions.sort()
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Metadata collection took %s seconds" % (end - start))
 
         # completed normally
         return True
@@ -921,7 +928,15 @@ class NodeMetadata(object):
         """
         Collect node metadata from the underlying database.
         """
-        self.instructions = [x.address for x in self.id.disassembly_text]
+        bv = disassembler.bv
+        current_address = self.address
+        node_end = self.address + self.size
+
+        while current_address < node_end:
+            self.instructions.append(current_address)
+            current_address += bv.get_instruction_length(current_address)
+
+        # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
 
         # TODO/BINJA/COMMENT: explain this (we are cheating)
