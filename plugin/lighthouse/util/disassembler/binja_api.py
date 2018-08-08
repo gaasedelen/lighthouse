@@ -1,4 +1,5 @@
 import os
+import logging
 import functools
 import threading
 
@@ -6,8 +7,10 @@ from .api import DisassemblerAPI
 from lighthouse.util.misc import is_mainthread
 
 import binaryninja
-from binaryninja import PythonScriptingInstance
+from binaryninja import PythonScriptingInstance, binaryview
 from binaryninja.plugin import BackgroundTaskThread
+
+logger = logging.getLogger("Lighthouse.API.Binja")
 
 class BinjaAPI(DisassemblerAPI):
     """
@@ -64,15 +67,7 @@ class BinjaAPI(DisassemblerAPI):
     #------------------------------------------------------------------------------
 
     def create_rename_hooks(self):
-        """
-        TODO/BINJA: IMPLEMENT RENAME HOOKS!
-        """
-        class RenameHooks(object):
-            def hook(self):
-                pass
-            def unhook(self):
-                pass
-        return RenameHooks()
+        return RenameHooks(self.bv)
 
     def get_current_address(self):
         if not self._python:
@@ -181,6 +176,89 @@ class BinjaAPI(DisassemblerAPI):
                 pass
 
         return wrapper
+
+#------------------------------------------------------------------------------
+# Hooking
+#------------------------------------------------------------------------------
+
+class RenameHooks(object):
+    """
+    TODO/COMMENT
+    """
+
+    def __init__(self, bv):
+        self._bv = bv
+
+        # hook certain Binary Ninja notifications
+        self._hooks = binaryview.BinaryDataNotification()
+        self._hooks.function_updated = self._workaround
+
+        # TODO/V35: turns out there are no adequate symbol event hooks...
+        #self._hooks.function_update_requested = self._before
+        #self._hooks.function_updated = self._after
+        #self._names = {}
+
+    def hook(self):
+        self._bv.register_notification(self._hooks)
+
+    def unhook(self):
+        self._bv.unregister_notification(self._hooks)
+
+    @BinjaAPI.execute_ui
+    def _renamed(self, address, new_name):
+        """
+        Pass off the (internal) rename event to the mainthread.
+        """
+        self.renamed(address, new_name)
+
+    def _before(self, _, function):
+        """
+        Capture function name prior to modification.
+        """
+        self._names[function.start] = function.name
+
+    def _after(self, _, function):
+        """
+        Capture function name post modification
+        """
+
+        #
+        # if we don't have an old name for a given function logged, that
+        # means we must have missed the function_update_requested event for it.
+        #
+        # hopefully this should never happen during real *rename* events...
+        #
+
+        old_name = self._names.get(function.start, None)
+        if not old_name:
+            return
+
+        # if the function name hasn't changed, then there is nothing to do!
+        if old_name == function.name:
+            return
+
+        # fire our custom 'function renamed' event
+        self._renamed(function.start, function.name)
+
+    #--------------------------------------------------------------------------
+    # Temporary Workaound
+    #--------------------------------------------------------------------------
+
+    def _workaround(self, _, function):
+        """
+        TODO/V35: workaround to detect name changes pending better API's
+        """
+        function_metadata = self.metadata.get_function(function.start)
+        if not function_metadata:
+            return
+
+        # if the function name hasn't changed, then there is nothing to do!
+        if function_metadata.name == function.name:
+            return
+
+        print "NAME CHANGED! %s --> %s" % (function_metadata.name, function.name)
+        # fire our custom 'function renamed' event
+        self._renamed(function.start, function.name)
 
 #------------------------------------------------------------------------------
 # Binary Ninja Hacks XXX / TODO

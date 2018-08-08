@@ -130,12 +130,21 @@ class RenameHooks(object):
 
     @abc.abstractmethod
     def hook(self):
+        """
+        Install disassmbler-specific hooks necessary to capture rename events.
+        """
         pass
 
     @abc.abstractmethod
     def unhook(self):
+        """
+        Remove disassmbler-specific hooks used to capture rename events.
+        """
         pass
 
-    def renamed(self, address, new_name, old_name):
+    def renamed(self, address, new_name):
+        """
+        This will be hooked by Lighthouse at runtime to capture rename events.
+        """
         pass
 

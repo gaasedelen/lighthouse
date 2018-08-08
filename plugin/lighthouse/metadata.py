@@ -3,6 +3,7 @@ import Queue
 import bisect
 import ctypes
 import logging
+import weakref
 import threading
 
 from lighthouse.util import *
@@ -81,9 +82,8 @@ class DatabaseMetadata(object):
         self._node_addresses = []
         self._function_addresses = []
 
-        # hook to listen for rename events from IDA
-        self._rename_hooks = disassembler.create_rename_hooks()
-        self._rename_hooks.renamed = self._name_changed
+        # placeholder attribute for disassembler event hooks
+        self._rename_hooks = None
 
         # metadata callbacks (see director for more info)
         self._function_renamed_callbacks = []
@@ -97,7 +97,8 @@ class DatabaseMetadata(object):
         Cleanup & terminate the metadata object.
         """
         self.abort_refresh(join=True)
-        self._rename_hooks.unhook()
+        if self._rename_hooks:
+            self._rename_hooks.unhook()
 
     #--------------------------------------------------------------------------
     # Providers
@@ -396,7 +397,8 @@ class DatabaseMetadata(object):
         """
 
         # pause our rename listening hooks, for speed
-        self._rename_hooks.unhook()
+        if self._rename_hooks:
+            self._rename_hooks.unhook()
 
         # collect metadata
         completed = self._async_collect_metadata(
@@ -406,6 +408,26 @@ class DatabaseMetadata(object):
 
         # refresh the lookup lists
         self._refresh_lookup()
+
+        #
+        # NOTE:
+        #
+        #   creating the hooks inline like this is kind of less than ideal
+        #   (they used to be in the director constructor) but they have been
+        #   moved to accomodate the Binary Ninja API.
+        #
+        # TODO/FUTURE/V35:
+        #
+        #   it would be nice to move these back to the constructor once the
+        #   Binary Ninja API allows us to detect BV / sessions as they are
+        #   created, and able to load plugins on such events.
+        #
+
+        # create the disassembler hooks to listen for rename events
+        if not self._rename_hooks:
+            self._rename_hooks = disassembler.create_rename_hooks()
+            self._rename_hooks.renamed = self._name_changed
+            self._rename_hooks.metadata = weakref.proxy(self)
 
         # resume our rename listening hooks
         self._rename_hooks.hook()
@@ -583,7 +605,7 @@ class DatabaseMetadata(object):
     #--------------------------------------------------------------------------
 
     @mainthread
-    def _name_changed(self, address, new_name, local_name):
+    def _name_changed(self, address, new_name, local_name=None):
         """
         Handler for rename event in IDA.
         """
@@ -701,9 +723,9 @@ class FunctionMetadata(object):
 
     def _ida_refresh_nodes(self):
         """
-        Refresh the function nodes against the open database.
+        Refresh the function nodes against the open IDA database.
 
-        NOTE: this is kept disassembler-specific for best performance
+        NOTE: this function is disassembler-specific for optimal performance
         """
 
         # dispose of stale information
@@ -798,7 +820,9 @@ class FunctionMetadata(object):
 
     def _binja_refresh_nodes(self):
         """
-        TODO/COMMENT
+        Refresh the function nodes against the open Binary Ninja database.
+
+        NOTE: this function is disassembler-specific for optimal performance
         """
 
         # dispose of stale information
@@ -817,8 +841,7 @@ class FunctionMetadata(object):
         for node in function.basic_blocks:
 
             # create a new metadata object for this node
-            # TODO/BINJA/COMMENT: explain why we pass node here ...
-            node_metadata = NodeMetadata(node.start, node.end, node)
+            node_metadata = NodeMetadata(node.start, node.end, node.index)
 
             #
             # establish a relationship between this node (basic block) and
@@ -938,9 +961,6 @@ class NodeMetadata(object):
 
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
-
-        # TODO/BINJA/COMMENT: explain this (we are cheating)
-        self.id = self.id.index
 
     #--------------------------------------------------------------------------
     # Operator Overloads
