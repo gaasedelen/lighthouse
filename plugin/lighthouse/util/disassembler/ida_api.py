@@ -91,7 +91,7 @@ class IDAAPI(DisassemblerAPI):
     def get_function_name_at(self, address):
         return idaapi.get_short_name(address)
 
-    def get_function_raw_name_at(self, address):
+    def get_function_raw_name_at(self, function_address):
         if self.using_ida7api:
             return idaapi.get_name(function_address)
         return idaapi.get_true_name(idaapi.BADADDR, function_address)
@@ -267,7 +267,7 @@ class IDAAPI(DisassemblerAPI):
         # return the predicted background color
         return QtGui.QColor(predict_bg_color(image))
 
-    def _touch_ida_window(target):
+    def _touch_ida_window(self, target):
         """
         Touch a window/widget/form to ensure it gets drawn by IDA.
 

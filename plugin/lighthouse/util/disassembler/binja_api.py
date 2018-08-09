@@ -121,10 +121,17 @@ class BinjaAPI(DisassemblerAPI):
         return self.bv.navigate(self.bv.view, address) # NOTE: BN returns None
 
     def set_function_name_at(self, function_address, new_name):
-        func = self.bv.get_function_at(address)
+        func = self.bv.get_function_at(function_address)
         if not func:
             return
         func.name = new_name
+
+        #
+        # TODO/V35: As a workaround for no symbol events, we trigger a data
+        # notification for this function instead.
+        #
+
+        self.bv.write(function_address, self.bv.read(function_address, 1))
 
     #--------------------------------------------------------------------------
     # UI API Shims

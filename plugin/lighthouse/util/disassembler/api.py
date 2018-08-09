@@ -219,37 +219,34 @@ class DisassemblerAPI(object):
         # rename the function with the newly prefixed name
         self.set_function_name_at(function_address, new_name)
 
-    def prefix_functions(function_addresses, prefix):
+    def prefix_functions(self, function_addresses, prefix):
         """
         Prefix a list of functions with the given string.
         """
         for function_address in function_addresses:
             self.prefix_function(function_address, prefix)
 
-    def clear_prefix(function_address):
+    def clear_prefix(self, function_address):
         """
         Clear the prefix from a given function.
         """
-        original_name = self.get_function_name_at(function_address)
+        prefixed_name = self.get_function_name_at(function_address)
 
         #
-        # locate the last (rfind) prefix separator in the function name as
-        # we will want to keep everything that comes after it
+        # split the function name on the last prefix separator, saving
+        # everything that comes after (eg, the original func name)
         #
 
-        i = original_name.rfind(self.PREFIX_SEPARATOR)
+        new_name = prefixed_name.rsplit(self.PREFIX_SEPARATOR)[-1]
 
-        # if there is no prefix (separator), there is nothing to trim
-        if i == -1:
+        # the name doesn't appear to have had a prefix, nothing to do...
+        if new_name == prefixed_name:
             return
 
-        # trim the prefix off the original function name and discard it
-        new_name = original_name[i+1:]
-
-        # rename the function with the prefix stripped
+        # rename the function with the prefix(s) now stripped
         self.set_function_name_at(function_address, new_name)
 
-    def clear_prefixes(function_addresses):
+    def clear_prefixes(self, function_addresses):
         """
         Clear the prefix from a list of given functions.
         """

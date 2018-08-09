@@ -527,7 +527,7 @@ class CoverageOverview(DockableWindow):
 
         # handle the 'Clear prefix' action
         elif action == self._action_clear_prefix:
-            clear_prefixes(function_addresses)
+            disassembler.clear_prefixes(function_addresses)
 
         # handle the 'Refresh metadata' action
         elif action == self._action_refresh_metadata:

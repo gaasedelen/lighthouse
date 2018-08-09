@@ -67,6 +67,7 @@ def prompt_string(label, title, default=""):
 
     This does not block the IDA main thread (unlike idaapi.askstr)
     """
+    dpi_scale = get_dpi_scale()
     dlg = QtWidgets.QInputDialog(None)
     dlg.setWindowFlags(dlg.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
     dlg.setInputMode(QtWidgets.QInputDialog.TextInput)
@@ -74,8 +75,8 @@ def prompt_string(label, title, default=""):
     dlg.setWindowTitle(title)
     dlg.setTextValue(default)
     dlg.resize(
-        dlg.fontMetrics().averageCharWidth()*80,
-        dlg.fontMetrics().averageCharWidth()*10
+        dpi_scale*80,
+        dpi_scale*10
     )
     ok = dlg.exec_()
     text = str(dlg.textValue())
