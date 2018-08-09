@@ -23,7 +23,7 @@ class LighthousePalette(object):
 
         # the active theme name
         self._qt_theme  = "Dark"
-        self._ida_theme = "Dark"
+        self._disassembly_theme = "Dark"
 
         # the list of available themes
         self._themes = \
@@ -71,11 +71,11 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
 
     @property
-    def ida_theme(self):
+    def disassembly_theme(self):
         """
         Return the active IDA theme number.
         """
-        return self._themes[self._ida_theme]
+        return self._themes[self._disassembly_theme]
 
     @property
     def qt_theme(self):
@@ -91,7 +91,6 @@ class LighthousePalette(object):
         Depending on if IDA is using a dark or light theme, we *try*
         to select colors that will hopefully keep things most readable.
         """
-        self._initialized = True # TODO/HACK/XXX/BINJA
 
         # TODO/FUTURE: temporary until I have a cleaner way to do one-time init
         if self._initialized:
@@ -106,12 +105,12 @@ class LighthousePalette(object):
         #
 
         self._qt_theme  = "Dark" # self._qt_theme_hint()
-        self._ida_theme = self._ida_theme_hint()
+        self._disassembly_theme = self._disassembly_theme_hint()
 
         # mark the palette as initialized
         self._initialized = True
 
-    def _ida_theme_hint(self):
+    def _disassembly_theme_hint(self):
         """
         Binary hint of the IDA color theme.
 
@@ -204,7 +203,7 @@ class LighthousePalette(object):
 
     @property
     def coverage_paint(self):
-        return self._coverage_paint[self.ida_theme]
+        return self._coverage_paint[self.disassembly_theme]
 
     #--------------------------------------------------------------------------
     # Composing Shell

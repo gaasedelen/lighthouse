@@ -130,8 +130,9 @@ class BinjaAPI(DisassemblerAPI):
     # UI API Shims
     #--------------------------------------------------------------------------
 
-    def get_disassembly_background_color(self): # TODO
-        pass
+    def get_disassembly_background_color(self):
+        palette = QtGui.QPalette()
+        return palette.color(QtGui.QPalette.Button)
 
     def is_msg_inited(self):
         return True
@@ -303,7 +304,7 @@ class RenameHooks(object):
 
 class DockableWindow(DockableShim):
     """
-    TODO
+    TODO/COMMENT
     """
 
     def __init__(self, window_title, icon_path):
