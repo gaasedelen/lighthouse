@@ -1,6 +1,6 @@
 
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler.ui import get_ida_bg_color
+from lighthouse.util.disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # IDA Plugin Palette
@@ -126,7 +126,7 @@ class LighthousePalette(object):
         # background color of the user's IDA text based windows
         #
 
-        bg_color = get_ida_bg_color()
+        bg_color = disassembler.get_disassembly_background_color()
 
         # return 'Dark' or 'Light'
         return test_color_brightness(bg_color)

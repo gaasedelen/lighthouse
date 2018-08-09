@@ -1,16 +1,22 @@
+# -*- coding: utf-8 -*-
 import os
 import logging
 import functools
 import threading
 
-from .api import DisassemblerAPI
-from lighthouse.util.misc import is_mainthread
-
 import binaryninja
 from binaryninja import PythonScriptingInstance, binaryview
 from binaryninja.plugin import BackgroundTaskThread
 
+from .api import DisassemblerAPI, DockableShim
+from lighthouse.util.qt import *
+from lighthouse.util.misc import is_mainthread
+
 logger = logging.getLogger("Lighthouse.API.Binja")
+
+#------------------------------------------------------------------------------
+# Disassembler API
+#------------------------------------------------------------------------------
 
 class BinjaAPI(DisassemblerAPI):
     """
@@ -19,9 +25,12 @@ class BinjaAPI(DisassemblerAPI):
     NAME = "BINJA"
 
     def __init__(self, bv=None):
+        super(BinjaAPI, self).__init__()
+        self._init_version()
+
+        # binja specific amenities
         self._bv = bv
         self._python = _binja_get_scripting_instance()
-        self._init_version()
 
     def _init_version(self):
 
@@ -34,9 +43,9 @@ class BinjaAPI(DisassemblerAPI):
         self._version_minor = minor
         self._version_patch = patch
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Properties
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     @property
     def bv(self):
@@ -62,9 +71,9 @@ class BinjaAPI(DisassemblerAPI):
     def version_patch(self):
         return self._version_patch
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # API Shims
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def create_rename_hooks(self):
         return RenameHooks(self.bv)
@@ -89,6 +98,12 @@ class BinjaAPI(DisassemblerAPI):
         func = self.bv.get_function_at(address)
         if not func:
             return None
+        return func.symbol.short_name
+
+    def get_function_raw_name_at(self, address):
+        func = self.bv.get_function_at(address)
+        if not func:
+            return None
         return func.name
 
     def get_imagebase(self):
@@ -102,11 +117,28 @@ class BinjaAPI(DisassemblerAPI):
         """
         return os.path.basename(os.path.splitext(self.bv.file.filename)[0])
 
+    def navigate(self, address):
+        return self.bv.navigate(self.bv.view, address) # NOTE: BN returns None
+
+    def set_function_name_at(self, function_address, new_name):
+        func = self.bv.get_function_at(address)
+        if not func:
+            return
+        func.name = new_name
+
+    #--------------------------------------------------------------------------
+    # UI API Shims
+    #--------------------------------------------------------------------------
+
+    def get_disassembly_background_color(self): # TODO
+        pass
+
     def is_msg_inited(self):
         return True
 
-    def navigate(self, address):
-        return self.bv.navigate(self.bv.view, address) # NOTE: BN returns None
+    #--------------------------------------------------------------------------
+    # Synchronization Decorators
+    #--------------------------------------------------------------------------
 
     @staticmethod
     def execute_read(function):
@@ -176,6 +208,12 @@ class BinjaAPI(DisassemblerAPI):
                 pass
 
         return wrapper
+
+    #------------------------------------------------------------------------------
+    # High Level API
+    #------------------------------------------------------------------------------
+
+    PREFIX_SEPARATOR = "▁" # Unicode 0x2581
 
 #------------------------------------------------------------------------------
 # Hooking
@@ -256,12 +294,56 @@ class RenameHooks(object):
         if function_metadata.name == function.name:
             return
 
-        print "NAME CHANGED! %s --> %s" % (function_metadata.name, function.name)
         # fire our custom 'function renamed' event
         self._renamed(function.start, function.name)
 
 #------------------------------------------------------------------------------
-# Binary Ninja Hacks XXX / TODO
+# UI
+#------------------------------------------------------------------------------
+
+class DockableWindow(DockableShim):
+    """
+    TODO
+    """
+
+    def __init__(self, window_title, icon_path):
+        super(DockableWindow, self).__init__(window_title, icon_path)
+
+        # configure dockable widget container
+        self._main_window = get_qt_main_window()
+        self._widget = QtWidgets.QWidget()
+        self._dockable = QtWidgets.QDockWidget(window_title, self._main_window)
+        self._dockable.setWidget(self._widget)
+        self._dockable.setWindowIcon(self._window_icon)
+        self._dockable.resize(800,600)
+
+        # dock the widget on the right side of Binja
+        self._main_window.addDockWidget(
+            QtCore.Qt.RightDockWidgetArea,
+            self._dockable
+        )
+
+        # TODO, kind of hacky? will invesigate later...
+        self._dockable.visibilityChanged.connect(self._vis_changed)
+
+    def _vis_changed(self, visibile):
+        if visibile:
+            return
+        self.hide()
+
+    def show(self):
+        self._dockable.show()
+
+    def hide(self,):
+        self._widget.hide()
+        self._dockable.hide()
+        self._widget.deleteLater()
+        self._dockable.deleteLater()
+        self._widget = None
+        self._dockable = None
+
+#------------------------------------------------------------------------------
+# Utils (Binary Ninja Hacks XXX / TODO)
 #------------------------------------------------------------------------------
 
 def _binja_get_scripting_instance():

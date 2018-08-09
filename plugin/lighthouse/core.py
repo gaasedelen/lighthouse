@@ -5,7 +5,6 @@ from lighthouse.ui import CoverageOverview
 from lighthouse.util import *
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
-from lighthouse.util.disassembler.ui import *
 
 from lighthouse.parsers import DrcovData
 from lighthouse.palette import LighthousePalette
@@ -224,22 +223,22 @@ class Lighthouse(object):
         # block until it completes. the user will be shown a progress dialog.
         #
 
-        show_wait_box("Building database metadata...")
+        disassembler.show_wait_box("Building database metadata...")
         await_future(future)
 
         # aggregate all the selected files into one new coverage set
         new_coverage = self._aggregate_batch(loaded_files)
 
         # inject the the aggregated coverage set
-        replace_wait_box("Mapping coverage...")
+        disassembler.replace_wait_box("Mapping coverage...")
         self.director.create_coverage(coverage_name, new_coverage.data)
 
         # select the newly created batch coverage
-        replace_wait_box("Selecting coverage...")
+        disassembler.replace_wait_box("Selecting coverage...")
         self.director.select_coverage(coverage_name)
 
         # all done, hide the IDA wait box
-        hide_wait_box()
+        disassembler.hide_wait_box()
         lmsg("Successfully loaded batch %s..." % coverage_name)
 
         # show the coverage overview
@@ -277,7 +276,7 @@ class Lighthouse(object):
         # block until it completes. the user will be shown a progress dialog.
         #
 
-        show_wait_box("Building database metadata...")
+        disassembler.show_wait_box("Building database metadata...")
         await_future(future)
 
         #
@@ -297,7 +296,7 @@ class Lighthouse(object):
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
-            replace_wait_box(
+            disassembler.replace_wait_box(
                 "Normalizing and mapping coverage %u/%u" % (i, len(loaded_files))
             )
 
@@ -326,24 +325,24 @@ class Lighthouse(object):
         # to recompute the aggregate with the newly loaded coverage
         #
 
-        replace_wait_box("Recomputing coverage aggregate...")
+        disassembler.replace_wait_box("Recomputing coverage aggregate...")
         self.director.resume_aggregation()
 
         # if nothing was mapped, then there's nothing else to do
         if not created_coverage:
             lmsg("No coverage files could be mapped...")
-            hide_wait_box()
+            disassembler.hide_wait_box()
             return
 
         #
         # select one (the first) of the newly loaded coverage file(s)
         #
 
-        show_wait_box("Selecting coverage...")
+        disassembler.show_wait_box("Selecting coverage...")
         self.director.select_coverage(created_coverage[0])
 
         # all done, hide the IDA wait box
-        hide_wait_box()
+        disassembler.hide_wait_box()
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
 
         # show the coverage overview
@@ -357,7 +356,7 @@ class Lighthouse(object):
         """
         Aggregate the given loaded_files data into a single coverage object.
         """
-        show_wait_box("Aggregating coverage batch...")
+        disassembler.show_wait_box("Aggregating coverage batch...")
 
         # create a new coverage set to manually aggregate data into
         coverage = DatabaseCoverage({}, self.palette)
@@ -371,7 +370,7 @@ class Lighthouse(object):
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
-            show_wait_box(
+            disassembler.show_wait_box(
                 "Aggregating batch data %u/%u" % (i, len(loaded_files))
             )
 

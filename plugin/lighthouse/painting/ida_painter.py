@@ -6,7 +6,6 @@ import idc
 import idaapi
 
 from lighthouse.util import *
-from lighthouse.util.disassembler.ida import * # TODO/IDA: can we get rid of this dep?
 from lighthouse.util.disassembler import disassembler
 from lighthouse.painting import DatabasePainter
 

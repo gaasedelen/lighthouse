@@ -9,7 +9,6 @@ import threading
 from lighthouse.util import *
 from lighthouse.util.misc import mainthread
 from lighthouse.util.disassembler import disassembler
-from lighthouse.util.disassembler.ui import replace_wait_box
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
@@ -412,9 +411,9 @@ class DatabaseMetadata(object):
         #
         # NOTE:
         #
-        #   creating the hooks inline like this is kind of less than ideal
-        #   (they used to be in the director constructor) but they have been
-        #   moved to accomodate the Binary Ninja API.
+        #   creating the hooks inline like this is less than ideal, but they
+        #   they have been moved here (from the metadata constructor) to
+        #   accomodate shortfalls of the Binary Ninja API.
         #
         # TODO/FUTURE/V35:
         #
@@ -1200,7 +1199,9 @@ def metadata_progress(completed, total):
     """
     Handler for metadata collection callback, updates progress dialog.
     """
-    replace_wait_box("Collected metadata for %u/%u Functions" % (completed, total))
+    disassembler.replace_wait_box(
+        "Collected metadata for %u/%u Functions" % (completed, total)
+    )
 
 #--------------------------------------------------------------------------
 # Shim HAX

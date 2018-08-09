@@ -5,8 +5,7 @@ from operator import itemgetter, attrgetter
 
 from lighthouse.util import *
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler import disassembler
-from lighthouse.util.disassembler.ui import DockableShim
+from lighthouse.util.disassembler import disassembler, DockableWindow
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata, metadata_progress
@@ -118,7 +117,7 @@ class EventProxy(QtCore.QObject):
 # Coverage Overview
 #------------------------------------------------------------------------------
 
-class CoverageOverview(DockableShim):
+class CoverageOverview(DockableWindow):
     """
     The Coverage Overview Widget.
     """
@@ -157,6 +156,7 @@ class CoverageOverview(DockableShim):
         self.refresh()
         super(CoverageOverview, self).show()
         self._visible = True
+        self._widget.setMinimumWidth(0) # TODO/HACK: remove with table rework
 
     def terminate(self):
         """
@@ -412,6 +412,7 @@ class CoverageOverview(DockableShim):
         layout.addWidget(self._toolbar)
 
         # apply the layout to the containing form
+        self._widget.setMinimumWidth(800) # TODO/HACK: remove with table rework
         self._widget.setLayout(layout)
 
     #--------------------------------------------------------------------------
@@ -531,15 +532,15 @@ class CoverageOverview(DockableShim):
         # handle the 'Refresh metadata' action
         elif action == self._action_refresh_metadata:
 
-            show_wait_box("Building database metadata...")
+            disassembler.show_wait_box("Building database metadata...")
             self._director.refresh()
 
             # ensure the table's model gets refreshed
-            replace_wait_box("Refreshing Coverage Overview...")
+            disassembler.replace_wait_box("Refreshing Coverage Overview...")
             self.refresh()
 
             # all done
-            hide_wait_box()
+            disassembler.hide_wait_box()
 
         # handle the 'Rename' action (only applies to a single function)
         if action == self._action_rename and len(selected_rows) == 1:
@@ -1036,3 +1037,52 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # bake the final number of rows into the model
         self._row_count = len(self.row2func)
+
+#------------------------------------------------------------------------------
+# Interactive
+#------------------------------------------------------------------------------
+
+@mainthread
+def gui_rename_function(function_address):
+    """
+    Interactive rename of a function in the IDB.
+    """
+    original_name = disassembler.get_function_raw_name_at(function_address)
+
+    # prompt the user for a new function name
+    ok, new_name = prompt_string(
+        "Please enter function name",
+        "Rename Function",
+        original_name
+    )
+
+    #
+    # if the user clicked cancel, or the name they entered
+    # is identical to the original, there's nothing to do
+    #
+
+    if not (ok or new_name != original_name):
+        return
+
+    # rename the function
+    disassembler.set_function_name_at(function_address, new_name)
+
+@mainthread
+def gui_prefix_functions(function_addresses):
+    """
+    Interactive prefixing of functions in the IDB.
+    """
+
+    # prompt the user for a new function name
+    ok, prefix = prompt_string(
+        "Please enter a function prefix",
+        "Prefix Function(s)",
+        "MyPrefix"
+    )
+
+    # bail if the user clicked cancel or failed to enter a prefix
+    if not (ok and prefix):
+        return
+
+    # prefix the given functions with the user specified prefix
+    disassembler.prefix_functions(function_addresses, prefix)

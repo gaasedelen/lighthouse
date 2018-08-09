@@ -996,7 +996,7 @@ class CoverageDirector(object):
 
         for i, name in enumerate(self.all_names, 1):
             logger.debug(" - %s" % name)
-            replace_wait_box(
+            disassembler.replace_wait_box(
                 "Refreshing coverage mapping %u/%u" % (i, len(self.all_names))
             )
             coverage = self.get_coverage(name)
