@@ -1,4 +1,5 @@
 import os
+import abc
 import logging
 
 from lighthouse.ui import CoverageOverview
@@ -28,6 +29,7 @@ DATE           = "2018"
 #------------------------------------------------------------------------------
 
 class Lighthouse(object):
+    __metaclass__ = abc.ABCMeta
 
     #--------------------------------------------------------------------------
     # Initialization
@@ -121,41 +123,47 @@ class Lighthouse(object):
         self._uninstall_load_batch()
         self._uninstall_load_file()
 
+    @abc.abstractmethod
     def _install_load_file(self):
         """
         Install the 'File->Load->Code coverage file...' menu entry.
         """
-        raise NotImplementedError("_install_load_file")
+        pass
 
+    @abc.abstractmethod
     def _install_load_batch(self):
         """
         Install the 'File->Load->Code coverage batch...' menu entry.
         """
-        raise NotImplementedError("_install_load_batch")
+        pass
 
+    @abc.abstractmethod
     def _install_open_coverage_overview(self):
         """
         Install the 'View->Open subviews->Coverage Overview' menu entry.
         """
-        raise NotImplementedError("_install_open_coverage_overview")
+        pass
 
+    @abc.abstractmethod
     def _uninstall_load_file(self):
         """
         Remove the 'File->Load file->Code coverage file...' menu entry.
         """
-        raise NotImplementedError("_uninstall_load_file")
+        pass
 
+    @abc.abstractmethod
     def _uninstall_load_batch(self):
         """
         Remove the 'File->Load file->Code coverage batch...' menu entry.
         """
-        raise NotImplementedError("_uninstall_load_batch")
+        pass
 
+    @abc.abstractmethod
     def _uninstall_open_coverage_overview(self):
         """
         Remove the 'View->Open subviews->Coverage Overview' menu entry.
         """
-        raise NotImplementedError("_uninstall_open_coverage_overview")
+        pass
 
     #--------------------------------------------------------------------------
     # UI - Actions (Public)

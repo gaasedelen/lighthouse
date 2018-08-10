@@ -1,3 +1,4 @@
+import sys
 import logging
 import binascii
 import functools
@@ -6,11 +7,10 @@ import idaapi
 import idautils
 
 from .api import DisassemblerAPI, DockableShim
-from lighthouse.util.qt import *
-from lighthouse.util.misc import is_mainthread
+from ..qt import *
+from ..misc import is_mainthread
 
 logger = logging.getLogger("Lighthouse.API.IDA")
-
 
 #------------------------------------------------------------------------------
 # Disassembler API
@@ -253,11 +253,11 @@ class IDAAPI(DisassemblerAPI):
         self._touch_ida_window(form)
 
         # locate the Qt Widget for a form and take 1px image slice of it
-        if self._using_ida7api:
-            widget = idaapi.PluginForm.FormToPyQtWidget(form)
+        if using_pyqt5:
+            widget = idaapi.PluginForm.FormToPyQtWidget(form, sys.modules[__name__])
             pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
         else:
-            widget = idaapi.PluginForm.FormToPySideWidget(form)
+            widget = idaapi.PluginForm.FormToPySideWidget(form, sys.modules[__name__])
             region = QtCore.QRect(0, 10, widget.width(), 1)
             pixmap = QtGui.QPixmap.grabWidget(widget, region)
 
@@ -342,9 +342,9 @@ class DockableWindow(DockableShim):
         else:
             self._form = idaapi.create_tform(self._window_title, None)
             if using_pyqt5:
-                self._widget = idaapi.PluginForm.FormToPyQtWidget(self._form)
+                self._widget = idaapi.PluginForm.FormToPyQtWidget(self._form, sys.modules[__name__])
             else:
-                self._widget = idaapi.PluginForm.FormToPySideWidget(self._form)
+                self._widget = idaapi.PluginForm.FormToPySideWidget(self._form, sys.modules[__name__])
 
         # set the window icon
         self._widget.setWindowIcon(self._window_icon)

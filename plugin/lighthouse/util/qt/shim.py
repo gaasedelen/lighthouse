@@ -57,3 +57,4 @@ if qt_available == False:
     # import failed, PySide is not available
     except ImportError:
         pass
+

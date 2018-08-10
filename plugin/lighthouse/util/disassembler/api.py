@@ -230,7 +230,7 @@ class DisassemblerAPI(object):
         """
         Clear the prefix from a given function.
         """
-        prefixed_name = self.get_function_name_at(function_address)
+        prefixed_name = self.get_function_raw_name_at(function_address)
 
         #
         # split the function name on the last prefix separator, saving

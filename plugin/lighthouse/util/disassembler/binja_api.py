@@ -9,8 +9,8 @@ from binaryninja import PythonScriptingInstance, binaryview
 from binaryninja.plugin import BackgroundTaskThread
 
 from .api import DisassemblerAPI, DockableShim
-from lighthouse.util.qt import *
-from lighthouse.util.misc import is_mainthread
+from ..qt import *
+from ..misc import is_mainthread
 
 logger = logging.getLogger("Lighthouse.API.Binja")
 

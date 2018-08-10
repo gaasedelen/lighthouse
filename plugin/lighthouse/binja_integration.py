@@ -51,3 +51,13 @@ class LighthouseBinja(Lighthouse):
             "Open the database code covereage overview",
             self.interactive_load_batch
         )
+
+    # TODO/V35: No good signals to unload (core) plugin on
+    def _uninstall_load_file(self):
+        pass
+
+    def _uninstall_load_batch(self):
+        pass
+
+    def _uninstall_open_coverage_overview(self):
+        pass

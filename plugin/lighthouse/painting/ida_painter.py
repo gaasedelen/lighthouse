@@ -7,9 +7,10 @@ import idaapi
 
 from lighthouse.util import *
 from lighthouse.util.disassembler import disassembler
+from lighthouse.util.disassembler.ida_api import map_line2citem, map_line2node, lex_citem_indexes
 from lighthouse.painting import DatabasePainter
 
-logger = logging.getLogger("Lighthouse.Painting")
+logger = logging.getLogger("Lighthouse.Painting.IDA")
 
 # TODO/PERF: IDA 7.1 bugfix, remove decorators (?), use single set() action
 
@@ -267,7 +268,7 @@ class IDAPainter(DatabasePainter):
             #
 
             if line_nodes & executed_nodes:
-                decompilation_text[line_number].bgcolor = self.palette.ida_coverage
+                decompilation_text[line_number].bgcolor = self.palette.coverage_paint
                 lines_painted += 1
 
         #
@@ -285,7 +286,7 @@ class IDAPainter(DatabasePainter):
         #
 
         for line_number in xrange(0, cfunc.hdrlines):
-            decompilation_text[line_number].bgcolor = self.palette.ida_coverage
+            decompilation_text[line_number].bgcolor = self.palette.coverage_paint
             lines_painted += 1
 
         # finally, refresh the view

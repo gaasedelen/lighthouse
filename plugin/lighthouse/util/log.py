@@ -124,7 +124,7 @@ def start_logging():
     # config the logger
     logging.basicConfig(
         filename=log_path,
-        format='%(asctime)s | %(name)20s | %(levelname)7s: %(message)s',
+        format='%(asctime)s | %(name)28s | %(levelname)7s: %(message)s',
         datefmt='%m-%d-%Y %H:%M:%S',
         level=logging.DEBUG
     )

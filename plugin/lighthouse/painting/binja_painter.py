@@ -8,7 +8,7 @@ from lighthouse.palette import to_rgb
 from lighthouse.painting import DatabasePainter
 from lighthouse.util.disassembler import disassembler
 
-logger = logging.getLogger("Lighthouse.Painting")
+logger = logging.getLogger("Lighthouse.Painting.Binja")
 
 class BinjaPainter(DatabasePainter):
     """
