@@ -1,9 +1,7 @@
 import os
 import weakref
+import threading
 import collections
-
-import idaapi
-from .shims import using_pyqt5, QtCore, QtGui, QtWidgets
 
 #------------------------------------------------------------------------------
 # Plugin Util
@@ -23,38 +21,23 @@ def plugin_resource(resource_name):
     )
 
 #------------------------------------------------------------------------------
-# UI Util
-#------------------------------------------------------------------------------
-
-def MonospaceFont():
-    """
-    Convenience alias for creating a monospace Qt font object.
-    """
-    font = QtGui.QFont("Monospace")
-    font.setStyleHint(QtGui.QFont.TypeWriter)
-    return font
-
-def singleshot(ms, function=None):
-    """
-    A Qt Singleshot timer that can be stopped.
-    """
-    timer = QtCore.QTimer()
-    timer.setInterval(ms)
-    timer.setSingleShot(True)
-    timer.timeout.connect(function)
-    return timer
-
-def copy_to_clipboard(data):
-    """
-    Copy the given data (a string) to the user clipboard.
-    """
-    cb = QtWidgets.QApplication.clipboard()
-    cb.clear(mode=cb.Clipboard)
-    cb.setText(data, mode=cb.Clipboard)
-
-#------------------------------------------------------------------------------
 # Python Util
 #------------------------------------------------------------------------------
+
+def is_mainthread():
+    """
+    Return a bool indicating main thread execution.
+    """
+    return isinstance(threading.current_thread(), threading._MainThread)
+
+def mainthread(f):
+    """
+    A debug decorator to assert main thread execution.
+    """
+    def wrapper(*args, **kwargs):
+        assert is_mainthread()
+        return f(*args, **kwargs)
+    return wrapper
 
 def chunks(l, n):
     """

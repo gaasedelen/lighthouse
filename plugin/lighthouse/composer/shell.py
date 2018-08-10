@@ -1,5 +1,7 @@
 from .parser import *
 from lighthouse.util import *
+from lighthouse.util.qt import *
+from lighthouse.util.disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # Composing Shell
@@ -66,7 +68,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
+        self._font = MonospaceFont(9)
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # initialize our ui elements
@@ -169,7 +171,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
         self._internal_refresh()
 
-    @idafast
+    @disassembler.execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the shell.
@@ -940,7 +942,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
         """
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
+        self._font = MonospaceFont(9)
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
@@ -955,7 +957,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
 
         # set the height of the textbox based on some arbitrary math :D
         LINE_PADDING = self.document().documentMargin()*2
-        line_height = self._font_metrics.height() + LINE_PADDING - 2
+        line_height = self._font_metrics.height() + LINE_PADDING + 2
         self.setFixedHeight(line_height)
 
     #--------------------------------------------------------------------------

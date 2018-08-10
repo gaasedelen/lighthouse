@@ -1,4 +1,6 @@
-from lighthouse.util import *
+
+from lighthouse.util.qt import *
+from lighthouse.util.disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # IDA Plugin Palette
@@ -8,7 +10,7 @@ class LighthousePalette(object):
     """
     Color Palette for the Lighthouse plugin.
 
-    TODO: external theme customization, controls
+    TODO/FUTURE: add external theme customization, controls
     """
 
     def __init__(self):
@@ -20,8 +22,8 @@ class LighthousePalette(object):
         self._initialized = False
 
         # the active theme name
-        self._qt_theme  = "Light"
-        self._ida_theme = "Light"
+        self._qt_theme  = "Dark"
+        self._disassembly_theme = "Dark"
 
         # the list of available themes
         self._themes = \
@@ -42,7 +44,7 @@ class LighthousePalette(object):
         # IDA Views / HexRays
         #
 
-        self._ida_coverage = [0x990000, 0xFFE2A8] # NOTE: IDA uses BBGGRR
+        self._coverage_paint = [0x990000, 0xFFE2A8] # NOTE: IDA uses BBGGRR
 
         #
         # Composing Shell
@@ -69,11 +71,11 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
 
     @property
-    def ida_theme(self):
+    def disassembly_theme(self):
         """
         Return the active IDA theme number.
         """
-        return self._themes[self._ida_theme]
+        return self._themes[self._disassembly_theme]
 
     @property
     def qt_theme(self):
@@ -90,12 +92,12 @@ class LighthousePalette(object):
         to select colors that will hopefully keep things most readable.
         """
 
-        # TODO: temporary until I have a better mechanism to do one-time init
+        # TODO/FUTURE: temporary until I have a cleaner way to do one-time init
         if self._initialized:
             return
 
         #
-        # NOTE/TODO:
+        # TODO/THEME:
         #
         #   the dark table (Qt) theme is way better than the light theme
         #   right now, so we're just going to force that on for everyone
@@ -103,12 +105,12 @@ class LighthousePalette(object):
         #
 
         self._qt_theme  = "Dark" # self._qt_theme_hint()
-        self._ida_theme = self._ida_theme_hint()
+        self._disassembly_theme = self._disassembly_theme_hint()
 
         # mark the palette as initialized
         self._initialized = True
 
-    def _ida_theme_hint(self):
+    def _disassembly_theme_hint(self):
         """
         Binary hint of the IDA color theme.
 
@@ -123,7 +125,7 @@ class LighthousePalette(object):
         # background color of the user's IDA text based windows
         #
 
-        bg_color = get_ida_bg_color()
+        bg_color = disassembler.get_disassembly_background_color()
 
         # return 'Dark' or 'Light'
         return test_color_brightness(bg_color)
@@ -200,8 +202,8 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
 
     @property
-    def ida_coverage(self):
-        return self._ida_coverage[self.ida_theme]
+    def coverage_paint(self):
+        return self._coverage_paint[self.disassembly_theme]
 
     #--------------------------------------------------------------------------
     # Composing Shell
@@ -277,6 +279,9 @@ class LighthousePalette(object):
 # Palette Util
 #------------------------------------------------------------------------------
 
+def to_rgb(color):
+    return ((color >> 16 & 0xFF), (color >> 8 & 0xFF), (color & 0xFF))
+
 def test_color_brightness(color):
     """
     Test the brightness of a color.
@@ -290,7 +295,7 @@ def compute_color_on_gradiant(percent, color1, color2):
     """
     Compute the color specified by a percent between two colors.
 
-    TODO: This is silly, heavy, and can be refactored.
+    TODO/PERF: This is silly, heavy, and can be refactored.
     """
 
     # dump the rgb values from QColor objects

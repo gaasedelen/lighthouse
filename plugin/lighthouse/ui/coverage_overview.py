@@ -3,13 +3,13 @@ import logging
 import weakref
 from operator import itemgetter, attrgetter
 
-import idaapi
-
 from lighthouse.util import *
+from lighthouse.util.qt import *
+from lighthouse.util.disassembler import disassembler, DockableWindow
 from .coverage_combobox import CoverageComboBox
 from lighthouse.composer import ComposingShell
 from lighthouse.metadata import FunctionMetadata, metadata_progress
-from lighthouse.coverage import FunctionCoverage
+from lighthouse.coverage import FunctionCoverage, BADADDR
 
 logger = logging.getLogger("Lighthouse.UI.Overview")
 
@@ -48,7 +48,8 @@ SAMPLE_CONTENTS = \
     " 100 / 100 ",
     " 1000 / 1000 ",
     " 10000000 ",
-    " 1000000 "
+    " 1000000 ",
+    ""
 ]
 
 #------------------------------------------------------------------------------
@@ -58,6 +59,10 @@ SAMPLE_CONTENTS = \
 debugger_docked = False
 
 class EventProxy(QtCore.QObject):
+    """
+    TODO/COMMENT
+    """
+
     def __init__(self, target):
         super(EventProxy, self).__init__()
         self._target = target
@@ -82,6 +87,7 @@ class EventProxy(QtCore.QObject):
         #
 
         if int(event.type()) == 2002:
+            import idaapi
 
             #
             # if the general registers IDA View exists, we make the assumption
@@ -89,7 +95,7 @@ class EventProxy(QtCore.QObject):
             #
 
             # NOTE / COMPAT:
-            if using_ida7api:
+            if disassembler.using_ida7api:
                 debug_mode = bool(idaapi.find_widget("General registers"))
             else:
                 debug_mode = bool(idaapi.find_tform("General registers"))
@@ -111,7 +117,7 @@ class EventProxy(QtCore.QObject):
 # Coverage Overview
 #------------------------------------------------------------------------------
 
-class CoverageOverview(DockableShim):
+class CoverageOverview(DockableWindow):
     """
     The Coverage Overview Widget.
     """
@@ -150,6 +156,7 @@ class CoverageOverview(DockableShim):
         self.refresh()
         super(CoverageOverview, self).show()
         self._visible = True
+        self._widget.setMinimumWidth(0) # TODO/HACK: remove with table rework
 
     def terminate(self):
         """
@@ -170,10 +177,7 @@ class CoverageOverview(DockableShim):
         """
         Initialize UI elements.
         """
-
-        # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
-        self._font_metrics = QtGui.QFontMetricsF(self._font)
+        self._font = MonospaceFont(9)
 
         # initialize our ui elements
         self._ui_init_table()
@@ -192,7 +196,7 @@ class CoverageOverview(DockableShim):
         self._table = QtWidgets.QTableView()
         self._table.setFocusPolicy(QtCore.Qt.NoFocus)
         self._table.setStyleSheet(
-            "QTableView { gridline-color: black; background-color: %s } " % palette.overview_bg.name()  +
+            "QTableView { gridline-color: black; background-color: %s } " % palette.overview_bg.name() +
             "QTableView::item:selected { color: white; background-color: %s; } " % palette.selection.name()
         )
 
@@ -206,10 +210,41 @@ class CoverageOverview(DockableShim):
         # install the underlying data source for the table
         self._table.setModel(self._model)
 
-        # set the initial column widths for the table
-        for i in xrange(len(SAMPLE_CONTENTS)):
-            rect = self._font_metrics.boundingRect(SAMPLE_CONTENTS[i])
-            self._table.setColumnWidth(i, rect.width())
+        #
+        # Column Width
+        #
+
+        # get the font used by the table headers
+        title_font = self._model.headerData(0, QtCore.Qt.Horizontal, QtCore.Qt.FontRole)
+        title_fm = QtGui.QFontMetricsF(title_font)
+
+        # get the font used by the table cell entries
+        entry_font = self._model.data(0, QtCore.Qt.FontRole)
+        entry_fm = QtGui.QFontMetricsF(entry_font)
+
+        # set the initial column widths based on their title or contents
+        for i in xrange(self._model.columnCount()):
+
+            # determine the pixel width of the column header text
+            title_text = self._model.headerData(i, QtCore.Qt.Horizontal)
+            title_rect = title_fm.boundingRect(title_text)
+
+            # determine the pixel width of sample column entry text
+            entry_text = SAMPLE_CONTENTS[i]
+            entry_rect = entry_fm.boundingRect(entry_text)
+
+            # select the lager of the two potential column widths
+            column_width = max(title_rect.width(), entry_rect.width())
+
+            # pad the final column width to make the table less dense
+            column_width = int(column_width * 1.2)
+
+            # save the final column width
+            self._table.setColumnWidth(i, column_width)
+
+        #
+        # Misc
+        #
 
         # table selection should be by row, not by cell
         self._table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -224,8 +259,15 @@ class CoverageOverview(DockableShim):
         else:
             vh.setResizeMode(QtWidgets.QHeaderView.Fixed)
 
-        # specify the fixed row height in pixels
-        vh.setDefaultSectionSize(int(self._font_metrics.height()))
+        # specify a fixed height for the table entries (rows)
+        entry_rect = entry_fm.boundingRect("TEST")
+        entry_height = int(entry_rect.height() * 1.2)
+        vh.setDefaultSectionSize(entry_height)
+
+        # specify a fixed height for the table header row
+        title_rect = title_fm.boundingRect("TEST")
+        title_height = int(title_rect.height() * 1.7)
+        hh.setFixedHeight(title_height)
 
         # hide the vertical header themselves as we don't need them
         vh.hide()
@@ -290,7 +332,9 @@ class CoverageOverview(DockableShim):
         # the checkbox to hide 0% coverage entries
         self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
         self._hide_zero_label.setFont(self._font)
+        #self._hide_zero_label.setStyleSheet("QLabel{background:red}")
         self._hide_zero_checkbox = QtWidgets.QCheckBox()
+        self._hide_zero_checkbox.setStyleSheet("QCheckBox{ padding-top: 1ex; }")
 
         # the splitter to make the shell / combobox resizable
         self._splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -368,6 +412,7 @@ class CoverageOverview(DockableShim):
         layout.addWidget(self._toolbar)
 
         # apply the layout to the containing form
+        self._widget.setMinimumWidth(800) # TODO/HACK: remove with table rework
         self._widget.setLayout(layout)
 
     #--------------------------------------------------------------------------
@@ -381,7 +426,7 @@ class CoverageOverview(DockableShim):
         A double click on the coverage table view will jump the user to
         the corresponding function in the IDA disassembly view.
         """
-        idaapi.jumpto(self._model.row2func[index.row()])
+        disassembler.navigate(self._model.row2func[index.row()])
 
     def _ui_ctx_menu_handler(self, position):
         """
@@ -482,20 +527,20 @@ class CoverageOverview(DockableShim):
 
         # handle the 'Clear prefix' action
         elif action == self._action_clear_prefix:
-            clear_prefixes(function_addresses)
+            disassembler.clear_prefixes(function_addresses)
 
         # handle the 'Refresh metadata' action
         elif action == self._action_refresh_metadata:
 
-            idaapi.show_wait_box("Building database metadata...")
+            disassembler.show_wait_box("Building database metadata...")
             self._director.refresh()
 
             # ensure the table's model gets refreshed
-            idaapi.replace_wait_box("Refreshing Coverage Overview...")
+            disassembler.replace_wait_box("Refreshing Coverage Overview...")
             self.refresh()
 
             # all done
-            idaapi.hide_wait_box()
+            disassembler.hide_wait_box()
 
         # handle the 'Rename' action (only applies to a single function)
         if action == self._action_rename and len(selected_rows) == 1:
@@ -533,7 +578,7 @@ class CoverageOverview(DockableShim):
     # Refresh
     #--------------------------------------------------------------------------
 
-    @idafast
+    @disassembler.execute_ui
     def refresh(self):
         """
         Refresh the Coverage Overview.
@@ -553,7 +598,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
     def __init__(self, director, parent=None):
         super(CoverageModel, self).__init__(parent)
-        self._blank_coverage = FunctionCoverage(idaapi.BADADDR)
+        self._blank_coverage = FunctionCoverage(BADADDR)
 
         # local reference to the director
         self._director = director
@@ -581,8 +626,11 @@ class CoverageModel(QtCore.QAbstractTableModel):
         }
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont()
-        self._font_metrics = QtGui.QFontMetricsF(self._font)
+        self._entry_font = MonospaceFont(9)
+
+        # use the default / system font for the column tittles
+        self._title_font = QtGui.QFont()
+        self._title_font.setPointSize(9)
 
         #----------------------------------------------------------------------
         # Sorting
@@ -648,7 +696,11 @@ class CoverageModel(QtCore.QAbstractTableModel):
             elif role == QtCore.Qt.TextAlignmentRole:
 
                 # center align all columns
-                return QtCore.Qt.AlignHCenter
+                return QtCore.Qt.AlignCenter
+
+            # font format request
+            elif role == QtCore.Qt.FontRole:
+                return self._title_font
 
         # unhandeled header request
         return None
@@ -743,7 +795,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # font format request
         elif role == QtCore.Qt.FontRole:
-            return self._font
+            return self._entry_font
 
         # text alignment request
         elif role == QtCore.Qt.TextAlignmentRole:
@@ -771,7 +823,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # column has not been enlightened to sorting
         except KeyError as e:
-            logger.warning("TODO: implement column %u sorting" % column)
+            logger.warning("TODO/FUTURE: implement column %u sorting?" % column)
             self.layoutChanged.emit()
             return
 
@@ -896,7 +948,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         """
         self._internal_refresh()
 
-    @idafast
+    @disassembler.execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the coverage model.
@@ -906,7 +958,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
         # sort the data set according to the last selected sorted column
         self.sort(self._last_sort, self._last_sort_order)
 
-    @idafast
+    @disassembler.execute_ui
     def _data_changed(self):
         """
         Notify attached views that simple model data has been updated/modified.
@@ -985,3 +1037,52 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # bake the final number of rows into the model
         self._row_count = len(self.row2func)
+
+#------------------------------------------------------------------------------
+# Interactive
+#------------------------------------------------------------------------------
+
+@mainthread
+def gui_rename_function(function_address):
+    """
+    Interactive rename of a function in the IDB.
+    """
+    original_name = disassembler.get_function_raw_name_at(function_address)
+
+    # prompt the user for a new function name
+    ok, new_name = prompt_string(
+        "Please enter function name",
+        "Rename Function",
+        original_name
+    )
+
+    #
+    # if the user clicked cancel, or the name they entered
+    # is identical to the original, there's nothing to do
+    #
+
+    if not (ok or new_name != original_name):
+        return
+
+    # rename the function
+    disassembler.set_function_name_at(function_address, new_name)
+
+@mainthread
+def gui_prefix_functions(function_addresses):
+    """
+    Interactive prefixing of functions in the IDB.
+    """
+
+    # prompt the user for a new function name
+    ok, prefix = prompt_string(
+        "Please enter a function prefix",
+        "Prefix Function(s)",
+        "MyPrefix"
+    )
+
+    # bail if the user clicked cancel or failed to enter a prefix
+    if not (ok and prefix):
+        return
+
+    # prefix the given functions with the user specified prefix
+    disassembler.prefix_functions(function_addresses, prefix)

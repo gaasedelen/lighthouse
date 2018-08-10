@@ -14,5 +14,5 @@ xcopy /s/y "..\plugin\*" "C:\tools\disassemblers\IDA 6.8\plugins\"
 del /F /Q "C:\tools\disassemblers\IDA 6.8\plugins\.#lighthouse_plugin.py"
 
 REM - Relaunch two IDA sessions
-start "" "C:\tools\disassemblers\IDA 6.8\idaq.exe" "..\..\testcase\idaq.idb"
+start "" "C:\tools\disassemblers\IDA 6.8\idaq.exe" "..\..\testcase\harness_ufs_pdf.instr.idb"
 

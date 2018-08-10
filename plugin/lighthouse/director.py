@@ -1,12 +1,13 @@
 import time
+import Queue
 import string
 import logging
 import threading
 import collections
 
-import idaapi # TODO: remove in v0.8
-
-from lighthouse.util import *
+from lighthouse.util.misc import *
+from lighthouse.util.qt import await_future, await_lock
+from lighthouse.util.disassembler import disassembler
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.composer.parser import *
@@ -195,8 +196,8 @@ class CoverageDirector(object):
         self._ast_queue.put(None)
         self._composition_worker.join()
 
-	# spin down the live metadata object
-	self.metadata.terminate()
+        # spin down the live metadata object
+        self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # Properties
@@ -274,8 +275,10 @@ class CoverageDirector(object):
     def _notify_coverage_created(self):
         """
         Notify listeners of a coverage creation event.
+
+        TODO/FUTURE: send list of names created?
         """
-        notify_callback(self._coverage_created_callbacks) # TODO: send list of names created?
+        notify_callback(self._coverage_created_callbacks)
 
     def coverage_deleted(self, callback):
         """
@@ -286,8 +289,10 @@ class CoverageDirector(object):
     def _notify_coverage_deleted(self):
         """
         Notify listeners of a coverage deletion event.
+
+        TODO/FUTURE: send list of names deleted?
         """
-        notify_callback(self._coverage_deleted_callbacks) # TODO: send list of names deleted?
+        notify_callback(self._coverage_deleted_callbacks)
 
     def metadata_modified(self, callback):
         """
@@ -483,7 +488,7 @@ class CoverageDirector(object):
 
         # delete the database coverage object
         coverage = self._database_coverage.pop(coverage_name)
-        # TODO: check if there's any references to the coverage object here...
+        # TODO/FUTURE: check if there's any references to the coverage object?
 
         self.aggregate.subtract_data(coverage.data)
         if not self._aggregation_suspended:
@@ -499,7 +504,7 @@ class CoverageDirector(object):
             self._release_shorthand_alias(coverage_name)
             self._database_coverage.pop(coverage_name)
 
-        # TODO: check if there's any references to the coverage aggregate...
+        # TODO/FUTURE: check if there's any references to the coverage aggregate?
 
         # assign a new, blank aggregate set
         self._special_coverage[AGGREGATE] = DatabaseCoverage(None, self._palette)
@@ -761,7 +766,7 @@ class CoverageDirector(object):
 
         # map the composited coverage data to the database metadata
         composite_coverage.update_metadata(self.metadata)
-        composite_coverage.refresh() # TODO: hash refresh?
+        composite_coverage.refresh() # TODO/FUTURE: hash refresh?
 
         # done operating on shared data (coverage), release the lock
         self._composition_lock.release()
@@ -961,7 +966,7 @@ class CoverageDirector(object):
         # the database metadata, register the director for notifications of
         # metadata modification (this should only happen once)
         #
-        # TODO: this is a little dirty, but it will suffice.
+        # TODO/FUTURE: this is a little dirty, but it will suffice.
         #
 
         if not self.metadata.cached:
@@ -992,7 +997,7 @@ class CoverageDirector(object):
 
         for i, name in enumerate(self.all_names, 1):
             logger.debug(" - %s" % name)
-            idaapi.replace_wait_box(
+            disassembler.replace_wait_box(
                 "Refreshing coverage mapping %u/%u" % (i, len(self.all_names))
             )
             coverage = self.get_coverage(name)

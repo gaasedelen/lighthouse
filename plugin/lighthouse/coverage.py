@@ -4,8 +4,8 @@ import itertools
 import collections
 
 from lighthouse.util import *
+from lighthouse.util.qt import QtGui #TODO remove
 from lighthouse.palette import compute_color_on_gradiant
-from lighthouse.painting import *
 from lighthouse.metadata import DatabaseMetadata
 
 logger = logging.getLogger("Lighthouse.Coverage")
@@ -27,6 +27,8 @@ logger = logging.getLogger("Lighthouse.Coverage")
 #    able to rebuild mappings should the database/metadata get updated or
 #    refreshed by the user.
 #
+
+BADADDR = 0xFFFFFFFFFFFFFFFF
 
 #------------------------------------------------------------------------------
 # Database Coverage / Data Mapping
@@ -108,7 +110,7 @@ class DatabaseCoverage(object):
         #
 
         self._unmapped_data = set(self._hitmap.keys())
-        self._unmapped_data.add(idaapi.BADADDR)
+        self._unmapped_data.add(BADADDR)
 
         #
         # self._map_coverage is responsible for mapping coverage data to the
@@ -135,7 +137,7 @@ class DatabaseCoverage(object):
         self._weak_self = weakref.proxy(self)
 
     #--------------------------------------------------------------------------
-    # Propertiens
+    # Properties
     #--------------------------------------------------------------------------
 
     @property
@@ -502,7 +504,7 @@ class DatabaseCoverage(object):
         Unmap all mapped data.
         """
         self._unmapped_data = set(self._hitmap.keys())
-        self._unmapped_data.add(idaapi.BADADDR)
+        self._unmapped_data.add(BADADDR)
         self.nodes     = {}
         self.functions = {}
 
@@ -587,8 +589,8 @@ class FunctionCoverage(object):
         self.node_percent = 0.0
 
         # baked colors
-        if function_address == idaapi.BADADDR:
-            self.coverage_color = QtGui.QColor(30, 30, 30)
+        if function_address == BADADDR:
+            self.coverage_color = QtGui.QColor(30, 30, 30) #TODO: remove
         else:
             self.coverage_color = 0
 
@@ -705,7 +707,4 @@ class NodeCoverage(object):
 
         # the estimated number of executions this node has experienced.
         self.executions = float(self.hits) / node_metadata.instruction_count
-
-        # bake colors
-        self.coverage_color = palette.ida_coverage
 

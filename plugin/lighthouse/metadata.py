@@ -3,12 +3,12 @@ import Queue
 import bisect
 import ctypes
 import logging
+import weakref
 import threading
 
-import idaapi
-import idautils
-
 from lighthouse.util import *
+from lighthouse.util.misc import mainthread
+from lighthouse.util.disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
@@ -81,9 +81,8 @@ class DatabaseMetadata(object):
         self._node_addresses = []
         self._function_addresses = []
 
-        # hook to listen for rename events from IDA
-        self._rename_hooks = RenameHooks()
-        self._rename_hooks.renamed = self._name_changed
+        # placeholder attribute for disassembler event hooks
+        self._rename_hooks = None
 
         # metadata callbacks (see director for more info)
         self._function_renamed_callbacks = []
@@ -97,7 +96,8 @@ class DatabaseMetadata(object):
         Cleanup & terminate the metadata object.
         """
         self.abort_refresh(join=True)
-        self._rename_hooks.unhook()
+        if self._rename_hooks:
+            self._rename_hooks.unhook()
 
     #--------------------------------------------------------------------------
     # Providers
@@ -135,7 +135,7 @@ class DatabaseMetadata(object):
         #   entirely seperate list of addresses for quick bisection.
         #
         #   but I don't want to hassle people with a dependency on an external
-        #   package for lightouse. so we'll keep it in-house and old school.
+        #   package for lighthouse. so we'll keep it in-house and old school.
         #
 
         #found = self.nodes.iloc[(self.nodes.bisect_left(address) - 1)]
@@ -154,6 +154,9 @@ class DatabaseMetadata(object):
         #
         #  This means that 99.9% of the time, this call will add virtually
         #  no overhead to the 'get_node' call.
+        #
+        #  TODO/PERF: double check that this is actually performant, because
+        #  I am not so sure the overhead is non-zero anymore...
         #
 
         self._refresh_lookup()
@@ -301,7 +304,7 @@ class DatabaseMetadata(object):
         if function_addresses is None:
 
             # retrieve a full function address list from the underlying database
-            function_addresses = list(idautils.Functions())
+            function_addresses = disassembler.get_function_addresses()
 
             #
             # immediately drop function entries that are no longer present in the
@@ -393,7 +396,8 @@ class DatabaseMetadata(object):
         """
 
         # pause our rename listening hooks, for speed
-        self._rename_hooks.unhook()
+        if self._rename_hooks:
+            self._rename_hooks.unhook()
 
         # collect metadata
         completed = self._async_collect_metadata(
@@ -403,6 +407,26 @@ class DatabaseMetadata(object):
 
         # refresh the lookup lists
         self._refresh_lookup()
+
+        #
+        # NOTE:
+        #
+        #   creating the hooks inline like this is less than ideal, but they
+        #   they have been moved here (from the metadata constructor) to
+        #   accomodate shortfalls of the Binary Ninja API.
+        #
+        # TODO/FUTURE/V35:
+        #
+        #   it would be nice to move these back to the constructor once the
+        #   Binary Ninja API allows us to detect BV / sessions as they are
+        #   created, and able to load plugins on such events.
+        #
+
+        # create the disassembler hooks to listen for rename events
+        if not self._rename_hooks:
+            self._rename_hooks = disassembler.create_rename_hooks()
+            self._rename_hooks.renamed = self._name_changed
+            self._rename_hooks.metadata = weakref.proxy(self)
 
         # resume our rename listening hooks
         self._rename_hooks.hook()
@@ -466,6 +490,9 @@ class DatabaseMetadata(object):
         CHUNK_SIZE = 150
         completed = 0
 
+        start = time.time()
+        #----------------------------------------------------------------------
+
         # loop through every defined function (address) in the database
         for addresses_chunk in chunks(function_addresses, CHUNK_SIZE):
 
@@ -476,7 +503,7 @@ class DatabaseMetadata(object):
             # update the database metadata with the collected metadata
             delta = self._update_functions(fresh_metadata)
 
-            # TODO: delta callback
+            # TODO/FUTURE: delta callback?
 
             # report progress to an external subscriber
             if progress_callback:
@@ -493,6 +520,10 @@ class DatabaseMetadata(object):
         # dedupe and sort the instructions
         self.instructions = list(set(self.instructions))
         self.instructions.sort()
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Metadata collection took %s seconds" % (end - start))
 
         # completed normally
         return True
@@ -573,7 +604,7 @@ class DatabaseMetadata(object):
     #--------------------------------------------------------------------------
 
     @mainthread
-    def _name_changed(self, address, new_name, local_name):
+    def _name_changed(self, address, new_name, local_name=None):
         """
         Handler for rename event in IDA.
         """
@@ -600,7 +631,7 @@ class DatabaseMetadata(object):
         if address == function.address:
             logger.debug("Name changing @ 0x%X" % address)
             logger.debug("  Old name: %s" % function.name)
-            function.name = idaapi.get_short_name(address)
+            function.name = disassembler.get_function_name_at(address)
             logger.debug("  New name: %s" % function.name)
 
         # notify any listeners that a function rename occurred
@@ -681,18 +712,26 @@ class FunctionMetadata(object):
         """
         Refresh the function name against the open database.
         """
-        self.name = idaapi.get_short_name(self.address)
+        self.name = disassembler.get_function_name_at(self.address)
 
     def _refresh_nodes(self):
         """
-        Refresh the function nodes against the open database.
+        TODO/COMMENT
         """
-        function_metadata = self
+        raise RuntimeError("This function should have been monkey patched...")
+
+    def _ida_refresh_nodes(self):
+        """
+        Refresh the function nodes against the open IDA database.
+
+        NOTE: this function is disassembler-specific for optimal performance
+        """
 
         # dispose of stale information
+        function_metadata = self        # alias for code readability
         function_metadata.nodes = {}
 
-        # get function & flowchart object from database
+        # get function & flowchart object from IDA database
         function  = idaapi.get_func(self.address)
         flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
 
@@ -706,7 +745,7 @@ class FunctionMetadata(object):
             node = flowchart[node_id]
 
             # NOTE/COMPAT:
-            if using_ida7api:
+            if disassembler.using_ida7api:
                 node_start = node.start_ea
                 node_end   = node.end_ea
             else:
@@ -735,12 +774,14 @@ class FunctionMetadata(object):
             # handlers. I am skeptical that dynamic instrumentation tools
             # would be able to collect coverage in these handlers anyway...
             #
-            # @x9090:
-            # This will cause some false negatives on some valid blocks/nodes
-            # within a function that are optimized by the compiler because
-            # these blocks/nodes are very unlikely to be executed frequently,
+            # comment by @x9090:
+            #
+            # the original implementation caused false negatives on some valid
+            # nodes within a function that had been optimized by the compiler
+            # because they were very unlikely to be executed frequently,
             # as determined by compile-time analysis
             #
+
             if idaapi.get_func_chunknum(function, node_start):
                 disasm = idaapi.tag_remove(idaapi.generate_disasm_line(node_start, idaapi.GENDSM_MULTI_LINE))
                 if ("Exception handler" or "Exception filter" or "ms_exc.old_esp") in disasm:
@@ -765,7 +806,7 @@ class FunctionMetadata(object):
             edge_src = node_metadata.instructions[-1]
 
             # NOTE/COMPAT: we do a single api check *outside* the loop for perf
-            if using_ida7api:
+            if disassembler.using_ida7api:
                 for edge_dst in idautils.CodeRefsFrom(edge_src, True):
                     edge_function = idaapi.get_func(edge_dst)
                     if edge_function and edge_function.start_ea == function.start_ea: # NOTE: start_ea vs startEA
@@ -775,6 +816,48 @@ class FunctionMetadata(object):
                     edge_function = idaapi.get_func(edge_dst)
                     if edge_function and edge_function.startEA == function.startEA:   # NOTE: startEA vs start_ea
                         function_metadata.edges.append((edge_src, edge_dst))
+
+    def _binja_refresh_nodes(self):
+        """
+        Refresh the function nodes against the open Binary Ninja database.
+
+        NOTE: this function is disassembler-specific for optimal performance
+        """
+
+        # dispose of stale information
+        function_metadata = self        # alias for code readability
+        function_metadata.nodes = {}
+
+        # get the function from the Binja database
+        function = disassembler.bv.get_function_at(self.address)
+
+        #
+        # now we will walk the flowchart for this function, collecting
+        # information on each of its nodes (basic blocks) and populating
+        # the function & node metadata objects.
+        #
+
+        for node in function.basic_blocks:
+
+            # create a new metadata object for this node
+            node_metadata = NodeMetadata(node.start, node.end, node.index)
+
+            #
+            # establish a relationship between this node (basic block) and
+            # this function metadata as its parent
+            #
+
+            node_metadata.function = function_metadata
+            function_metadata.nodes[node.start] = node_metadata
+
+            #
+            # enumerate the edges produced by this node with a destination
+            # that falls within this function.
+            #
+
+            edge_src = node_metadata.instructions[-1]
+            for edge in node.outgoing_edges:
+                function_metadata.edges.append((edge_src, edge.target.start))
 
     def _finalize(self):
         """
@@ -812,7 +895,7 @@ class NodeMetadata(object):
     Fast access node level metadata cache.
     """
 
-    def __init__(self, start_ea, end_ea, node_id=idaapi.BADADDR):
+    def __init__(self, start_ea, end_ea, node_id=None):
 
         # node metadata
         self.size = end_ea - start_ea
@@ -839,6 +922,12 @@ class NodeMetadata(object):
 
     def _build_metadata(self):
         """
+        TODO/COMMENT
+        """
+        raise RuntimeError("This function should have been monkey patched...")
+
+    def _ida_build_metadata(self):
+        """
         Collect node metadata from the underlying database.
         """
         current_address = self.address
@@ -853,6 +942,21 @@ class NodeMetadata(object):
             instruction_size = idaapi.get_item_end(current_address) - current_address
             self.instructions.append(current_address)
             current_address += instruction_size
+
+        # save the number of instructions in this block
+        self.instruction_count = len(self.instructions)
+
+    def _binja_build_metadata(self):
+        """
+        Collect node metadata from the underlying database.
+        """
+        bv = disassembler.bv
+        current_address = self.address
+        node_end = self.address + self.size
+
+        while current_address < node_end:
+            self.instructions.append(current_address)
+            current_address += bv.get_instruction_length(current_address)
 
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
@@ -1083,27 +1187,42 @@ class MetadataDelta(object):
 # Async Metadata Helpers
 #--------------------------------------------------------------------------
 
-@execute_sync(idaapi.MFF_READ)
+@disassembler.execute_read
 def collect_function_metadata(function_addresses):
     """
     Collect function metadata for a list of addresses.
     """
     return { ea: FunctionMetadata(ea) for ea in function_addresses }
 
-@idafast
+@disassembler.execute_ui
 def metadata_progress(completed, total):
     """
     Handler for metadata collection callback, updates progress dialog.
     """
-    idaapi.replace_wait_box("Collected metadata for %u/%u Functions" % (completed, total))
+    disassembler.replace_wait_box(
+        "Collected metadata for %u/%u Functions" % (completed, total)
+    )
 
 #--------------------------------------------------------------------------
-# Event Hooks
+# Shim HAX
 #--------------------------------------------------------------------------
+# TODO/COMMENT
 
-if using_ida7api:
-    class RenameHooks(idaapi.IDB_Hooks):
-        pass
+if disassembler.NAME == "IDA":
+    import idaapi
+    import idautils
+
+    # monkey patch
+    FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
+    NodeMetadata._build_metadata = NodeMetadata._ida_build_metadata
+
+elif disassembler.NAME == "BINJA":
+    import binaryninja
+
+    # monky patch
+    FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
+    NodeMetadata._build_metadata = NodeMetadata._binja_build_metadata
+
 else:
-    class RenameHooks(idaapi.IDP_Hooks):
-        pass
+    raise RuntimeError("DISASSEMBLER-SPECIFIC SHIM MISSING")
+
