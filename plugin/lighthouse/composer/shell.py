@@ -623,7 +623,8 @@ class ComposingShell(QtWidgets.QWidget):
         # as it frequently gets in the way and is really annoying...
         #
 
-        if not (self._line.hasFocus() or self.text):
+        if not (self._line.hasFocus() and self.text):
+            self._ui_hint_coverage_hide()
             return
 
         # scrape info from the current shell text state
