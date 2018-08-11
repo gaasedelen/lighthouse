@@ -182,7 +182,8 @@ class CoverageOverview(DockableWindow):
         # initialize our ui elements
         self._ui_init_table()
         self._ui_init_toolbar()
-        self._ui_init_ctx_menu_actions()
+        self._ui_init_table_ctx_menu_actions()
+        self._ui_init_header_ctx_menu_actions()
         self._ui_init_signals()
 
         # layout the populated ui just before showing it
@@ -364,9 +365,9 @@ class CoverageOverview(DockableWindow):
         # give the shell expansion preference over the combobox
         self._splitter.setStretchFactor(0, 1)
 
-    def _ui_init_ctx_menu_actions(self):
+    def _ui_init_table_ctx_menu_actions(self):
         """
-        Initialize the right click context menu actions.
+        Initialize the right click context menu actions for the table view.
         """
 
         # function actions
@@ -386,17 +387,31 @@ class CoverageOverview(DockableWindow):
         # misc actions
         self._action_refresh_metadata = QtWidgets.QAction("Full refresh (slow)", None)
 
+    def _ui_init_header_ctx_menu_actions(self):
+        """
+        Initialize the right click context menu actions for the table header.
+        """
+        self._action_alignment = QtWidgets.QAction("Center Aligned", None)
+        self._action_alignment.setCheckable(True)
+        self._action_alignment.setChecked(True)
+
     def _ui_init_signals(self):
         """
         Connect UI signals.
         """
+        table = self._table
 
         # jump to disassembly on table row double click
-        self._table.doubleClicked.connect(self._ui_entry_double_click)
+        table.doubleClicked.connect(self._ui_entry_double_click)
 
-        # right click popup menu
-        self._table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self._table.customContextMenuRequested.connect(self._ui_ctx_menu_handler)
+        # right click popup menu (table)
+        table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        table.customContextMenuRequested.connect(self._ui_table_ctx_menu_handler)
+
+        # right click popup menu (table header)
+        hh = table.horizontalHeader()
+        hh.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        hh.customContextMenuRequested.connect(self._ui_header_ctx_menu_handler)
 
         # toggle 0% coverage checkbox
         self._hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
@@ -428,13 +443,13 @@ class CoverageOverview(DockableWindow):
         """
         disassembler.navigate(self._model.row2func[index.row()])
 
-    def _ui_ctx_menu_handler(self, position):
+    def _ui_table_ctx_menu_handler(self, position):
         """
         Handle right click context menu event on the coverage table.
         """
 
         # create a right click menu based on the state and context
-        ctx_menu = self._populate_ctx_menu()
+        ctx_menu = self._populate_table_ctx_menu()
         if not ctx_menu:
             return
 
@@ -442,7 +457,27 @@ class CoverageOverview(DockableWindow):
         action = ctx_menu.exec_(self._table.viewport().mapToGlobal(position))
 
         # process the user action
-        self._process_ctx_menu_action(action)
+        self._process_table_ctx_menu_action(action)
+
+    def _ui_header_ctx_menu_handler(self, position):
+        """
+        Handle right click context menu event on the coverage table header.
+        """
+        hh = self._table.horizontalHeader()
+
+        # get the table column where the right-click occured
+        column = hh.logicalIndexAt(position)
+
+        # create a right click menu based on the state and context
+        ctx_menu = self._populate_header_ctx_menu()
+        if not ctx_menu:
+            return
+
+        # show the popup menu to the user, and wait for their selection
+        action = ctx_menu.exec_(hh.viewport().mapToGlobal(position))
+
+        # process the user action
+        self._process_header_ctx_menu_action(action, column)
 
     def _ui_hide_zero_toggle(self, checked):
         """
@@ -451,10 +486,10 @@ class CoverageOverview(DockableWindow):
         self._model.filter_zero_coverage(checked)
 
     #--------------------------------------------------------------------------
-    # Context Menu
+    # Context Menu (Table)
     #--------------------------------------------------------------------------
 
-    def _populate_ctx_menu(self):
+    def _populate_table_ctx_menu(self):
         """
         Populate a context menu for the table view based on selection.
 
@@ -469,18 +504,26 @@ class CoverageOverview(DockableWindow):
         # the context menu we will dynamically populate
         ctx_menu = QtWidgets.QMenu()
 
+        #
+        # if there is only one table row selected (a function entry), then
+        # show the menu actions available for a single function such as
+        # copy function name, address, or renaming the function.
+        #
+
         if len(selected_rows) == 1:
-            # if there is only one table entry (a function) selected, then
-            # show the menu actions available for a single function such as
-            # copy function name, address, or renaming the function.
             ctx_menu.addAction(self._action_rename)
+            ctx_menu.addSeparator()
             ctx_menu.addAction(self._action_copy_name)
             ctx_menu.addAction(self._action_copy_address)
             ctx_menu.addAction(self._action_copy_name_and_address)
             ctx_menu.addSeparator()
+
+        #
+        # if multiple functions are selected then show actions available
+        # for multiple functions.
+        #
+
         else:
-            # if multiple functions are selected then show actions  available
-            # for multiple functions.
             ctx_menu.addAction(self._action_copy_names)
             ctx_menu.addAction(self._action_copy_addresses)
             ctx_menu.addAction(self._action_copy_names_and_addresses)
@@ -497,9 +540,9 @@ class CoverageOverview(DockableWindow):
         # return the completed context menu
         return ctx_menu
 
-    def _process_ctx_menu_action(self, action):
+    def _process_table_ctx_menu_action(self, action):
         """
-        Process the given (user selected) context menu action.
+        Process the given (user selected) table view context menu action.
         """
 
         # a right click menu action was not clicked. nothing else to do
@@ -575,6 +618,33 @@ class CoverageOverview(DockableWindow):
             copy_to_clipboard(address_string)
 
     #--------------------------------------------------------------------------
+    # Context Menu (Table Header)
+    #--------------------------------------------------------------------------
+
+    def _populate_header_ctx_menu(self):
+        """
+        Populate a context menu for the table header.
+
+        Return a populated QMenu, or None.
+        """
+        ctx_menu = QtWidgets.QMenu()
+        ctx_menu.addAction(self._action_alignment)
+        return ctx_menu
+
+    def _process_header_ctx_menu_action(self, action, column):
+        """
+        Process the given (user selected) table header context menu action.
+        """
+
+        # a right click menu action was not clicked. nothing else to do
+        if not action:
+            return
+
+        # handle the 'Center Aligned' toggle action
+        if action == self._action_alignment:
+            self._model.toggle_alignment(column)
+
+    #--------------------------------------------------------------------------
     # Refresh
     #--------------------------------------------------------------------------
 
@@ -624,6 +694,11 @@ class CoverageModel(QtCore.QAbstractTableModel):
             COMPLEXITY:   "Complexity",
             FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
         }
+
+        self._default_alignment = QtCore.Qt.AlignCenter
+        self._column_alignment = [
+            self._default_alignment for x in self._column_headers
+        ]
 
         # initialize a monospace font to use with our widget(s)
         self._entry_font = MonospaceFont(9)
@@ -696,7 +771,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
             elif role == QtCore.Qt.TextAlignmentRole:
 
                 # center align all columns
-                return QtCore.Qt.AlignCenter
+                return self._column_alignment[column]
 
             # font format request
             elif role == QtCore.Qt.FontRole:
@@ -799,7 +874,7 @@ class CoverageModel(QtCore.QAbstractTableModel):
 
         # text alignment request
         elif role == QtCore.Qt.TextAlignmentRole:
-            return QtCore.Qt.AlignCenter
+            return self._column_alignment[index.column()]
 
         # unhandeled request, nothing to do
         return None
@@ -889,6 +964,23 @@ class CoverageModel(QtCore.QAbstractTableModel):
     #--------------------------------------------------------------------------
     # Public
     #--------------------------------------------------------------------------
+
+    @disassembler.execute_ui
+    def toggle_alignment(self, column):
+        """
+        Toggle the text alignment of the given column.
+        """
+        current_alignment = self._column_alignment[column]
+
+        # toggle the column alignment between center (default) and left
+        if current_alignment == self._default_alignment:
+            self._column_alignment[column] = QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter
+        else:
+            self._column_alignment[column] = self._default_alignment
+
+        # redraw the column header & row contents with the new alignment
+        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
+        self.headerDataChanged.emit(QtCore.Qt.Horizontal, column, column)
 
     def get_modeled_coverage_percent(self):
         """

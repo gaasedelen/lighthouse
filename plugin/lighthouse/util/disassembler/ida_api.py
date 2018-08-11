@@ -33,7 +33,7 @@ class IDAAPI(DisassemblerAPI):
     #    Search 'using_ida7api' in the codebase for example casese
     #
 
-    using_ida7api = int(idaapi.get_kernel_version().split(".")[0]) > 6
+    using_ida7api = bool(idaapi.IDA_SDK_VERSION >= 700)
 
     def __init__(self):
         super(IDAAPI, self).__init__()
@@ -188,9 +188,11 @@ class IDAAPI(DisassemblerAPI):
             # if we are already in the main (UI) thread, execute now
             if is_mainthread():
                 ff()
+                return
 
             # otherwise, schedule the task to run in the main thread
             idaapi.execute_sync(ff, idaapi.MFF_FAST)
+
         return wrapper
 
     #------------------------------------------------------------------------------

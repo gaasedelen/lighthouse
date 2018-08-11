@@ -118,7 +118,7 @@ class BinjaAPI(DisassemblerAPI):
         return os.path.basename(os.path.splitext(self.bv.file.filename)[0])
 
     def navigate(self, address):
-        return self.bv.navigate(self.bv.view, address) # NOTE: BN returns None
+        return self.bv.navigate(self.bv.view, address)
 
     def set_function_name_at(self, function_address, new_name):
         func = self.bv.get_function_at(function_address)
@@ -208,6 +208,7 @@ class BinjaAPI(DisassemblerAPI):
             # if we are already in the main (UI) thread, execute now
             if is_mainthread():
                 ff()
+                return
 
             # schedule the task to run in the main thread
             try:
