@@ -1,13 +1,12 @@
 import time
 import Queue
 import bisect
-import ctypes
 import logging
 import weakref
 import threading
+import collections
 
-from lighthouse.util import *
-from lighthouse.util.misc import mainthread
+from lighthouse.util.misc import mainthread, register_callback, notify_callback, chunks
 from lighthouse.util.disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Metadata")
@@ -673,7 +672,7 @@ class FunctionMetadata(object):
 
         # node metadata
         self.nodes = {}
-        self.edges = []
+        self.edges = collections.defaultdict(list)
 
         # fixed/baked/computed metrics
         self.size = 0
@@ -761,32 +760,6 @@ class FunctionMetadata(object):
             if node_start == node_end:
                 continue
 
-            #
-            # if the current node_start address does not fall within the
-            # original / entry 'function chunk', we want to ignore it.
-            #
-            # this check is used as an attempt to ignore the try/catch/SEH
-            # exception handling blocks that IDA 7 parses and displays in
-            # the graph view (and therefore, the flowcahrt).
-            #
-            # practically speaking, 99% of the time people aren't going to be
-            # interested in the coverage information on their exception
-            # handlers. I am skeptical that dynamic instrumentation tools
-            # would be able to collect coverage in these handlers anyway...
-            #
-            # comment by @x9090:
-            #
-            # the original implementation caused false negatives on some valid
-            # nodes within a function that had been optimized by the compiler
-            # because they were very unlikely to be executed frequently,
-            # as determined by compile-time analysis
-            #
-
-            if idaapi.get_func_chunknum(function, node_start):
-                disasm = idaapi.tag_remove(idaapi.generate_disasm_line(node_start, idaapi.GENDSM_MULTI_LINE))
-                if ("Exception handler" or "Exception filter" or "ms_exc.old_esp") in disasm:
-                    continue
-
             # create a new metadata object for this node
             node_metadata = NodeMetadata(node_start, node_end, node_id)
 
@@ -798,24 +771,12 @@ class FunctionMetadata(object):
             node_metadata.function = function_metadata
             function_metadata.nodes[node_start] = node_metadata
 
-            #
-            # enumerate the edges produced by this node with a destination
-            # that falls within this function.
-            #
-
+        # enumerate the edges between nodes in the current function
+        for node_metadata in function_metadata.nodes.itervalues():
             edge_src = node_metadata.instructions[-1]
-
-            # NOTE/COMPAT: we do a single api check *outside* the loop for perf
-            if disassembler.using_ida7api:
-                for edge_dst in idautils.CodeRefsFrom(edge_src, True):
-                    edge_function = idaapi.get_func(edge_dst)
-                    if edge_function and edge_function.start_ea == function.start_ea: # NOTE: start_ea vs startEA
-                        function_metadata.edges.append((edge_src, edge_dst))
-            else:
-                for edge_dst in idautils.CodeRefsFrom(edge_src, True):
-                    edge_function = idaapi.get_func(edge_dst)
-                    if edge_function and edge_function.startEA == function.startEA:   # NOTE: startEA vs start_ea
-                        function_metadata.edges.append((edge_src, edge_dst))
+            for edge_dst in idautils.CodeRefsFrom(edge_src, True):
+                if edge_dst in function_metadata.nodes:
+                    function_metadata.edges[edge_src].append(edge_dst)
 
     def _binja_refresh_nodes(self):
         """
@@ -857,7 +818,49 @@ class FunctionMetadata(object):
 
             edge_src = node_metadata.instructions[-1]
             for edge in node.outgoing_edges:
-                function_metadata.edges.append((edge_src, edge.target.start))
+                function_metadata.edges[edge_src].append(edge.target.start)
+
+    def _compute_complexity(self):
+        """
+        Walk the CFG to determine approximate cyclomatic complexity.
+
+        This is mostly to account for IDA's inclusion of additional floating
+        nodes in function flowcharts. These blocks tend to be for try/catch
+        handlers, but can manifest in various other cases.
+
+        Including these 'disembodied' blocks (often with no incoming edges)
+        would radically throw off cyclomatic complexity computations. This
+        routine instead walks the CFG from the function entry point so that
+        only nodes/edges on the main graph are considered in CC.
+        """
+        to_walk = set([self.address])
+        confirmed_nodes = set()
+        confirmed_edges = {}
+
+        while to_walk:
+
+            # we want to find any edge that originates from here...
+            node_address = to_walk.pop()
+            confirmed_nodes.add(node_address)
+            current_src = self.nodes[node_address].instructions[-1]
+
+            # now we must loop through all remaining edges
+            for node_address in self.edges[current_src]:
+
+                # ignore nodes we have already confirmed (avoid loops)
+                if node_address in confirmed_nodes:
+                    continue
+
+                # the destination must be new to continue walking, add it now
+                to_walk.add(node_address)
+
+            # update
+            confirmed_edges[current_src] = self.edges.pop(current_src)
+
+        # compute the final cyclomatic complexity
+        num_edges = sum(len(x) for x in confirmed_edges.itervalues())
+        num_nodes = len(confirmed_nodes)
+        return num_edges - num_nodes + 2
 
     def _finalize(self):
         """
@@ -867,7 +870,7 @@ class FunctionMetadata(object):
         self.node_count = len(self.nodes)
         self.edge_count = len(self.edges)
         self.instruction_count = sum(node.instruction_count for node in self.nodes.itervalues())
-        self.cyclomatic_complexity = self.edge_count - self.node_count + 2
+        self.cyclomatic_complexity = self._compute_complexity()
 
     #--------------------------------------------------------------------------
     # Operator Overloads
