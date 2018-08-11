@@ -627,13 +627,19 @@ class DatabaseMetadata(object):
         # but I'd rather not find out.
         #
 
-        if address == function.address:
-            logger.debug("Name changing @ 0x%X" % address)
-            logger.debug("  Old name: %s" % function.name)
-            function.name = disassembler.get_function_name_at(address)
-            logger.debug("  New name: %s" % function.name)
+        if address != function.address:
+            return
 
-        # notify any listeners that a function rename occurred
+        # if the name isn't actually changing (misfire?) nothing to do
+        if new_name == function.name:
+            return
+
+        logger.debug("Name changing @ 0x%X" % address)
+        logger.debug("  Old name: %s" % function.name)
+        logger.debug("  New name: %s" % new_name)
+
+        # rename the function, and notify metadata listeners
+        function.name = new_name
         self._notify_function_renamed()
 
         # necessary for IDP/IDB_Hooks

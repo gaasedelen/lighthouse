@@ -300,11 +300,11 @@ class RenameHooks(object):
             return
 
         # if the function name hasn't changed, then there is nothing to do!
-        if function_metadata.name == function.name:
+        if function_metadata.name == function.symbol.short_name:
             return
 
         # fire our custom 'function renamed' event
-        self._renamed(function.start, function.name)
+        self._renamed(function.start, function.symbol.short_name)
 
 #------------------------------------------------------------------------------
 # UI
