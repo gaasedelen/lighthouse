@@ -1,4 +1,5 @@
 import sys
+import time
 import logging
 import binascii
 import functools
@@ -195,6 +196,22 @@ class IDAAPI(DisassemblerAPI):
 
         return wrapper
 
+    @staticmethod
+    def execute_write_async(function):
+        """
+        Decorator to perform an asynchrnous database write.
+
+        HACK: workaround for the idapython idaapi.MFF_NOWAIT bug (Fixed in 7.1)
+        """
+        @functools.wraps(function)
+        def wrapper(*args, **kwargs):
+            def bugfix():
+                time.sleep(0)
+                function(*args, **kwargs)
+                time.sleep(0)
+            return idaapi.execute_sync(bugfix, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
+        return wrapper
+
     #------------------------------------------------------------------------------
     # Function Prefixing
     #------------------------------------------------------------------------------
@@ -318,6 +335,7 @@ class IDAAPI(DisassemblerAPI):
             # lookup our original form and switch back to it
             idaapi.switchto_tform(previous_form, True)
             flush_qt_events()
+
 
 #------------------------------------------------------------------------------
 # UI
@@ -544,3 +562,4 @@ def lex_citem_indexes(line):
 
     # return all the citem indexes extracted from this line of text
     return indexes
+

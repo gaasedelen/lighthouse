@@ -1,4 +1,3 @@
-import time
 import logging
 import functools
 
@@ -11,18 +10,6 @@ from lighthouse.util.disassembler.ida_api import map_line2citem, map_line2node, 
 from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting.IDA")
-
-# TODO/PERF: IDA 7.1 bugfix, remove decorators (?), use single set() action
-
-def idawrite_async(f):
-    """
-    Decorator for marking a function as completely async.
-    """
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        ff = functools.partial(f, *args, **kwargs)
-        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
-    return wrapper
 
 class IDAPainter(DatabasePainter):
     """
@@ -63,48 +50,40 @@ class IDAPainter(DatabasePainter):
     # Paint Actions
     #------------------------------------------------------------------------------
 
-    @idawrite_async
+    @disassembler.execute_write_async
     def _paint_instructions(self, instructions):
         """
         Internal routine to force called action to the main thread.
         """
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
         self.paint_instructions(instructions)
         self._action_complete.set()
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
 
-    @idawrite_async
+    @disassembler.execute_write_async
     def _clear_instructions(self, instructions):
         """
         Internal routine to force called action to the main thread.
         """
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
         self.clear_instructions(instructions)
         self._action_complete.set()
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
 
-    @idawrite_async
+    @disassembler.execute_write_async
     def _paint_nodes(self, nodes_coverage):
         """
         Internal routine to force called action to the main thread.
         """
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
         self.paint_nodes(nodes_coverage)
         self._action_complete.set()
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
 
-    @idawrite_async
+    @disassembler.execute_write_async
     def _clear_nodes(self, nodes_metadata):
         """
         Internal routine to force called action to the main thread.
         """
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
         self.clear_nodes(nodes_metadata)
         self._action_complete.set()
-        time.sleep(0) # HACK: workaround for the idapython idaapi.MFF_NOWAIT bug
 
     def _cancel_action(self, job_id):
-        pass
+        idaapi.cancel_exec_request(job_id)
 
     #------------------------------------------------------------------------------
     # Paint Actions
@@ -116,7 +95,7 @@ class IDAPainter(DatabasePainter):
         """
         for address in instructions:
             idaapi.set_item_color(address, self.palette.coverage_paint)
-            self._painted_instructions.add(address) # TODO/PERF
+        self._painted_instructions |= set(instructions)
 
     def clear_instructions(self, instructions):
         """
@@ -124,12 +103,13 @@ class IDAPainter(DatabasePainter):
         """
         for address in instructions:
             idaapi.set_item_color(address, idc.DEFCOLOR)
-            self._painted_instructions.discard(address) # TODO/PERF
+        self._painted_instructions -= set(instructions)
 
     def paint_nodes(self, nodes_coverage):
         """
         Paint node level coverage defined by the current database mappings.
         """
+        db_metadata = self._director.metadata
 
         # create a node info object as our vehicle for setting the node color
         node_info = idaapi.node_info_t()
@@ -146,7 +126,7 @@ class IDAPainter(DatabasePainter):
         #
 
         for node_coverage in nodes_coverage:
-            node_metadata = node_coverage._database._metadata.nodes[node_coverage.address] # TODO/PERF ?
+            node_metadata = db_metadata.nodes[node_coverage.address]
 
             # assign the background color we would like to paint to this node
             node_info.bg_color = self.palette.coverage_paint
