@@ -65,11 +65,11 @@ if False:
     lpr = LineProfiler()
 
     # change this to the target file / module to profile
-    import lighthouse.metadata as metadata_module
-    lpr.add_module(metadata_module)
+    import lighthouse.metadata as metadata
+    lpr.add_module(metadata)
 
     # put this code somewhere to dump results:
     #global lpr
     #lpr.enable_by_count()
     #lpr.disable_by_count()
-    #lpr.print_stats()
+    #lpr.print_stats(stripzeros=True)
