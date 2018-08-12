@@ -577,7 +577,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         #
         # While the user is picking a name for the new composite, we might as well
-        # try and cache it asynchronously :-). kick the caching off now.
+        # try and compute/cache it asynchronously :-). kick the caching off now.
         #
 
         self._director.cache_composition(self._last_ast, force=True)
@@ -595,13 +595,27 @@ class ComposingShell(QtWidgets.QWidget):
             "COMP_%s" % self.text
         )
 
-        # the user did not enter a coverage name or hit cancel - abort the save
+        #
+        # once the naming prompt closes, the composing shell tries to pop
+        # the coverage hint again which can make it annoying and too
+        # aggressive.
+        #
+        # clearing focus on the text line will ensure the hint does not pop
+        #
+
+        self._line.clearFocus()
+
+        #
+        # returning back to the naming prompt, if the user did not enter a
+        # coverage name (or hit cancel), we will abort saving the composition
+        #
+
         if not (ok and coverage_name):
             return
 
         #
-        # all good, ask the director to save the last composition
-        # composition under the given coverage name
+        # a name was given and all is good, ask the director to save the last
+        # composition under the user specified coverage name
         #
 
         self._director.add_composition(coverage_name, self._last_ast)
