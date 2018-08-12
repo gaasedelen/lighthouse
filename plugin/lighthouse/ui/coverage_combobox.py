@@ -249,11 +249,22 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         """
         Initialize UI elements.
         """
+        palette = self.model()._director._palette
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont(9)
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
+
+        # stylesheet
+        self.setStyleSheet(
+            "QTableView {"
+            "  background-color: %s;" % palette.combobox_bg.name() +
+            "  color: %s;" % palette.combobox_fg.name() +
+            "  selection-background-color: %s;" % palette.combobox_selection_bg.name() +
+            "  selection-color: %s;" % palette.combobox_selection_fg.name() +
+            "}"
+        )
 
         # hide dropdown table headers, and default grid
         self.horizontalHeader().setVisible(False)

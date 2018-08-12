@@ -60,6 +60,12 @@ class LighthousePalette(object):
         self._shell_hint_bg = [QtGui.QColor(45, 45, 45), QtGui.QColor(45, 45, 45)]
         self._shell_hint_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
 
+        self._combobox_bg = [QtGui.QColor(45, 45, 45), QtGui.QColor(45, 45, 45)]
+        self._combobox_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
+        self._combobox_selection_bg = [QtGui.QColor(51, 153, 255), QtGui.QColor(51, 153, 255)]
+        self._combobox_selection_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
         #
         # Composition Grammar
         #
@@ -239,6 +245,26 @@ class LighthousePalette(object):
     @property
     def shell_hint_fg(self):
         return self._shell_hint_fg[self.qt_theme]
+
+    #--------------------------------------------------------------------------
+    # Coverage Combobox
+    #--------------------------------------------------------------------------
+
+    @property
+    def combobox_bg(self):
+        return self._combobox_bg[self.qt_theme]
+
+    @property
+    def combobox_fg(self):
+        return self._combobox_fg[self.qt_theme]
+
+    @property
+    def combobox_selection_bg(self):
+        return self._combobox_selection_bg[self.qt_theme]
+
+    @property
+    def combobox_selection_fg(self):
+        return self._combobox_selection_fg[self.qt_theme]
 
     #--------------------------------------------------------------------------
     # Composition Grammar
