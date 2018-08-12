@@ -53,6 +53,19 @@ def singleshot(ms, function=None):
     timer.timeout.connect(function)
     return timer
 
+def remap_event(event, new_key):
+    """
+    Create an identical QKeyEvent, under a new key binding.
+    """
+    return QtGui.QKeyEvent(
+        QtCore.QEvent.KeyPress,
+        new_key,
+        event.modifiers(),
+        event.text(),
+        event.isAutoRepeat(),
+        event.count()
+    )
+
 def copy_to_clipboard(data):
     """
     Copy the given data (a string) to the user clipboard.

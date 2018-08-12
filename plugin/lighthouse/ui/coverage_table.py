@@ -92,9 +92,9 @@ class CoverageTableView(QtWidgets.QTableView):
         Initialize the coverage table.
         """
         palette = self._model._director._palette
-        self.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setStyleSheet(
-            "QTableView { gridline-color: black; background-color: %s } " % palette.overview_bg.name() +
+            "QTableView { gridline-color: black; background-color: %s; outline: none; } " % palette.overview_bg.name() +
             "QTableView::item:selected { color: white; background-color: %s; } " % palette.selection.name()
         )
 
@@ -277,6 +277,37 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # process the user action
         self._process_header_ctx_menu_action(action, column)
+
+    #--------------------------------------------------------------------------
+    # QTableView Overloads
+    #--------------------------------------------------------------------------
+
+    def keyPressEvent(self, event):
+        """
+        Overload QTableView key press events.
+        """
+
+        # remap h/j/k/l to arrow keys (VIM bindings)
+        if event.key() == QtCore.Qt.Key_J:
+            event = remap_event(event, QtCore.Qt.Key_Down)
+        elif event.key() == QtCore.Qt.Key_K:
+            event = remap_event(event, QtCore.Qt.Key_Up)
+        elif event.key() == QtCore.Qt.Key_H:
+            event = remap_event(event, QtCore.Qt.Key_Left)
+        elif event.key() == QtCore.Qt.Key_L:
+            event = remap_event(event, QtCore.Qt.Key_Right)
+
+        # handle the keypress as normal
+        super(CoverageTableView, self).keyPressEvent(event)
+
+        #
+        # after handling the keypress, immediately repaint the table. we use
+        # this to try to cut down on flicker / row skipping while scrolling
+        # using the keypad
+        #
+
+        self.repaint()
+        flush_qt_events()
 
     #--------------------------------------------------------------------------
     # Context Menu (Table Rows)
