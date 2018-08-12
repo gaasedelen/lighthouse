@@ -2,7 +2,6 @@ import string
 import logging
 from operator import itemgetter, attrgetter
 
-#from lighthouse.util import * TODO: remove:
 from lighthouse.util.qt import *
 from lighthouse.util.misc import mainthread
 from lighthouse.util.disassembler import disassembler

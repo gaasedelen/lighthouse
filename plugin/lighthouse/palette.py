@@ -57,6 +57,9 @@ class LighthousePalette(object):
         self._invalid_text      = [0xF02070, 0xFF0000]
         self._invalid_highlight = [0x990000, 0xFF0000]
 
+        self._shell_hint_bg = [QtGui.QColor(45, 45, 45), QtGui.QColor(45, 45, 45)]
+        self._shell_hint_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
         #
         # Composition Grammar
         #
@@ -228,6 +231,14 @@ class LighthousePalette(object):
     @property
     def invalid_highlight(self):
         return self._invalid_highlight[self.qt_theme]
+
+    @property
+    def shell_hint_bg(self):
+        return self._shell_hint_bg[self.qt_theme]
+
+    @property
+    def shell_hint_fg(self):
+        return self._shell_hint_fg[self.qt_theme]
 
     #--------------------------------------------------------------------------
     # Composition Grammar

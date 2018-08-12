@@ -117,6 +117,10 @@ class ComposingShell(QtWidgets.QWidget):
         self._completer.setModel(self._completer_model)
         self._completer.setWrapAround(False)
         self._completer.popup().setFont(self._font)
+        self._completer.popup().setStyleSheet(
+            "background: %s;" % self._palette.shell_hint_bg.name() +
+            "color: %s;" % self._palette.shell_hint_fg.name()
+        )
         self._completer.setWidget(self._line)
 
     def _ui_init_signals(self):
