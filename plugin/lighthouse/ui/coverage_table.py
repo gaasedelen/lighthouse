@@ -9,44 +9,6 @@ from lighthouse.coverage import FunctionCoverage, BADADDR
 
 logger = logging.getLogger("Lighthouse.UI.Table")
 
-#------------------------------------------------------------------------------
-# Constants Defintion
-#------------------------------------------------------------------------------
-
-# declare named constants for coverage table column indexes
-COV_PERCENT  = 0
-FUNC_NAME    = 1
-FUNC_ADDR    = 2
-BLOCKS_HIT   = 3
-INST_HIT     = 4
-FUNC_SIZE    = 5
-COMPLEXITY   = 6
-FINAL_COLUMN = 7
-
-# column -> field name mapping
-COLUMN_TO_FIELD = \
-{
-    COV_PERCENT:  "instruction_percent",
-    FUNC_NAME:    "name",
-    FUNC_ADDR:    "address",
-    BLOCKS_HIT:   "nodes_executed",
-    INST_HIT:     "instructions_executed",
-    FUNC_SIZE:    "size",
-    COMPLEXITY:   "cyclomatic_complexity"
-}
-
-# column headers of the table
-SAMPLE_CONTENTS = \
-[
-    " 100.00% ",
-    " sub_140001B20 ",
-    " 0x140001b20 ",
-    " 100 / 100 ",
-    " 1000 / 1000 ",
-    " 10000000 ",
-    " 1000000 ",
-    ""
-]
 
 #------------------------------------------------------------------------------
 # View
@@ -93,9 +55,19 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         palette = self._model._director._palette
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
+
+        # widget style
         self.setStyleSheet(
-            "QTableView { gridline-color: black; background-color: %s; outline: none; } " % palette.overview_bg.name() +
-            "QTableView::item:selected { color: white; background-color: %s; } " % palette.selection.name()
+            "QTableView {"
+            "  gridline-color: black;"
+            "  background-color: %s;" % palette.overview_bg.name() +
+            #"  color: %s;" % palette.combobox_fg.name() +
+            "  outline; none; "
+            "} " +
+            "QTableView::item:selected {"
+            "  color: white; "
+            "  background-color: %s;" % palette.selection.name() +
+            "}"
         )
 
         # these properties will allow the user shrink the table to any size
@@ -125,7 +97,7 @@ class CoverageTableView(QtWidgets.QTableView):
             title_rect = title_fm.boundingRect(title_text)
 
             # determine the pixel width of sample column entry text
-            entry_text = SAMPLE_CONTENTS[i]
+            entry_text = self._model.SAMPLE_CONTENTS[i]
             entry_rect = entry_fm.boundingRect(entry_text)
 
             # select the lager of the two potential column widths
@@ -160,7 +132,10 @@ class CoverageTableView(QtWidgets.QTableView):
         # allow sorting of the table by clicking table headers, and set the
         # default table state to be sorted by function address
         self.setSortingEnabled(True)
-        hh.setSortIndicator(FUNC_ADDR, QtCore.Qt.AscendingOrder)
+        hh.setSortIndicator(
+            CoverageTableModel.FUNC_ADDR,
+            QtCore.Qt.AscendingOrder
+        )
 
         #
         # Row Height
@@ -516,10 +491,11 @@ class CoverageTableController(object):
         """
         Copy function names for the given table rows to clipboard.
         """
+        model = self._model
         function_names = ""
         for row_number in rows:
-            name_index = self._model.index(row_number, FUNC_NAME)
-            function_names += self._model.data(name_index)
+            name_index = model.index(row_number, model.FUNC_NAME)
+            function_names += model.data(name_index)
             function_names += "\n"
         copy_to_clipboard(function_names)
         return function_names
@@ -529,10 +505,11 @@ class CoverageTableController(object):
         """
         Copy function addresses for the given table rows to clipboard.
         """
+        model = self._model
         address_string = ""
         for row_number in rows:
-            addr_index = self._model.index(row_number, FUNC_ADDR)
-            address_string += self._model.data(addr_index)
+            addr_index = model.index(row_number, model.FUNC_ADDR)
+            address_string += model.data(addr_index)
             address_string += "\n"
         copy_to_clipboard(address_string)
         return address_string
@@ -542,13 +519,14 @@ class CoverageTableController(object):
         """
         Copy function name & addresses for the given table rows to clipboard.
         """
+        model = self._model
         function_name_and_address = ""
         for row_number in rows:
-            name_index = self._model.index(row_number, FUNC_NAME)
-            addr_index = self._model.index(row_number, FUNC_ADDR)
-            function_name_and_address += self._model.data(addr_index)
+            name_index = model.index(row_number, model.FUNC_NAME)
+            addr_index = model.index(row_number, model.FUNC_ADDR)
+            function_name_and_address += model.data(addr_index)
             function_name_and_address += " "
-            function_name_and_address += self._model.data(name_index)
+            function_name_and_address += model.data(name_index)
             function_name_and_address += "\n"
         copy_to_clipboard(function_name_and_address)
         return function_name_and_address
@@ -616,44 +594,83 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
     A Qt model interface to format coverage data for Qt views.
     """
 
+    # named constants for coverage table column indexes
+    COV_PERCENT  = 0
+    FUNC_NAME    = 1
+    FUNC_ADDR    = 2
+    BLOCKS_HIT   = 3
+    INST_HIT     = 4
+    FUNC_SIZE    = 5
+    COMPLEXITY   = 6
+    FINAL_COLUMN = 7
+
+    METADATA_ATTRIBUTES = [FUNC_NAME, FUNC_ADDR, FUNC_SIZE, COMPLEXITY]
+    COVERAGE_ATTRIBUTES = [COV_PERCENT, BLOCKS_HIT, INST_HIT]
+
+    # column index -> object attribute mapping
+    COLUMN_TO_FIELD = \
+    {
+        COV_PERCENT:  "instruction_percent",
+        FUNC_NAME:    "name",
+        FUNC_ADDR:    "address",
+        BLOCKS_HIT:   "nodes_executed",
+        INST_HIT:     "instructions_executed",
+        FUNC_SIZE:    "size",
+        COMPLEXITY:   "cyclomatic_complexity"
+    }
+
+    # column headers of the table
+    COLUMN_HEADERS = \
+    {
+        COV_PERCENT:  "Coverage %",
+        FUNC_NAME:    "Function Name",
+        FUNC_ADDR:    "Address",
+        BLOCKS_HIT:   "Blocks Hit",
+        INST_HIT:     "Instructions Hit",
+        FUNC_SIZE:    "Function Size",
+        COMPLEXITY:   "Complexity",
+        FINAL_COLUMN: ""
+    }
+
+    # sample coulumn
+    SAMPLE_CONTENTS = \
+    [
+        " 100.00% ",
+        " sub_140001B20 ",
+        " 0x140001b20 ",
+        " 100 / 100 ",
+        " 1000 / 1000 ",
+        " 10000000 ",
+        " 1000000 ",
+        ""
+    ]
+
     def __init__(self, director, parent=None):
         super(CoverageTableModel, self).__init__(parent)
-        self._blank_coverage = FunctionCoverage(BADADDR)
-
-        # local reference to the director
         self._director = director
 
-        # mapping to correlate a given row in the table to its function coverage
+        # convenience mapping from row_number --> function_address
         self.row2func = {}
         self._row_count = 0
 
-        # internal mappings of the explicit data / coverage we render
+        # an internal mapping of the data / coverage to make visible
         self._no_coverage = []
         self._visible_metadata = {}
         self._visible_coverage = {}
 
-        # column headers of the table
-        self._column_headers = \
-        {
-            COV_PERCENT:  "Coverage %",
-            FUNC_NAME:    "Function Name",
-            FUNC_ADDR:    "Address",
-            BLOCKS_HIT:   "Blocks Hit",
-            INST_HIT:     "Instructions Hit",
-            FUNC_SIZE:    "Function Size",
-            COMPLEXITY:   "Complexity",
-            FINAL_COLUMN: ""            # NOTE: stretch section, left blank for now
-        }
+        # a fallback coverage object for functions with no coverage
+        self._blank_coverage = FunctionCoverage(BADADDR)
 
+        # set the default column text alignment for each column (centered)
         self._default_alignment = QtCore.Qt.AlignCenter
         self._column_alignment = [
-            self._default_alignment for x in self._column_headers
+            self._default_alignment for x in self.COLUMN_HEADERS
         ]
 
-        # initialize a monospace font to use with our widget(s)
+        # initialize a monospace font to use for table row / cell text
         self._entry_font = MonospaceFont(9)
 
-        # use the default / system font for the column tittles
+        # use the default / system font for the column titles
         self._title_font = QtGui.QFont()
         self._title_font.setPointSize(9)
 
@@ -661,8 +678,8 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # Sorting
         #----------------------------------------------------------------------
 
-        # members to enlighten the model to its last known sort state
-        self._last_sort = FUNC_ADDR
+        # attributes to track the model's last known (column) sort state
+        self._last_sort = self.FUNC_ADDR
         self._last_sort_order = QtCore.Qt.AscendingOrder
 
         #----------------------------------------------------------------------
@@ -701,7 +718,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         The number of table columns.
         """
-        return len(self._column_headers)
+        return len(self.COLUMN_HEADERS)
 
     def headerData(self, column, orientation, role=QtCore.Qt.DisplayRole):
         """
@@ -712,10 +729,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
             # the title of the header columns has been requested
             if role == QtCore.Qt.DisplayRole:
-                try:
-                    return self._column_headers[column]
-                except KeyError as e:
-                    pass
+                return self.COLUMN_HEADERS[column]
 
             # the text alignment of the header has beeen requested
             elif role == QtCore.Qt.TextAlignmentRole:
@@ -735,10 +749,10 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         Define how Qt should access the underlying model data.
         """
 
-        # data display request
+        # a request has been made for what text to show in a table cell
         if role == QtCore.Qt.DisplayRole:
 
-            # grab for speed
+            # alias the requested column number once, for readability & perf
             column = index.column()
 
             # lookup the function info for this row
@@ -776,33 +790,33 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             )
 
             # Coverage % - (by instruction execution)
-            if column == COV_PERCENT:
+            if column == self.COV_PERCENT:
                 return "%5.2f%%" % (function_coverage.instruction_percent*100)
 
             # Function Name
-            elif column == FUNC_NAME:
+            elif column == self.FUNC_NAME:
                 return function_metadata.name
 
             # Function Address
-            elif column == FUNC_ADDR:
+            elif column == self.FUNC_ADDR:
                 return "0x%X" % function_metadata.address
 
             # Basic Blocks
-            elif column == BLOCKS_HIT:
+            elif column == self.BLOCKS_HIT:
                 return "%3u / %-3u" % (function_coverage.nodes_executed,
                                        function_metadata.node_count)
 
             # Instructions Hit
-            elif column == INST_HIT:
+            elif column == self.INST_HIT:
                 return "%4u / %-4u" % (function_coverage.instructions_executed,
                                        function_metadata.instruction_count)
 
             # Function Size
-            elif column == FUNC_SIZE:
+            elif column == self.FUNC_SIZE:
                 return "%u" % function_metadata.size
 
             # Cyclomatic Complexity
-            elif column == COMPLEXITY:
+            elif column == self.COMPLEXITY:
                 return "%u" % function_metadata.cyclomatic_complexity
 
         # cell background color request
@@ -814,28 +828,28 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             )
             return function_coverage.coverage_color
 
-        # font color request
+        # cell text color request
         elif role == QtCore.Qt.ForegroundRole:
             return QtGui.QColor(QtCore.Qt.white)
 
-        # font format request
+        # cell font style format request
         elif role == QtCore.Qt.FontRole:
             return self._entry_font
 
-        # text alignment request
+        # cell text alignment request
         elif role == QtCore.Qt.TextAlignmentRole:
             return self._column_alignment[index.column()]
 
         # unhandeled request, nothing to do
         return None
 
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Sorting
-    #----------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def sort(self, column, sort_order):
         """
-        Sort coverage data model by column.
+        Sort the coverage table rows by the selected column, and direction.
         """
 
         #
@@ -844,7 +858,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         #
 
         try:
-            sort_field = COLUMN_TO_FIELD[column]
+            sort_field = self.COLUMN_TO_FIELD[column]
 
         # column has not been enlightened to sorting
         except KeyError as e:
@@ -858,7 +872,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         #
 
         # sort the table entries by a function metadata attribute
-        if column in [FUNC_NAME, FUNC_ADDR, FUNC_SIZE, COMPLEXITY]:
+        if column in self.METADATA_ATTRIBUTES:
             sorted_functions = sorted(
                 self._visible_metadata.itervalues(),
                 key=attrgetter(sort_field),
@@ -866,7 +880,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             )
 
         # sort the table entries by a function coverage attribute
-        elif column in [COV_PERCENT, BLOCKS_HIT, INST_HIT]:
+        elif column in self.COVERAGE_ATTRIBUTES:
             sorted_functions = sorted(
                 self._visible_coverage.itervalues(),
                 key=attrgetter(sort_field),
@@ -915,7 +929,6 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
     # Public
     #--------------------------------------------------------------------------
 
-    @mainthread
     def set_column_alignment(self, column, alignment):
         """
         Set the text alignment of the given column.
@@ -923,8 +936,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._column_alignment[column] = alignment
 
         # redraw the column header & row contents with the new alignment
-        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
-        self.headerDataChanged.emit(QtCore.Qt.Horizontal, column, column)
+        self._alignment_changed()
 
     def get_modeled_coverage_percent(self):
         """
@@ -994,13 +1006,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # sort the data set according to the last selected sorted column
         self.sort(self._last_sort, self._last_sort_order)
 
-    @disassembler.execute_ui
-    def _data_changed(self):
-        """
-        Notify attached views that simple model data has been updated/modified.
-        """
-        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
-
+    @mainthread
     def _refresh_data(self):
         """
         Initialize the mapping to go from displayed row to function.
@@ -1074,3 +1080,21 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # bake the final number of rows into the model
         self._row_count = len(self.row2func)
 
+    #--------------------------------------------------------------------------
+    # Qt Notifications
+    #--------------------------------------------------------------------------
+
+    @disassembler.execute_ui
+    def _data_changed(self):
+        """
+        Notify attached views that simple model data has been updated/modified.
+        """
+        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
+
+    @disassembler.execute_ui
+    def _alignment_changed(self, column):
+        """
+        Notify attached views that the column alignment has been changed.
+        """
+        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())
+        self.headerDataChanged.emit(QtCore.Qt.Horizontal, column, column)

@@ -256,7 +256,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
-        # stylesheet
+        # widget style
         self.setStyleSheet(
             "QTableView {"
             "  background-color: %s;" % palette.combobox_bg.name() +
