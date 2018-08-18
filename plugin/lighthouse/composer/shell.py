@@ -186,11 +186,16 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Refresh the shell coverage hint contents.
         """
+        hints = []
+        self._shorthand = []
 
-        # get the most recent coverage strings from the director
-        detailed_strings = [self._director.get_coverage_string(x) for x in self._director.coverage_names]
-        self._completer_model.setStringList(detailed_strings)
-        self._shorthand = [x[0] for x in detailed_strings]
+        # get the detailed coverage strings from the director
+        for x in self._director.coverage_names:
+            hints.append(self._director.get_coverage_string(x))
+            self._shorthand.append(self._director.get_shorthand(x))
+
+        # install the fresh coverage strings to the hint completer dialog
+        self._completer_model.setStringList(hints)
 
         # queue a UI coverage hint if necessary
         self._ui_hint_coverage_refresh()
@@ -802,7 +807,7 @@ class ComposingShell(QtWidgets.QWidget):
 
             # configure the colors/style for this explicit token
             #highlight.setBackground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
-            highlight.setForeground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
+            highlight.setForeground(QtGui.QBrush(TOKEN_COLORS[token.type]))
             cursor.setCharFormat(highlight)
 
         #

@@ -14,6 +14,12 @@ logger = logging.getLogger("Lighthouse.Qt.Util")
 # Qt Util
 #------------------------------------------------------------------------------
 
+def color_text(text, color):
+    """
+    Return a coloroized (HTML) version of the given string.
+    """
+    return "<font color=\"%s\">%s</font>" % (color.name(), text)
+
 def get_qt_main_window():
     """
     Get the QMainWindow instance for the current Qt runtime.
