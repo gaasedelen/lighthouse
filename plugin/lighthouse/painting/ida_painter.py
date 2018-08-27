@@ -11,6 +11,35 @@ from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting.IDA")
 
+#------------------------------------------------------------------------------
+# Util
+#------------------------------------------------------------------------------
+# TODO/COMMENT
+
+from lighthouse.util.qt import QtCore
+
+def on_mainthread(fff):
+    fff()
+
+class ToMainthread(QtCore.QObject):
+    mainthread = QtCore.pyqtSignal(object)
+
+def execute_paint(function):
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        self = args[0]
+        ff = functools.partial(function, *args, **kwargs)
+        if idaapi.IDA_SDK_VERSION < 710:
+            fff = functools.partial(idaapi.execute_sync, ff, idaapi.MFF_WRITE)
+            self._signal.mainthread.emit(fff)
+            return idaapi.BADADDR
+        return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
+    return wrapper
+
+#------------------------------------------------------------------------------
+# IDA Painter
+#------------------------------------------------------------------------------
+
 class IDAPainter(DatabasePainter):
     """
     Asynchronous IDA database painter.
@@ -29,6 +58,10 @@ class IDAPainter(DatabasePainter):
         #
 
         self._attempted_hook = False
+
+        # TODO/COMMENT
+        self._signal = ToMainthread()
+        self._signal.mainthread.connect(on_mainthread)
 
         # continue normal painter initialization
         super(IDAPainter, self).__init__(director, palette)
@@ -50,7 +83,7 @@ class IDAPainter(DatabasePainter):
     # Paint Actions
     #------------------------------------------------------------------------------
 
-    @disassembler.execute_write_async
+    @execute_paint
     def _paint_instructions(self, instructions):
         """
         Internal routine to force called action to the main thread.
@@ -58,7 +91,7 @@ class IDAPainter(DatabasePainter):
         self.paint_instructions(instructions)
         self._action_complete.set()
 
-    @disassembler.execute_write_async
+    @execute_paint
     def _clear_instructions(self, instructions):
         """
         Internal routine to force called action to the main thread.
@@ -66,7 +99,7 @@ class IDAPainter(DatabasePainter):
         self.clear_instructions(instructions)
         self._action_complete.set()
 
-    @disassembler.execute_write_async
+    @execute_paint
     def _paint_nodes(self, nodes_coverage):
         """
         Internal routine to force called action to the main thread.
@@ -74,7 +107,7 @@ class IDAPainter(DatabasePainter):
         self.paint_nodes(nodes_coverage)
         self._action_complete.set()
 
-    @disassembler.execute_write_async
+    @execute_paint
     def _clear_nodes(self, nodes_metadata):
         """
         Internal routine to force called action to the main thread.
@@ -301,7 +334,7 @@ class IDAPainter(DatabasePainter):
         """
         Immediately repaint regions of the database visible to the user.
         """
-        cursor_address = idaapi.get_screen_ea() # TODO/IDA: threadsafe?
+        cursor_address = idaapi.get_screen_ea()
 
         # paint functions around the cursor address
         painted = self._priority_paint_functions(cursor_address)
