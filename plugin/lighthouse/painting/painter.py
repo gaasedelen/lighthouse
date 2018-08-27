@@ -15,8 +15,13 @@ class DatabasePainter(object):
 
     def __init__(self, director, palette):
 
+        #----------------------------------------------------------------------
+        # Misc
+        #----------------------------------------------------------------------
+
         self.palette = palette
         self._director = director
+        self._enabled = True
 
         #----------------------------------------------------------------------
         # Painted State
@@ -63,6 +68,20 @@ class DatabasePainter(object):
         self._director.coverage_switched(self.repaint)
         self._director.coverage_modified(self.repaint)
 
+    @property
+    def enabled(self):
+        """
+        Return the active painting status of the painter.
+        """
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, x):
+        """
+        Enable or disable the painter.
+        """
+        self._enabled = x
+
     def terminate(self):
         """
         Cleanup & terminate the painter.
@@ -76,6 +95,8 @@ class DatabasePainter(object):
         """
         Paint coverage defined by the current database mappings.
         """
+        if not self.enabled:
+            return
         self._repaint_requested = True
         self._repaint_request.set()
 
