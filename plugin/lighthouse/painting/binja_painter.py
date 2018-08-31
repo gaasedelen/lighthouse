@@ -10,6 +10,10 @@ from lighthouse.util.disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Painting.Binja")
 
+#------------------------------------------------------------------------------
+# Binary Ninja Painter
+#------------------------------------------------------------------------------
+
 class BinjaPainter(DatabasePainter):
     """
     Asynchronous Binary Ninja database painter.
@@ -21,8 +25,6 @@ class BinjaPainter(DatabasePainter):
     #------------------------------------------------------------------------------
     # Paint Primitives
     #------------------------------------------------------------------------------
-
-    # TODO/BINJA: these technicallly need to be called in a background task...
 
     #
     # NOTE: due to the manner in which Binary Ninja implements basic block

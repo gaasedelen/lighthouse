@@ -104,24 +104,6 @@ class Lighthouse(object):
         self.director.terminate()
 
     #--------------------------------------------------------------------------
-    # Painter Controls
-    #--------------------------------------------------------------------------
-
-    def enable_painting(self):
-        """
-        Enable the asynchronous database painter.
-        """
-        self.painter.enabled = True
-        self.painter.repaint()
-
-    def disable_painting(self):
-        """
-        Disable the asynchronous database painter.
-        """
-        self.painter.enabled = False
-        self.painter.repaint()
-
-    #--------------------------------------------------------------------------
     # UI - Integration (Internal)
     #--------------------------------------------------------------------------
 
@@ -200,7 +182,7 @@ class Lighthouse(object):
                 return
 
             # create a new coverage overview if there is not one visible
-            self._ui_coverage_overview = CoverageOverview(self.director)
+            self._ui_coverage_overview = CoverageOverview(self)
             self._ui_coverage_overview.show()
         except Exception as e:
             logger.exception(e)

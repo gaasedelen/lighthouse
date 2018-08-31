@@ -1,5 +1,6 @@
 import abc
 import time
+import Queue
 import logging
 import threading
 
@@ -12,6 +13,10 @@ class DatabasePainter(object):
     An asynchronous disassembler database painting engine.
     """
     __metaclass__ = abc.ABCMeta
+
+    MSG_TERMINATE = 0
+    MSG_REPAINT = 1
+    MSG_CLEAR = 2
 
     def __init__(self, director, palette):
 
@@ -46,8 +51,7 @@ class DatabasePainter(object):
         #
 
         self._action_complete = threading.Event()
-        self._repaint_request = threading.Event()
-        self._repaint_requested = False
+        self._msg_queue = Queue.Queue()
         self._end_threads = False
 
         #
@@ -64,9 +68,16 @@ class DatabasePainter(object):
         # Callbacks
         #----------------------------------------------------------------------
 
+        # painter callbacks
+        self._status_changed_callbacks = []
+
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
         self._director.coverage_modified(self.repaint)
+
+    #--------------------------------------------------------------------------
+    # Staus
+    #--------------------------------------------------------------------------
 
     @property
     def enabled(self):
@@ -75,20 +86,32 @@ class DatabasePainter(object):
         """
         return self._enabled
 
-    @enabled.setter
-    def enabled(self, x):
+    def set_enabled(self, status):
         """
         Enable or disable the painter.
         """
-        self._enabled = x
+
+        # enabled/disabled status is not changing, ignore...
+        if status == self._enabled:
+            return
+
+        lmsg("%s painting..." % ("Enabling" if status else "Disabling"))
+        self._enabled = status
+        self.repaint()
+
+        # notify listeners that the painter has been enabled/disabled
+        self._notify_status_changed(status)
+
+    #--------------------------------------------------------------------------
+    # Commands
+    #--------------------------------------------------------------------------
 
     def terminate(self):
         """
         Cleanup & terminate the painter.
         """
         self._end_threads = True
-        self._repaint_requested = True
-        self._repaint_request.set()
+        self._msg_queue.put(self.MSG_TERMINATE)
         self._painting_worker.join()
 
     def repaint(self):
@@ -97,8 +120,31 @@ class DatabasePainter(object):
         """
         if not self.enabled:
             return
-        self._repaint_requested = True
-        self._repaint_request.set()
+        self._msg_queue.put(self.MSG_REPAINT)
+
+    def clear_paint(self):
+        """
+        Clear all paint from the current database (based on metadata)
+        """
+        if self.enabled:
+            self.set_enabled(False)
+        self._msg_queue.put(self.MSG_CLEAR)
+
+    #--------------------------------------------------------------------------
+    # Commands
+    #--------------------------------------------------------------------------
+
+    def status_changed(self, callback):
+        """
+        Subscribe a callback for coverage switch events.
+        """
+        register_callback(self._status_changed_callbacks, callback)
+
+    def _notify_status_changed(self, status):
+        """
+        Notify listeners of a coverage switch event.
+        """
+        notify_callback(self._status_changed_callbacks, status)
 
     #--------------------------------------------------------------------------
     # Paint Primitives
@@ -140,31 +186,17 @@ class DatabasePainter(object):
         pass
 
     #------------------------------------------------------------------------------
-    # Painting - Functions
+    # Painting - High Level
     #------------------------------------------------------------------------------
 
     def _paint_function(self, address):
         """
         Paint function instructions & nodes with the current database mappings.
         """
-
-        # collect function information
         function_metadata = self._director.metadata.functions[address]
         function_coverage = self._director.coverage.functions.get(address, None)
-
-        # if no coverage, just clear the function's instruction & nodes
         if not function_coverage:
-
-            # clear instructions
-            if not self._async_action(self._clear_instructions, function_metadata.instructions):
-                return False
-
-            # clear nodes
-            if not self._async_action(self._clear_nodes, function_metadata.nodes.itervalues()):
-                return False
-
-            # not interrupted
-            return True
+            return False
 
         #
         # ~ compute paint job ~
@@ -183,27 +215,119 @@ class DatabasePainter(object):
         stale_nodes_ea = painted - function_coverage.nodes.viewkeys()
         stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
 
+        # active instructions
+        instructions = function_coverage.instructions
+        nodes = function_coverage.nodes.itervalues()
+
         #
         # ~ painting ~
         #
 
         # clear instructions
         if not self._async_action(self._clear_instructions, stale_instructions):
-            return False
+            return False # a repaint was requested
 
         # clear nodes
         if not self._async_action(self._clear_nodes, stale_nodes):
-            return False
+            return False # a repaint was requested
 
         # paint instructions
-        if not self._async_action(self._paint_instructions, function_coverage.instructions):
-            return False
+        if not self._async_action(self._paint_instructions, instructions):
+            return False # a repaint was requested
 
         # paint nodes
-        if not self._async_action(self._paint_nodes, function_coverage.nodes.itervalues()):
-            return False
+        if not self._async_action(self._paint_nodes, nodes):
+            return False # a repaint was requested
 
-        # not interrupted
+        # paint finished succesfully
+        return True
+
+    def _clear_function(self, address):
+        """
+        Clear paint from the given function.
+        """
+        function_metadata = self._director.metadata.functions[address]
+        instructions = function_metadata.instructions
+        nodes = function_metadata.nodes.itervalues()
+
+        # clear instructions
+        if not self._async_action(self._clear_instructions, instructions):
+            return False # a repaint was requested
+
+        # clear nodes
+        if not self._async_action(self._clear_nodes, nodes):
+            return False # a repaint was requested
+
+        # paint finished succesfully
+        return True
+
+    def _paint_database(self):
+        """
+        Repaint the current database based on the current state.
+        """
+
+        # more code-friendly, readable aliases (db_XX == database_XX)
+        db_coverage = self._director.coverage
+        db_metadata = self._director.metadata
+
+        start = time.time()
+        #------------------------------------------------------------------
+
+        # immediately paint user-visible regions of the the database
+        if not self._priority_paint():
+            return False # a repaint was requested
+
+        # compute the painted instructions that will not get painted over
+        stale_inst = self._painted_instructions - db_coverage.coverage
+
+        # compute the painted nodes that will not get painted over
+        stale_nodes_ea = self._painted_nodes - db_coverage.nodes.viewkeys()
+        stale_nodes = [db_metadata.nodes[ea] for ea in stale_nodes_ea]
+
+        # clear old instruction paint
+        if not self._async_action(self._clear_instructions, stale_inst):
+            return False # a repaint was requested
+
+        # clear old node paint
+        if not self._async_action(self._clear_nodes, stale_nodes):
+            return False # a repaint was requested
+
+        # paint new instructions
+        if not self._async_action(self._paint_instructions, db_coverage.coverage):
+            return False # a repaint was requested
+
+        # paint new nodes
+        if not self._async_action(self._paint_nodes, db_coverage.nodes.itervalues()):
+            return False # a repaint was requested
+
+        #------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Full Paint took %s seconds" % (end - start))
+        logger.debug(" stale_inst:   %s" % "{:,}".format(len(stale_inst)))
+        logger.debug(" fresh inst:   %s" % "{:,}".format(len(db_coverage.coverage)))
+        logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
+        logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(db_coverage.nodes)))
+
+        # paint finished succesfully
+        return True
+
+    def _clear_database(self):
+        """
+        Clear all paint from the current database.
+        """
+        db_metadata = self._director.metadata
+        instructions = db_metadata.instructions
+        nodes = db_metadata.nodes.viewvalues()
+
+        # clear all instructions
+        if not self._async_action(self._clear_instructions, instructions):
+            return False # a repaint was requested
+
+        # clear all nodes
+        if not self._async_action(self._clear_nodes, nodes):
+            return False # a repaint was requested
+
+        # paint finished succesfully
         return True
 
     #--------------------------------------------------------------------------
@@ -238,7 +362,14 @@ class DatabasePainter(object):
     # Asynchronous Painting
     #--------------------------------------------------------------------------
 
+    # TODO/REMOVE
     def _async_database_painter(self):
+        try:
+            self._async_database_painter2()
+        except Exception as e:
+            logger.exception("FAIL")
+
+    def _async_database_painter2(self):
         """
         Asynchronous database painting worker loop.
         """
@@ -250,65 +381,25 @@ class DatabasePainter(object):
 
         while True:
 
-            # wait for the next external repaint request
-            self._repaint_request.wait()
+            # wait for the next command to come through
+            action = self._msg_queue.get()
 
-            # if we've been signaled to spindown the painting thread, exit now
-            if self._end_threads:
+            # repaint the database based on the current state
+            if action == self.MSG_REPAINT:
+                result = self._paint_database()
+
+            # clear all possible database paint
+            elif action == self.MSG_CLEAR:
+                result = self._clear_database()
+
+            # spin down the painting thread (this thread)
+            elif action == self.MSG_TERMINATE:
                 break
 
-            # clear the repaint flag
-            self._repaint_request.clear()
-            self._repaint_requested = False
-
-            # more code-friendly, readable aliases (db_XX == database_XX)
-            db_coverage = self._director.coverage
-            db_metadata = self._director.metadata
-
-            start = time.time()
-            #------------------------------------------------------------------
-
-            #
-            # immediately paint user-visible regions of the the database
-            #
-
-            if not self._priority_paint():
-                continue # a repaint was requested
-
-            #
-            # perform a more comprehensive paint
-            #
-
-            # compute the painted instructions that will not get painted over
-            stale_inst = self._painted_instructions - db_coverage.coverage
-
-            # compute the painted nodes that will not get painted over
-            stale_nodes_ea = self._painted_nodes - db_coverage.nodes.viewkeys()
-            stale_nodes = [db_metadata.nodes[ea] for ea in stale_nodes_ea]
-
-            # clear old instruction paint
-            if not self._async_action(self._clear_instructions, stale_inst):
-                continue # a repaint was requested
-
-            # clear old node paint
-            if not self._async_action(self._clear_nodes, stale_nodes):
-                continue # a repaint was requested
-
-            # paint new instructions
-            if not self._async_action(self._paint_instructions, db_coverage.coverage):
-                continue # a repaint was requested
-
-            # paint new nodes
-            if not self._async_action(self._paint_nodes, db_coverage.nodes.itervalues()):
-                continue # a repaint was requested
-
-            #------------------------------------------------------------------
-            end = time.time()
-            logger.debug("Full Paint took %s seconds" % (end - start))
-            logger.debug(" stale_inst:   %s" % "{:,}".format(len(stale_inst)))
-            logger.debug(" fresh inst:   %s" % "{:,}".format(len(db_coverage.coverage)))
-            logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
-            logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(db_coverage.nodes)))
+            # unknown command
+            else:
+                logger.error("UNKNOWN COMMAND! %s" % str(action))
+                break
 
         # thread exit
         logger.debug("Exiting DatabasePainter thread...")
@@ -365,7 +456,7 @@ class DatabasePainter(object):
             # immediately so that we can process the next repaint
             #
 
-            if self._repaint_requested:
+            if not self._msg_queue.empty():
                 return False
 
             #

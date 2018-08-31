@@ -337,18 +337,15 @@ class IDAPainter(DatabasePainter):
         cursor_address = idaapi.get_screen_ea()
 
         # paint functions around the cursor address
-        painted = self._priority_paint_functions(cursor_address)
-
-        # the operation has been interrupted by a repaint request
-        if self._repaint_requested:
-            return False
+        if not self._priority_paint_functions(cursor_address):
+            return False # a repaint was requested
 
         # paint instructions around the cursor address
-        self._priority_paint_instructions(cursor_address, ignore=painted)
+        #if not self._priority_paint_instructions(cursor_address):
+        #    return False # a repaint was requested
 
-        # the operation has been interrupted by a repaint request
-        if self._repaint_requested:
-            return False
+        # refresh the view
+        idaapi.refresh_idaview_anyway() #TODO THREADSAFETY
 
         # succesful completion
         return True
@@ -361,7 +358,6 @@ class IDAPainter(DatabasePainter):
         """
         db_metadata = self._director.metadata
         db_coverage = self._director.coverage
-        function_instructions = set()
 
         # the number of functions before and after the cursor to paint
         FUNCTION_BUFFER = 1
@@ -369,7 +365,7 @@ class IDAPainter(DatabasePainter):
         # get the function metadata for the function closest to our cursor
         function_metadata = db_metadata.get_closest_function(target_address)
         if not function_metadata:
-            return function_instructions # this will be empty
+            return False # a repaint was requested
 
         # select the range of functions around us that we would like to paint
         func_num = db_metadata.get_function_num(function_metadata.address)
@@ -382,33 +378,29 @@ class IDAPainter(DatabasePainter):
             # get the next function to paint
             try:
                 function_metadata = db_metadata.get_function_by_num(current_num)
+                function_address = function_metadata.address
             except IndexError:
                 continue
 
-            # repaint the function
-            if not self._paint_function(function_metadata.address):
-                break # paint interrupted
-
             # get the function coverage data for the target address
-            function_coverage = db_coverage.functions.get(function_metadata.address, None)
+            function_coverage = db_coverage.functions.get(function_address, None)
+
+            # if there is no function coverage, clear the function
             if not function_coverage:
+                if not self._clear_function(function_address):
+                    return False # a repaint was requested
                 continue
 
-            # accumulate the painted instructions by this pass
-            function_instructions |= function_coverage.instructions
+            # there is coverage, so repaint the function
+            if not self._paint_function(function_address):
+                return False # a repaint was requested
 
-            # the operation has been interrupted by a repaint request
-            if self._repaint_requested:
-                break
+        # paint finished succesfully
+        return True
 
-        # return the addresses of all the instruction we painted over
-        return function_instructions
-
-    def _priority_paint_instructions(self, target_address, ignore=set()):
+    def _priority_paint_instructions(self, target_address):
         """
         Paint instructions in the immediate vicinity of the given address.
-
-        Optionally, one can provide a set of addresses to ignore while painting.
         """
         db_metadata = self._director.metadata
         db_coverage = self._director.coverage
@@ -421,9 +413,6 @@ class IDAPainter(DatabasePainter):
         end_address   = target_address + INSTRUCTION_BUFFER
         instructions  = set(db_metadata.get_instructions_slice(start_address, end_address))
 
-        # remove any instructions painted by the function paints
-        instructions -= ignore
-
         # mask only the instructions with coverage data in this region
         instructions_coverage = instructions & db_coverage.coverage
 
@@ -433,11 +422,11 @@ class IDAPainter(DatabasePainter):
 
         # clear instructions
         if not self._async_action(self._clear_instructions, instructions):
-            return set()
+            return False # a repaint was requested
 
         # paint instructions
         if not self._async_action(self._paint_instructions, instructions_coverage):
-            return set()
+            return False # a repaint was requested
 
-        # return the instruction addresses painted
-        return instructions_coverage
+        # paint finished succesfully
+        return True
