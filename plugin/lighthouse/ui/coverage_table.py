@@ -176,9 +176,6 @@ class CoverageTableView(QtWidgets.QTableView):
         self._action_prefix = QtWidgets.QAction("Prefix selected functions", None)
         self._action_clear_prefix = QtWidgets.QAction("Clear prefixes", None)
 
-        # misc actions
-        self._action_refresh_metadata = QtWidgets.QAction("Full refresh (slow)", None)
-
     def _ui_init_header_ctx_menu_actions(self):
         """
         Initialize the right click context menu actions for the table header.
@@ -331,10 +328,6 @@ class CoverageTableView(QtWidgets.QTableView):
         # function prefixing actions
         ctx_menu.addAction(self._action_prefix)
         ctx_menu.addAction(self._action_clear_prefix)
-        ctx_menu.addSeparator()
-
-        # misc actions
-        ctx_menu.addAction(self._action_refresh_metadata)
 
         # return the completed context menu
         return ctx_menu
@@ -377,10 +370,6 @@ class CoverageTableView(QtWidgets.QTableView):
         # handle the 'Clear prefix' action
         elif action == self._action_clear_prefix:
             self._controller.clear_function_prefixes(rows)
-
-        # handle the 'Refresh metadata' action
-        elif action == self._action_refresh_metadata:
-            self._controller.refresh_metadata()
 
     #--------------------------------------------------------------------------
     # Context Menu (Table Header)
@@ -702,7 +691,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._director.metadata_modified(self._data_changed)
 
     #--------------------------------------------------------------------------
-    # AbstractItemModel Overloads
+    # QAbstractTableModel Overloads
     #--------------------------------------------------------------------------
 
     def flags(self, index):
@@ -960,7 +949,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
     # Filters
     #--------------------------------------------------------------------------
 
-    def filter_zero_coverage(self, hide=True):
+    def filter_zero_coverage(self, hide):
         """
         Filter out zero coverage functions from the model.
         """

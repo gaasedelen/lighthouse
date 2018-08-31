@@ -14,6 +14,13 @@ logger = logging.getLogger("Lighthouse.Qt.Util")
 # Qt Util
 #------------------------------------------------------------------------------
 
+def get_qt_icon(name):
+    """
+    Get a standard Qt icon by name.
+    """
+    icon_type = getattr(QtWidgets.QStyle, name)
+    return QtWidgets.QApplication.style().standardIcon(icon_type)
+
 def color_text(text, color):
     """
     Return a coloroized (HTML) version of the given string.

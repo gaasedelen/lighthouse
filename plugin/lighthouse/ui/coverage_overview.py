@@ -9,6 +9,7 @@ from lighthouse.util.disassembler import disassembler, DockableWindow
 from lighthouse.composer import ComposingShell
 from lighthouse.ui.coverage_table import CoverageTableView, CoverageTableModel, CoverageTableController
 from lighthouse.ui.coverage_combobox import CoverageComboBox
+from lighthouse.ui.coverage_settings import TableSettingsMenu
 
 logger = logging.getLogger("Lighthouse.UI.Overview")
 
@@ -21,14 +22,12 @@ class CoverageOverview(DockableWindow):
     The Coverage Overview Widget.
     """
 
-    def __init__(self, director):
+    def __init__(self, core):
         super(CoverageOverview, self).__init__(
             "Coverage Overview",
             plugin_resource(os.path.join("icons", "overview.png"))
         )
-
-        # local reference to the director
-        self._director = director
+        self._core = core
 
         # pseudo widget science
         self._visible = False
@@ -90,7 +89,7 @@ class CoverageOverview(DockableWindow):
         """
         Initialize the coverage table.
         """
-        self._table_model = CoverageTableModel(self._director, self._widget)
+        self._table_model = CoverageTableModel(self._core.director, self._widget)
         self._table_controller = CoverageTableController(self._table_model)
         self._table_view = CoverageTableView(
             self._table_controller,
@@ -105,6 +104,7 @@ class CoverageOverview(DockableWindow):
 
         # initialize child elements to go on the toolbar
         self._ui_init_toolbar_elements()
+        self._ui_init_settings()
 
         #
         # create the 'toolbar', and customize its style. specifically, we are
@@ -112,21 +112,10 @@ class CoverageOverview(DockableWindow):
         #
 
         self._toolbar = QtWidgets.QToolBar()
-        self._toolbar.setStyleSheet(
-        """
-        QToolBar::separator
-        {
-            background-color: #909090;
-            width: 2px;
-            margin: 0 0.5em 0 0.5em
-        }
-        """)
 
         # populate the toolbar with all our subordinates
         self._toolbar.addWidget(self._shell_elements)
-        self._toolbar.addSeparator()
-        self._toolbar.addWidget(self._hide_zero_label)
-        self._toolbar.addWidget(self._hide_zero_checkbox)
+        self._toolbar.addWidget(self._settings_button)
 
     def _ui_init_toolbar_elements(self):
         """
@@ -135,19 +124,13 @@ class CoverageOverview(DockableWindow):
 
         # the composing shell
         self._shell = ComposingShell(
-            self._director,
+            self._core.director,
             weakref.proxy(self._table_model),
             weakref.proxy(self._table_view)
         )
 
         # the coverage combobox
-        self._combobox = CoverageComboBox(self._director)
-
-        # the checkbox to hide 0% coverage entries
-        self._hide_zero_label = QtWidgets.QLabel("Hide 0% Coverage: ")
-        self._hide_zero_label.setFont(MonospaceFont(9))
-        self._hide_zero_checkbox = QtWidgets.QCheckBox()
-        self._hide_zero_checkbox.setStyleSheet("QCheckBox{ padding-top: 1ex; }")
+        self._combobox = CoverageComboBox(self._core.director)
 
         # the splitter to make the shell / combobox resizable
         self._shell_elements = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -178,11 +161,25 @@ class CoverageOverview(DockableWindow):
         # give the shell expansion preference over the combobox
         self._shell_elements.setStretchFactor(0, 1)
 
+    def _ui_init_settings(self):
+        """
+        Initialize the overview settings popup.
+        """
+
+        # settings button
+        self._settings_button = QtWidgets.QToolButton()
+        self._settings_button.setIcon(get_qt_icon("SP_DialogResetButton"))
+        self._settings_button.setStyleSheet("QToolButton::menu-indicator{image: none;}")
+
+        # settings menu
+        self._settings_menu = TableSettingsMenu(self._widget)
+
     def _ui_init_signals(self):
         """
         Connect UI signals.
         """
-        self._hide_zero_checkbox.stateChanged.connect(self._ui_hide_zero_toggle)
+        self._settings_menu.connect_signals(self._table_controller, self._core)
+        self._settings_button.clicked.connect(self._ui_show_settings)
 
     def _ui_layout(self):
         """
@@ -202,11 +199,20 @@ class CoverageOverview(DockableWindow):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    def _ui_hide_zero_toggle(self, checked):
+    def _ui_show_settings(self):
         """
-        Handle state change of 'Hide 0% Coverage' checkbox.
+        Handle a click of the settings button.
         """
-        self._table_model.filter_zero_coverage(checked)
+        delta = QtCore.QPoint(
+            -1*self._settings_menu.sizeHint().width(),
+            -1*self._settings_menu.sizeHint().height()
+        )
+        center = QtCore.QPoint(
+            self._settings_button.sizeHint().width()/2,
+            self._settings_button.sizeHint().height()/2
+        )
+        where = self._settings_button.mapToGlobal(center+delta)
+        self._settings_menu.popup(where)
 
     #--------------------------------------------------------------------------
     # Refresh
