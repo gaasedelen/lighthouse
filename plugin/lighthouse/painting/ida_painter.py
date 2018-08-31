@@ -345,7 +345,10 @@ class IDAPainter(DatabasePainter):
         #    return False # a repaint was requested
 
         # refresh the view
-        idaapi.refresh_idaview_anyway() #TODO THREADSAFETY
+        idaapi.execute_sync(
+            idaapi.refresh_idaview_anyway,
+            idaapi.MFF_FAST
+        )
 
         # succesful completion
         return True

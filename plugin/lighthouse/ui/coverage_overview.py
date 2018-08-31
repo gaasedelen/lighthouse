@@ -112,6 +112,7 @@ class CoverageOverview(DockableWindow):
         #
 
         self._toolbar = QtWidgets.QToolBar()
+        self._toolbar.setStyleSheet('QToolBar{spacing:1ex;}')
 
         # populate the toolbar with all our subordinates
         self._toolbar.addWidget(self._shell_elements)
