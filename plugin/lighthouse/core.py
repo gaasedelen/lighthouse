@@ -301,6 +301,7 @@ class Lighthouse(object):
         # into a generic format the director can understand (a list of addresses)
         #
 
+        load_failure = False
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
@@ -315,6 +316,7 @@ class Lighthouse(object):
                 lmsg("Failed to map coverage %s" % data.filepath)
                 lmsg("- %s" % e)
                 logger.exception("Error details:")
+                load_failure = True
                 continue
 
             #
@@ -340,6 +342,8 @@ class Lighthouse(object):
         if not created_coverage:
             lmsg("No coverage files could be mapped...")
             disassembler.hide_wait_box()
+            if load_failure:
+                warn_module_missing()
             return
 
         #
@@ -355,6 +359,8 @@ class Lighthouse(object):
 
         # show the coverage overview
         self.open_coverage_overview()
+        if load_failure:
+            warn_module_missing()
 
     #--------------------------------------------------------------------------
     # Internal
@@ -375,6 +381,7 @@ class Lighthouse(object):
         # insertion into the director (as a list of instruction addresses)
         #
 
+        load_failure = False
         for i, data in enumerate(loaded_files, 1):
 
             # keep the user informed about our progress while loading coverage
@@ -391,10 +398,15 @@ class Lighthouse(object):
                 lmsg("Failed to map coverage %s" % data.filepath)
                 lmsg("- %s" % e)
                 logger.exception("Error details:")
+                load_failure = True
                 continue
 
             # aggregate the addresses into the output coverage object
             coverage.add_addresses(addresses, False)
+
+        # warn on missing module data
+        if load_failure:
+            warn_module_missing()
 
         # return the created coverage name
         return coverage
@@ -460,6 +472,34 @@ class Lighthouse(object):
         return load_coverage_files(filenames)
 
 #------------------------------------------------------------------------------
+# Warnings
+#------------------------------------------------------------------------------
+
+def warn_module_missing():
+    """
+    Display a load failure for missing coverage.
+    """
+    disassembler.warning(
+        "Lighthouse failed to load coverage data from one or more files!\n\n"
+        " Possible reasons:\n"
+        " - You selected a coverage file for the wrong binary\n"
+        " - The recorded binary name is different from this database\n\n"
+        "Please see the disassembler console for more info..."
+    )
+
+def warn_drcov_malformed():
+    """
+    Display a load failure for a malformed/unreadable coverage file.
+    """
+    disassembler.warning(
+        "Could not parse one or more of the selected coverage files!\n\n"
+        " Possible reasons:\n"
+        " - You selected a file that was *not* a coverage file\n"
+        " - The coverage file might be malformed/unreadable\n\n"
+        "Please see the disassembler console for more info..."
+    )
+
+#------------------------------------------------------------------------------
 # Util
 #------------------------------------------------------------------------------
 
@@ -474,6 +514,7 @@ def load_coverage_files(filenames):
     # their coverage data from disk
     #
 
+    load_failure = False
     for filename in filenames:
 
         # attempt to load/parse a single coverage data file from disk
@@ -485,10 +526,15 @@ def load_coverage_files(filenames):
             lmsg("Failed to load coverage %s" % filename)
             lmsg(" - Error: %s" % str(e))
             logger.exception(" - Traceback:")
+            load_failure = True
             continue
 
         # save the loaded coverage data to the output list
         loaded_coverage.append(coverage_data)
+
+    # warn if we encountered malformed files...
+    if load_failure:
+        warn_drcov_malformed()
 
     # return all the succesfully loaded coverage files
     return loaded_coverage

@@ -139,6 +139,9 @@ class BinjaAPI(DisassemblerAPI):
     def is_msg_inited(self):
         return True
 
+    def warning(self, text):
+        binaryninja.interaction.show_message_box("Warning", text)
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------

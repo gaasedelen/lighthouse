@@ -88,7 +88,7 @@ class DrcovData(object):
 
         # if we fail to find a module that matches the given name, bail
         if not module:
-            raise ValueError("Failed to find module '%s' in coverage data" % module_name)
+            raise ValueError("No coverage for module '%s' in log" % module_name)
 
         # extract module id for speed
         mod_id = module.id

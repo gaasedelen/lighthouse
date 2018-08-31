@@ -138,6 +138,9 @@ class IDAAPI(DisassemblerAPI):
     def is_msg_inited(self):
         return idaapi.is_msg_inited()
 
+    def warning(self, text):
+        idaapi.warning(text)
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------

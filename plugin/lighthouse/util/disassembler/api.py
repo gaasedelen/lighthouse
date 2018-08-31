@@ -153,6 +153,13 @@ class DisassemblerAPI(object):
         """
         pass
 
+    @abc.abstractmethod
+    def warning(self, text):
+        """
+        Display a warning dialog box with the given text.
+        """
+        pass
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------
