@@ -192,7 +192,9 @@ class ComposingShell(QtWidgets.QWidget):
         # get the detailed coverage strings from the director
         for x in self._director.coverage_names:
             hints.append(self._director.get_coverage_string(x))
-            self._shorthand.append(self._director.get_shorthand(x))
+            symbol = self._director.get_shorthand(x)
+            if symbol:
+                self._shorthand.append(symbol)
 
         # install the fresh coverage strings to the hint completer dialog
         self._completer_model.setStringList(hints)
