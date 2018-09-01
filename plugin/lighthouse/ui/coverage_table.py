@@ -62,7 +62,7 @@ class CoverageTableView(QtWidgets.QTableView):
             "  gridline-color: black;"
             "  background-color: %s;" % palette.overview_bg.name() +
             #"  color: %s;" % palette.combobox_fg.name() +
-            "  outline; none; "
+            "  outline: none; "
             "} " +
             "QTableView::item:selected {"
             "  color: white; "

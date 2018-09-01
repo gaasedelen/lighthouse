@@ -166,7 +166,7 @@ class Lighthouse(object):
         pass
 
     #--------------------------------------------------------------------------
-    # UI - Actions (Public)
+    # UI Actions (Public)
     #--------------------------------------------------------------------------
 
     def open_coverage_overview(self):
@@ -287,8 +287,10 @@ class Lighthouse(object):
         # data as a list of DrcovData objects
         #
 
+        disassembler.show_wait_box("Loading coverage from disk...")
         drcov_list = load_coverage_files(filenames)
         if not drcov_list:
+            disassembler.hide_wait_box()
             self.director.metadata.abort_refresh()
             return
 
@@ -298,7 +300,7 @@ class Lighthouse(object):
         # block until it completes. the user will be shown a progress dialog.
         #
 
-        disassembler.show_wait_box("Building database metadata...")
+        disassembler.replace_wait_box("Building database metadata...")
         await_future(future)
 
         # insert the loaded drcov data objects into the director
