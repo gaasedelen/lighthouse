@@ -21,15 +21,15 @@ class ComposingShell(QtWidgets.QWidget):
     independent, but obviously must communicate with the director.
     """
 
-    def __init__(self, director, model, table=None):
+    def __init__(self, director, table_model, table_view=None):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
 
         # external entities
         self._director = director
         self._palette = director._palette
-        self._model = model
-        self._table = table
+        self._table_model = table_model
+        self._table_view = table_view
 
         # command / input
         self._search_text = ""
@@ -117,6 +117,10 @@ class ComposingShell(QtWidgets.QWidget):
         self._completer.setModel(self._completer_model)
         self._completer.setWrapAround(False)
         self._completer.popup().setFont(self._font)
+        self._completer.popup().setStyleSheet(
+            "background: %s;" % self._palette.shell_hint_bg.name() +
+            "color: %s;" % self._palette.shell_hint_fg.name()
+        )
         self._completer.setWidget(self._line)
 
     def _ui_init_signals(self):
@@ -139,7 +143,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._director.coverage_modified(self._internal_refresh)
 
         # register for cues from the model
-        self._model.layoutChanged.connect(self._ui_shell_text_changed)
+        self._table_model.layoutChanged.connect(self._ui_shell_text_changed)
 
     def _ui_layout(self):
         """
@@ -182,11 +186,18 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Refresh the shell coverage hint contents.
         """
+        hints = []
+        self._shorthand = []
 
-        # get the most recent coverage strings from the director
-        detailed_strings = [self._director.get_coverage_string(x) for x in self._director.coverage_names]
-        self._completer_model.setStringList(detailed_strings)
-        self._shorthand = [x[0] for x in detailed_strings]
+        # get the detailed coverage strings from the director
+        for x in self._director.coverage_names:
+            hints.append(self._director.get_coverage_string(x))
+            symbol = self._director.get_shorthand(x)
+            if symbol:
+                self._shorthand.append(symbol)
+
+        # install the fresh coverage strings to the hint completer dialog
+        self._completer_model.setStringList(hints)
 
         # queue a UI coverage hint if necessary
         self._ui_hint_coverage_refresh()
@@ -245,13 +256,13 @@ class ComposingShell(QtWidgets.QWidget):
 
         # not a search query clear any lingering filters for it
         else:
-            self._model.filter_string("")
+            self._table_model.filter_string("")
 
         #
         # a Jump, eg '0x804010a' or 'sub_1400016F0'
         #
 
-        if self.is_jump(text) and self._table:
+        if self.is_jump(text) and self._table_view:
             self._line_label.setText("Jump")
             self._highlight_jump()
             return
@@ -278,7 +289,7 @@ class ComposingShell(QtWidgets.QWidget):
             return
 
         # jump to the function entry containing the requested address
-        if self.is_jump(text) and self._table:
+        if self.is_jump(text) and self._table_view:
             self._execute_jump(text)
             return
 
@@ -350,10 +361,10 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # the given text is a real search query, apply it as a filter now
-        self._model.filter_string(self._search_text)
+        self._table_model.filter_string(self._search_text)
 
         # compute coverage % of the visible (filtered) results
-        percent = self._model.get_modeled_coverage_percent()
+        percent = self._table_model.get_modeled_coverage_percent()
 
         # show the coverage % of the search results in the shell label
         self._line_label.setText("%1.2f%%" % percent)
@@ -370,7 +381,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._color_clear()
 
         # color search based on if there are any matching results
-        if self._model.rowCount():
+        if self._table_model.rowCount():
             self._color_text(self._palette.valid_text, start=1)
         else:
             self._color_text(self._palette.invalid_text, start=1)
@@ -461,16 +472,16 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Execute the jump semantics.
         """
-        assert self._table
+        assert self._table_view
 
         # retrieve the jump target
         function_address = self._compute_jump(text)
         assert function_address
 
         # select the function entry in the coverage overview table
-        self._table.selectRow(self._model.func2row[function_address])
-        self._table.scrollTo(
-            self._table.currentIndex(),
+        self._table_view.selectRow(self._table_model.func2row[function_address])
+        self._table_view.scrollTo(
+            self._table_view.currentIndex(),
             QtWidgets.QAbstractItemView.PositionAtCenter
         )
 
@@ -577,7 +588,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         #
         # While the user is picking a name for the new composite, we might as well
-        # try and cache it asynchronously :-). kick the caching off now.
+        # try and compute/cache it asynchronously :-). kick the caching off now.
         #
 
         self._director.cache_composition(self._last_ast, force=True)
@@ -595,13 +606,27 @@ class ComposingShell(QtWidgets.QWidget):
             "COMP_%s" % self.text
         )
 
-        # the user did not enter a coverage name or hit cancel - abort the save
+        #
+        # once the naming prompt closes, the composing shell tries to pop
+        # the coverage hint again which can make it annoying and too
+        # aggressive.
+        #
+        # clearing focus on the text line will ensure the hint does not pop
+        #
+
+        self._line.clearFocus()
+
+        #
+        # returning back to the naming prompt, if the user did not enter a
+        # coverage name (or hit cancel), we will abort saving the composition
+        #
+
         if not (ok and coverage_name):
             return
 
         #
-        # all good, ask the director to save the last composition
-        # composition under the given coverage name
+        # a name was given and all is good, ask the director to save the last
+        # composition under the user specified coverage name
         #
 
         self._director.add_composition(coverage_name, self._last_ast)
@@ -784,7 +809,7 @@ class ComposingShell(QtWidgets.QWidget):
 
             # configure the colors/style for this explicit token
             #highlight.setBackground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
-            highlight.setForeground(QtGui.QBrush(QtGui.QColor(TOKEN_COLORS[token.type])))
+            highlight.setForeground(QtGui.QBrush(TOKEN_COLORS[token.type]))
             cursor.setCharFormat(highlight)
 
         #

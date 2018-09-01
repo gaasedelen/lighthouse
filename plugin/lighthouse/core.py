@@ -182,7 +182,7 @@ class Lighthouse(object):
                 return
 
             # create a new coverage overview if there is not one visible
-            self._ui_coverage_overview = CoverageOverview(self.director)
+            self._ui_coverage_overview = CoverageOverview(self)
             self._ui_coverage_overview.show()
         except Exception as e:
             logger.exception(e)

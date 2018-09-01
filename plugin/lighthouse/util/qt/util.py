@@ -14,6 +14,19 @@ logger = logging.getLogger("Lighthouse.Qt.Util")
 # Qt Util
 #------------------------------------------------------------------------------
 
+def get_qt_icon(name):
+    """
+    Get a standard Qt icon by name.
+    """
+    icon_type = getattr(QtWidgets.QStyle, name)
+    return QtWidgets.QApplication.style().standardIcon(icon_type)
+
+def color_text(text, color):
+    """
+    Return a coloroized (HTML) version of the given string.
+    """
+    return "<font color=\"%s\">%s</font>" % (color.name(), text)
+
 def get_qt_main_window():
     """
     Get the QMainWindow instance for the current Qt runtime.
@@ -52,6 +65,19 @@ def singleshot(ms, function=None):
     timer.setSingleShot(True)
     timer.timeout.connect(function)
     return timer
+
+def remap_event(event, new_key):
+    """
+    Create an identical QKeyEvent, under a new key binding.
+    """
+    return QtGui.QKeyEvent(
+        QtCore.QEvent.KeyPress,
+        new_key,
+        event.modifiers(),
+        event.text(),
+        event.isAutoRepeat(),
+        event.count()
+    )
 
 def copy_to_clipboard(data):
     """

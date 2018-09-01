@@ -606,6 +606,8 @@ class DatabaseMetadata(object):
     def _name_changed(self, address, new_name, local_name=None):
         """
         Handler for rename event in IDA.
+
+        TODO/FUTURE: refactor this to not be so IDA-specific
         """
 
         # we should never care about local renames (eg, loc_40804b), ignore
@@ -639,7 +641,8 @@ class DatabaseMetadata(object):
         logger.debug("  New name: %s" % new_name)
 
         # rename the function, and notify metadata listeners
-        function.name = new_name
+        #function.name = new_name
+        function._refresh_name()
         self._notify_function_renamed()
 
         # necessary for IDP/IDB_Hooks

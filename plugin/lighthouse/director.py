@@ -6,7 +6,7 @@ import threading
 import collections
 
 from lighthouse.util.misc import *
-from lighthouse.util.qt import await_future, await_lock
+from lighthouse.util.qt import await_future, await_lock, color_text
 from lighthouse.util.disassembler import disassembler
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
@@ -532,7 +532,7 @@ class CoverageDirector(object):
 
         raise ValueError("No coverage data found for %s" % coverage_name)
 
-    def get_coverage_string(self, coverage_name):
+    def get_coverage_string(self, coverage_name, color=False):
         """
         Retrieve a detailed coverage string for the given coverage_name.
         """
@@ -544,15 +544,33 @@ class CoverageDirector(object):
         symbol   = self.get_shorthand(coverage_name)
         coverage = self.get_coverage(coverage_name)
 
+        # compute coverage percent & render it in string form
+        percent = coverage.instruction_percent*100
+        percent_str = "%5.2f" % percent
+
         #
-        # build a detailed coverage string
+        # build and return a generic detailed coverage string
         #   eg: 'A - 73.45% - drcov.boombox.exe.03820.0000.proc.log'
         #
 
-        coverage_string = "%s - %5.2f%% - %s" % \
-            (symbol, coverage.instruction_percent*100, coverage_name)
+        if color:
 
-        return coverage_string
+            # color the symbol token like the shell
+            symbol = color_text(symbol, self._palette.coverage_token)
+
+            # low coverage color
+            if percent < 30.0:
+                percent_str = color_text(percent_str, self._palette.coverage_bad)
+
+            # okay coverage color
+            elif percent < 60.0:
+                percent_str = color_text(percent_str, self._palette.coverage_okay)
+
+            # good coverage color
+            else:
+                percent_str = color_text(percent_str, self._palette.coverage_good)
+
+        return "%s - %s%% - %s" % (symbol, percent_str, coverage_name)
 
     #----------------------------------------------------------------------
     # Aliases

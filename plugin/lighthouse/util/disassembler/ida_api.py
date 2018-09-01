@@ -51,9 +51,9 @@ class IDAAPI(DisassemblerAPI):
         self._version_minor = minor
         self._version_patch = 0
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Properties
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     @property
     def version_major(self):
@@ -67,9 +67,9 @@ class IDAAPI(DisassemblerAPI):
     def version_patch(self):
         return self._version_patch
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # API Shims
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def create_rename_hooks(self):
         if self.using_ida7api:
@@ -196,31 +196,15 @@ class IDAAPI(DisassemblerAPI):
 
         return wrapper
 
-    @staticmethod
-    def execute_write_async(function):
-        """
-        Decorator to perform an asynchrnous database write.
-
-        HACK: workaround for the idapython idaapi.MFF_NOWAIT bug (Fixed in 7.1)
-        """
-        @functools.wraps(function)
-        def wrapper(*args, **kwargs):
-            def bugfix():
-                time.sleep(0)
-                function(*args, **kwargs)
-                time.sleep(0)
-            return idaapi.execute_sync(bugfix, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
-        return wrapper
-
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Function Prefixing
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     PREFIX_SEPARATOR = "%"
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Theme Prediction Helpers (Internal)
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def _get_ida_bg_color_ida7(self):
         """

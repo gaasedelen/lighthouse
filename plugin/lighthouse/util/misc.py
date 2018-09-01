@@ -74,7 +74,7 @@ def register_callback(callback_list, callback):
     # 'register' the callback
     callback_list.append(callback_ref)
 
-def notify_callback(callback_list):
+def notify_callback(callback_list, *args):
     """
     Notify the given list of registered callbacks.
 
@@ -111,7 +111,7 @@ def notify_callback(callback_list):
 
             # call the object instance callback
             try:
-                callback(obj)
+                callback(obj, *args)
 
             # assume a Qt cleanup/deletion occured
             except RuntimeError as e:
@@ -127,7 +127,7 @@ def notify_callback(callback_list):
                 continue
 
             # call the static callback
-            callback()
+            callback(*args)
 
     # remove the deleted callbacks
     for callback_ref in cleanup:

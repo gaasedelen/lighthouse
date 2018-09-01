@@ -110,12 +110,7 @@ class BinjaAPI(DisassemblerAPI):
         return self.bv.start
 
     def get_root_filename(self):
-        """
-        TODO/V35: Binja needs to expose original filename API's ...
-
-        This is the best we can do without getting really ugly.
-        """
-        return os.path.basename(os.path.splitext(self.bv.file.filename)[0])
+        return os.path.basename(self.bv.file.original_filename)
 
     def navigate(self, address):
         return self.bv.navigate(self.bv.view, address)

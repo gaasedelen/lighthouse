@@ -38,6 +38,7 @@ class LighthousePalette(object):
 
         self._selection     = [QtGui.QColor(100, 0, 130),  QtGui.QColor(226, 143, 0)]
         self._coverage_bad  = [QtGui.QColor(221, 0, 0),    QtGui.QColor(207, 31, 0)]
+        self._coverage_okay = [QtGui.QColor("#bf7ae7"),    QtGui.QColor(207, 31, 0)]
         self._coverage_good = [QtGui.QColor(51, 153, 255), QtGui.QColor(75, 209, 42)]
 
         #
@@ -57,14 +58,23 @@ class LighthousePalette(object):
         self._invalid_text      = [0xF02070, 0xFF0000]
         self._invalid_highlight = [0x990000, 0xFF0000]
 
+        self._shell_hint_bg = [QtGui.QColor(45, 45, 45), QtGui.QColor(45, 45, 45)]
+        self._shell_hint_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
+        self._combobox_bg = [QtGui.QColor(45, 45, 45), QtGui.QColor(45, 45, 45)]
+        self._combobox_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
+        self._combobox_selection_bg = [QtGui.QColor(51, 153, 255), QtGui.QColor(51, 153, 255)]
+        self._combobox_selection_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
         #
         # Composition Grammar
         #
 
-        self._logic_token    = [0xF02070, 0xFF0000]
-        self._comma_token    = [0x00FF00, 0x0000FF]
-        self._paren_token    = [0x40FF40, 0x0000FF]
-        self._coverage_token = [0x80F0FF, 0x000000]
+        self._logic_token    = [QtGui.QColor("#F02070"), QtGui.QColor("#FF0000")]
+        self._comma_token    = [QtGui.QColor("#00FF00"), QtGui.QColor("#0000FF")]
+        self._paren_token    = [QtGui.QColor("#40FF40"), QtGui.QColor("#0000FF")]
+        self._coverage_token = [QtGui.QColor("#80F0FF"), QtGui.QColor("#000000")]
 
     #--------------------------------------------------------------------------
     # Theme Management
@@ -194,6 +204,10 @@ class LighthousePalette(object):
         return self._coverage_bad[self.qt_theme]
 
     @property
+    def coverage_okay(self):
+        return self._coverage_okay[self.qt_theme]
+
+    @property
     def coverage_good(self):
         return self._coverage_good[self.qt_theme]
 
@@ -228,6 +242,34 @@ class LighthousePalette(object):
     @property
     def invalid_highlight(self):
         return self._invalid_highlight[self.qt_theme]
+
+    @property
+    def shell_hint_bg(self):
+        return self._shell_hint_bg[self.qt_theme]
+
+    @property
+    def shell_hint_fg(self):
+        return self._shell_hint_fg[self.qt_theme]
+
+    #--------------------------------------------------------------------------
+    # Coverage Combobox
+    #--------------------------------------------------------------------------
+
+    @property
+    def combobox_bg(self):
+        return self._combobox_bg[self.qt_theme]
+
+    @property
+    def combobox_fg(self):
+        return self._combobox_fg[self.qt_theme]
+
+    @property
+    def combobox_selection_bg(self):
+        return self._combobox_selection_bg[self.qt_theme]
+
+    @property
+    def combobox_selection_fg(self):
+        return self._combobox_selection_fg[self.qt_theme]
 
     #--------------------------------------------------------------------------
     # Composition Grammar
