@@ -154,6 +154,42 @@ class DatabaseCoverage(object):
         """
         return self._hitmap.viewkeys()
 
+    @property
+    def suspicious(self):
+        """
+        Return a bool indicating if the coverage seems badly mapped.
+        """
+        bad = 0
+        total = len(self.nodes)
+
+        #
+        # count the number of nodes that allegedly have coverage data, but
+        # don't actually have their first instruction marked as executed
+        #
+        # this is considered 'suspicious' and should be a red flag that the
+        # provided coverage data is malformed, or for a different binary
+        #
+
+        for adddress, node_coverage in self.nodes.iteritems():
+            if adddress in node_coverage.executed_instructions:
+                continue
+            bad += 1
+
+        # compute a percentage of the 'bad nodes'
+        percent = (bad/float(total))*100
+        logger.debug("SUSPICIOUS: %5.2f%% (%u/%u)" % (percent, bad, total))
+
+        #
+        # if the percentage of 'bad' coverage nodes is too high, we consider
+        # this database coverage as 'suspicious' or 'badly mapped'
+        #
+        # this number (2%) may need to be tuned. really any non-zero figure
+        # is strange, but we will give some wiggle room for DBI or
+        # disassembler fudginess.
+        #
+
+        return percent > 2.0
+
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
