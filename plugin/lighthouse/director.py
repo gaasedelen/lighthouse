@@ -5,6 +5,7 @@ import logging
 import threading
 import collections
 
+from lighthouse.util import lmsg
 from lighthouse.util.misc import *
 from lighthouse.util.qt import await_future, await_lock, color_text
 from lighthouse.util.disassembler import disassembler
@@ -41,6 +42,9 @@ class CoverageDirector(object):
     and provide a platform for researchers to explore the relationship
     between multiple coverage sets.
     """
+
+    ERROR_COVERAGE_ABSENT = 1
+    ERROR_COVERAGE_SUSPICIOUS = 2
 
     def __init__(self, palette):
 
@@ -310,6 +314,14 @@ class CoverageDirector(object):
     # Batch Loading
     #----------------------------------------------------------------------
 
+    def resume_aggregation(self):
+        """
+        Resume the aggregate computation.
+        """
+        assert self._aggregation_suspended
+        self._refresh_aggregate()
+        self._aggregation_suspended = False
+
     def suspend_aggregation(self):
         """
         Suspend the aggregate computation for any newly added coverage.
@@ -320,16 +332,142 @@ class CoverageDirector(object):
         """
         self._aggregation_suspended = True
 
-    def resume_aggregation(self):
+    #----------------------------------------------------------------------
+    # Coverage Creation
+    #----------------------------------------------------------------------
+
+    def create_coverage_from_addresses(self, coverage_name, addresses):
         """
-        Resume the aggregate computation.
+        Create a new coverage object from a list of instruction addresses.
+
+        This is effectively an alias of self.update_coverage
         """
-        assert self._aggregation_suspended
-        self._refresh_aggregate()
-        self._aggregation_suspended = False
+        return self.update_coverage(coverage_name, addresses)
+
+    def create_coverage_from_drcov_list(self, drcov_list):
+        """
+        Create many coverage objects from a list of loaded DrcovData.
+
+        Returns a tuple of (created_coverage, errors)
+        """
+        created_coverage = []
+        errors = []
+
+        #
+        # stop the director's aggregate from updating. this is in the interest
+        # of better performance when loading more than one new coverage set
+        # into the director
+        #
+
+        self.suspend_aggregation()
+
+        #
+        # loop through the coverage data we have loaded from disk, and begin
+        # the normalization process to translate / filter / flatten its blocks
+        # into a generic format the director can understand (a list of addresses)
+        #
+
+        for i, drcov_data in enumerate(drcov_list, 1):
+
+            # keep the user informed about our progress while loading coverage
+            disassembler.replace_wait_box(
+                "Normalizing and mapping coverage %u/%u" % (i, len(drcov_list))
+            )
+
+            # normalize coverage data to the open database
+            try:
+                addresses = self._normalize_drcov_data(drcov_data)
+            except ValueError as e:
+                errors.append((self.ERROR_COVERAGE_ABSENT, drcov_data.filepath))
+                lmsg("Failed to normalize coverage %s" % drcov_data.filepath)
+                lmsg("- %s" % e)
+                continue
+
+            #
+            # ask the director to create and track a new coverage set from
+            # the normalized coverage data we provide
+            #
+
+            coverage_name = os.path.basename(drcov_data.filepath)
+            coverage = self.create_coverage_from_addresses(coverage_name, addresses)
+
+            # save the coverage name to the list of succesful loads
+            created_coverage.append(coverage_name)
+
+            # note any loaded coverage file looks poorly mapped (suspicious)
+            if coverage.suspicious:
+                errors.append((self.ERROR_COVERAGE_SUSPICIOUS, drcov_data.filepath))
+                lmsg("Badly mapped coverage %s" % drcov_data.filepath)
+
+        #
+        # resume the director's aggregation capabilities, triggering an update
+        # to recompute the aggregate with the newly loaded coverage
+        #
+
+        disassembler.replace_wait_box("Recomputing coverage aggregate...")
+        self.resume_aggregation()
+
+        # return the list of created DatabaseCoverage objects
+        return (created_coverage, errors)
+
+    def _normalize_drcov_data(self, drcov_data):
+        """
+        Produce normalized coverage data from a DrcovData object.
+        """
+
+        # extract the coverage relevant to this IDB (well, the root binary)
+        root_filename   = disassembler.get_root_filename()
+        coverage_blocks = drcov_data.get_blocks_by_module(root_filename)
+
+        # rebase the basic blocks
+        base = disassembler.get_imagebase()
+        rebased_blocks = rebase_blocks(base, coverage_blocks)
+
+        # coalesce the blocks into larger contiguous blobs
+        condensed_blocks = coalesce_blocks(rebased_blocks)
+
+        # flatten the blobs into individual instructions or addresses
+        return self.metadata.flatten_blocks(condensed_blocks)
+
+    def aggregate_drcov_batch(self, drcov_list):
+        """
+        Aggregate a given list of drcov_data into a single coverage object.
+        """
+        errors = []
+
+        # create a new coverage set to manually aggregate data into
+        coverage = DatabaseCoverage({}, self._palette)
+
+        #
+        # loop through the coverage data we have loaded from disk, and begin
+        # the normalization process to translate / filter / flatten it for
+        # insertion into the director (as a list of instruction addresses)
+        #
+
+        for i, drcov_data in enumerate(drcov_list, 1):
+
+            # keep the user informed about our progress while loading coverage
+            disassembler.replace_wait_box(
+                "Aggregating batch data %u/%u" % (i, len(drcov_list))
+            )
+
+            # normalize coverage data to the open database
+            try:
+                addresses = self._normalize_drcov_data(drcov_data)
+            except Exception as e:
+                errors.append((self.ERROR_COVERAGE_ABSENT, drcov_data.filepath))
+                lmsg("Failed to normalize coverage %s" % drcov_data.filepath)
+                lmsg("- %s" % e)
+                continue
+
+            # aggregate the addresses into the output coverage object
+            coverage.add_addresses(addresses, False)
+
+        # return the created coverage name
+        return (coverage, errors)
 
     #----------------------------------------------------------------------
-    # Coverage
+    # Coverage Management
     #----------------------------------------------------------------------
 
     def select_coverage(self, coverage_name):
@@ -359,14 +497,6 @@ class CoverageDirector(object):
 
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
-
-    def create_coverage(self, coverage_name, coverage_data):
-        """
-        Create a new coverage object maintained by the director.
-
-        This is effectively an alias of self.update_coverage
-        """
-        return self.update_coverage(coverage_name, coverage_data)
 
     def update_coverage(self, coverage_name, coverage_data):
         """

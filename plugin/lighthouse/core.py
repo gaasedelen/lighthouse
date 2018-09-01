@@ -3,7 +3,7 @@ import abc
 import logging
 
 from lighthouse.ui import CoverageOverview
-from lighthouse.util import *
+from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
@@ -184,7 +184,7 @@ class Lighthouse(object):
             # create a new coverage overview if there is not one visible
             self._ui_coverage_overview = CoverageOverview(self)
             self._ui_coverage_overview.show()
-        except Exception as e:
+        except Exception as e: # TODO: remove
             logger.exception(e)
 
     def interactive_load_batch(self):
@@ -195,20 +195,27 @@ class Lighthouse(object):
 
         #
         # kick off an asynchronous metadata refresh. this collects underlying
-        # database metadata while the user will be busy selecting coverage files.
+        # database metadata while the user is busy selecting coverage files.
         #
 
-        future = self.director.refresh_metadata(progress_callback=metadata_progress)
+        future = self.director.refresh_metadata(
+            progress_callback=metadata_progress
+        )
 
         #
         # we will now prompt the user with an interactive file dialog so they
         # can select the coverage files they would like to load from disk.
         #
 
-        loaded_files = self._select_and_load_coverage_files()
+        filenames = self._select_coverage_files()
 
-        # if no valid coveragee files were selected (and loaded), bail
-        if not loaded_files:
+        #
+        # load the selected coverage files from disk (if any) and return their
+        # data as a list of DrcovData objects
+        #
+
+        drcov_list = load_coverage_files(filenames)
+        if not drcov_list:
             self.director.metadata.abort_refresh()
             return
 
@@ -222,7 +229,7 @@ class Lighthouse(object):
 
         # if user didn't enter a name for the batch, or hit cancel, we abort
         if not (ok and coverage_name):
-            lmsg("Aborting batch load...")
+            lmsg("Canceling batch load...")
             return
 
         #
@@ -235,46 +242,53 @@ class Lighthouse(object):
         await_future(future)
 
         # aggregate all the selected files into one new coverage set
-        new_coverage = self._aggregate_batch(loaded_files)
+        new_coverage, errors = self.director.aggregate_drcov_batch(drcov_list)
 
         # inject the the aggregated coverage set
         disassembler.replace_wait_box("Mapping coverage...")
-        self.director.create_coverage(coverage_name, new_coverage.data)
+        self.director.create_coverage_from_addresses(coverage_name, new_coverage.data)
 
         # select the newly created batch coverage
         disassembler.replace_wait_box("Selecting coverage...")
         self.director.select_coverage(coverage_name)
 
-        # all done, hide the IDA wait box
+        # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()
         lmsg("Successfully loaded batch %s..." % coverage_name)
-
-        # show the coverage overview
         self.open_coverage_overview()
+
+        # finally, emit any notable issues that occured during load
+        warn_errors(errors)
 
     def interactive_load_file(self):
         """
         Interactive loading of individual coverage files.
         """
         self.palette.refresh_colors()
-        created_coverage = []
 
         #
         # kick off an asynchronous metadata refresh. this collects underlying
-        # database metadata while the user will be busy selecting coverage files.
+        # database metadata while the user is busy selecting coverage files.
         #
 
-        future = self.director.refresh_metadata(progress_callback=metadata_progress)
+        future = self.director.refresh_metadata(
+            progress_callback=metadata_progress
+        )
 
         #
         # we will now prompt the user with an interactive file dialog so they
         # can select the coverage files they would like to load from disk.
         #
 
-        loaded_files = self._select_and_load_coverage_files()
+        filenames = self._select_coverage_files()
 
-        # if no valid coveragee files were selected (and loaded), bail
-        if not loaded_files:
+        #
+        # load the selected coverage files from disk (if any) and return their
+        # data as a list of DrcovData objects
+        #
+
+        drcov_list = load_coverage_files(filenames)
+        if not drcov_list:
             self.director.metadata.abort_refresh()
             return
 
@@ -287,129 +301,39 @@ class Lighthouse(object):
         disassembler.show_wait_box("Building database metadata...")
         await_future(future)
 
-        #
-        # stop the director's aggregate from updating. this is in the interest
-        # of better performance when loading more than one new coverage set
-        # into the director.
-        #
-
-        self.director.suspend_aggregation()
+        # insert the loaded drcov data objects into the director
+        created_coverage, errors = self.director.create_coverage_from_drcov_list(drcov_list)
 
         #
-        # loop through the coverage data we have loaded from disk, and begin
-        # the normalization process to translate / filter / flatten its blocks
-        # into a generic format the director can understand (a list of addresses)
+        # if the director failed to map any coverage, the user probably
+        # provided bad files. emit any warnings and bail...
         #
 
-        load_failure = False
-        for i, data in enumerate(loaded_files, 1):
-
-            # keep the user informed about our progress while loading coverage
-            disassembler.replace_wait_box(
-                "Normalizing and mapping coverage %u/%u" % (i, len(loaded_files))
-            )
-
-            # normalize coverage data to the open database
-            try:
-                addresses = normalize_coverage(data, self.director.metadata)
-            except Exception as e:
-                lmsg("Failed to map coverage %s" % data.filepath)
-                lmsg("- %s" % e)
-                logger.exception("Error details:")
-                load_failure = True
-                continue
-
-            #
-            # ask the director to create and track a new coverage set from
-            # the normalized coverage data we provide
-            #
-
-            coverage_name = os.path.basename(data.filepath)
-            self.director.create_coverage(coverage_name, addresses)
-
-            # save the coverage name to the list of succesful loads
-            created_coverage.append(coverage_name)
-
-        #
-        # resume the director's aggregation capabilities, triggering an update
-        # to recompute the aggregate with the newly loaded coverage
-        #
-
-        disassembler.replace_wait_box("Recomputing coverage aggregate...")
-        self.director.resume_aggregation()
-
-        # if nothing was mapped, then there's nothing else to do
         if not created_coverage:
-            lmsg("No coverage files could be mapped...")
+            lmsg("No coverage files could be loaded...")
             disassembler.hide_wait_box()
-            if load_failure:
-                warn_module_missing()
+            warn_errors(errors)
             return
 
         #
-        # select one (the first) of the newly loaded coverage file(s)
+        # activate the first of the newly loaded coverage file(s). this is the
+        # one that will be visible in the coverage overview once opened
         #
 
-        disassembler.show_wait_box("Selecting coverage...")
+        disassembler.replace_wait_box("Selecting coverage...")
         self.director.select_coverage(created_coverage[0])
 
-        # all done, hide the IDA wait box
+        # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
-
-        # show the coverage overview
         self.open_coverage_overview()
-        if load_failure:
-            warn_module_missing()
+
+        # finally, emit any notable issues that occured during load
+        warn_errors(errors)
 
     #--------------------------------------------------------------------------
     # Internal
     #--------------------------------------------------------------------------
-
-    def _aggregate_batch(self, loaded_files):
-        """
-        Aggregate the given loaded_files data into a single coverage object.
-        """
-        disassembler.show_wait_box("Aggregating coverage batch...")
-
-        # create a new coverage set to manually aggregate data into
-        coverage = DatabaseCoverage({}, self.palette)
-
-        #
-        # loop through the coverage data we have loaded from disk, and begin
-        # the normalization process to translate / filter / flatten it for
-        # insertion into the director (as a list of instruction addresses)
-        #
-
-        load_failure = False
-        for i, data in enumerate(loaded_files, 1):
-
-            # keep the user informed about our progress while loading coverage
-            disassembler.show_wait_box(
-                "Aggregating batch data %u/%u" % (i, len(loaded_files))
-            )
-
-            # normalize coverage data to the open database
-            try:
-                addresses = normalize_coverage(data, self.director.metadata)
-
-            # normalization failed, print & log it
-            except Exception as e:
-                lmsg("Failed to map coverage %s" % data.filepath)
-                lmsg("- %s" % e)
-                logger.exception("Error details:")
-                load_failure = True
-                continue
-
-            # aggregate the addresses into the output coverage object
-            coverage.add_addresses(addresses, False)
-
-        # warn on missing module data
-        if load_failure:
-            warn_module_missing()
-
-        # return the created coverage name
-        return coverage
 
     def _select_coverage_files(self):
         """
@@ -445,59 +369,6 @@ class Lighthouse(object):
 
         # return the captured filenames
         return filenames
-
-    def _select_and_load_coverage_files(self):
-        """
-        Internal - prompt file dialog, and load selected coverage data.
-
-        Returns a list of DrcovData objects, parsed from disk.
-        """
-
-        #
-        # prompt the user with a QtFileDialog so that they can select any
-        # number of coverage files to load at once.
-        #
-        # if no files are selected, we abort the coverage loading process.
-        #
-
-        filenames = self._select_coverage_files()
-        if not filenames:
-            return None
-
-        #
-        # load the selected coverage files from disk and return their data
-        # as a list of DrcovData objects
-        #
-
-        return load_coverage_files(filenames)
-
-#------------------------------------------------------------------------------
-# Warnings
-#------------------------------------------------------------------------------
-
-def warn_module_missing():
-    """
-    Display a load failure for missing coverage.
-    """
-    disassembler.warning(
-        "Lighthouse failed to load coverage data from one or more files!\n\n"
-        " Possible reasons:\n"
-        " - You selected a coverage file for the wrong binary\n"
-        " - The recorded binary name is different from this database\n\n"
-        "Please see the disassembler console for more info..."
-    )
-
-def warn_drcov_malformed():
-    """
-    Display a load failure for a malformed/unreadable coverage file.
-    """
-    disassembler.warning(
-        "Could not parse one or more of the selected coverage files!\n\n"
-        " Possible reasons:\n"
-        " - You selected a file that was *not* a coverage file\n"
-        " - The coverage file might be malformed/unreadable\n\n"
-        "Please see the disassembler console for more info..."
-    )
 
 #------------------------------------------------------------------------------
 # Util
@@ -539,21 +410,70 @@ def load_coverage_files(filenames):
     # return all the succesfully loaded coverage files
     return loaded_coverage
 
-def normalize_coverage(coverage_data, metadata):
+#------------------------------------------------------------------------------
+# Warnings
+#------------------------------------------------------------------------------
+
+def warn_errors(errors):
     """
-    Normalize loaded DrCov data to the database metadata.
+    Warn the user of any encountered errors with a messagebox.
     """
+    seen = []
 
-    # extract the coverage relevant to this IDB (well, the root binary)
-    root_filename   = disassembler.get_root_filename()
-    coverage_blocks = coverage_data.get_blocks_by_module(root_filename)
+    for error in errors:
+        error_type = error[0]
 
-    # rebase the basic blocks
-    base = disassembler.get_imagebase()
-    rebased_blocks = rebase_blocks(base, coverage_blocks)
+        # only emit an error once
+        if error_type in seen:
+            continue
 
-    # coalesce the blocks into larger contiguous blobs
-    condensed_blocks = coalesce_blocks(rebased_blocks)
+        # emit relevant error messages
+        if error_type == CoverageDirector.ERROR_COVERAGE_ABSENT:
+            warn_module_missing()
+        elif error_type == CoverageDirector.ERROR_COVERAGE_SUSPICIOUS:
+            warn_bad_mapping()
+        else:
+            raise NotImplementedError("UNKNOWN ERROR OCCURRED")
 
-    # flatten the blobs into individual instructions or addresses
-    return metadata.flatten_blocks(condensed_blocks)
+        seen.append(error_type)
+
+def warn_drcov_malformed():
+    """
+    Display a warning for malformed/unreadable coverage files.
+    """
+    disassembler.warning(
+        "Failed to parse one or more of the selected coverage files!\n\n"
+        " Possible reasons:\n"
+        " - You selected a file that was *not* a coverage file.\n"
+        " - The selected coverage file is malformed or unreadable.\n\n"
+        "Please see the disassembler console for more info..."
+    )
+
+def warn_module_missing():
+    """
+    Display a warning for missing coverage data.
+    """
+    disassembler.warning(
+        "No coverage data was extracted from one of the selected files.\n\n"
+        " Possible reasons:\n"
+        " - You selected a coverage file for the wrong binary.\n"
+        " - The name of the executable file used to generate this database\n"
+        "    is different than the one you collected coverage against.\n\n"
+        "Please see the disassembler console for more info..."
+    )
+
+def warn_bad_mapping():
+    """
+    Display a warning for badly mapped coverage data.
+    """
+    disassembler.warning(
+        "One or more of the loaded coverage files appears to be badly mapped.\n\n"
+        " Possible reasons:\n"
+        " - You selected a coverage file that was collected against a\n"
+        "    slightly different version of the binary.\n"
+        " - You recorded an application with very abnormal control flow.\n"
+        " - The coverage file might be malformed.\n\n"
+        "This means that any coverage displayed by Lighthouse is probably\n"
+        "wrong, and should be used at your own discretion."
+    )
+
