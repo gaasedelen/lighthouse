@@ -14,6 +14,40 @@ from ..misc import is_mainthread
 logger = logging.getLogger("Lighthouse.API.IDA")
 
 #------------------------------------------------------------------------------
+# Utils
+#------------------------------------------------------------------------------
+
+def execute_sync(function, sync_type):
+    """
+    Allow for reading/writing to the disassembler database safely.
+
+    Modified from https://github.com/vrtadmin/FIRST-plugin-ida
+    """
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        output = [None]
+
+        #
+        # this inline function definition is technically what will execute
+        # in the context of the main thread. we use this thunk to capture
+        # any output the function may want to return to the user.
+        #
+
+        def thunk():
+            output[0] = function(*args, **kwargs)
+            return 1
+
+        if is_mainthread():
+            thunk()
+        else:
+            idaapi.execute_sync(thunk, sync_type)
+
+        # return the output of the synchronized execution / read
+        return output[0]
+    return wrapper
+
+#------------------------------------------------------------------------------
 # Disassembler API
 #------------------------------------------------------------------------------
 
@@ -66,6 +100,22 @@ class IDAAPI(DisassemblerAPI):
     @property
     def version_patch(self):
         return self._version_patch
+
+    #--------------------------------------------------------------------------
+    # Synchronization Decorators
+    #--------------------------------------------------------------------------
+
+    @staticmethod
+    def execute_read(function):
+        return execute_sync(function, idaapi.MFF_READ)
+
+    @staticmethod
+    def execute_write(function):
+        return execute_sync(function, idaapi.MFF_WRITE)
+
+    @staticmethod
+    def execute_ui(function):
+        return execute_sync(function, idaapi.MFF_FAST)
 
     #--------------------------------------------------------------------------
     # API Shims
@@ -141,67 +191,9 @@ class IDAAPI(DisassemblerAPI):
     def warning(self, text):
         idaapi.warning(text)
 
-    #--------------------------------------------------------------------------
-    # Synchronization Decorators
-    #--------------------------------------------------------------------------
-
-    @staticmethod
-    def execute_read(function):
-        """
-        Modified from https://github.com/vrtadmin/FIRST-plugin-ida
-        """
-
-        @functools.wraps(function)
-        def wrapper(*args, **kwargs):
-            output = [None]
-
-            #
-            # this inline function definition is technically what will execute
-            # in the context of the main thread. we use this thunk to capture
-            # any output the function may want to return to the user.
-            #
-
-            def thunk():
-                output[0] = function(*args, **kwargs)
-                return 1
-
-            if is_mainthread():
-                thunk()
-            else:
-                idaapi.execute_sync(thunk, idaapi.MFF_READ)
-
-            # return the output of the synchronized execution / read
-            return output[0]
-        return wrapper
-
-    @staticmethod
-    def execute_ui(function):
-        """
-        Decorator to execute a function in the disassembler main thread.
-
-        This is generally used for scheduling UI (Qt) events originating from
-        a background thread.
-
-        NOTE: Using this decorator waives your right to a return value.
-        """
-
-        @functools.wraps(function)
-        def wrapper(*args, **kwargs):
-            ff = functools.partial(function, *args, **kwargs)
-
-            # if we are already in the main (UI) thread, execute now
-            if is_mainthread():
-                ff()
-                return
-
-            # otherwise, schedule the task to run in the main thread
-            idaapi.execute_sync(ff, idaapi.MFF_FAST)
-
-        return wrapper
-
-    #--------------------------------------------------------------------------
-    # Function Prefixing
-    #--------------------------------------------------------------------------
+    #------------------------------------------------------------------------------
+    # Function Prefix API
+    #------------------------------------------------------------------------------
 
     PREFIX_SEPARATOR = "%"
 

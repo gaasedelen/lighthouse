@@ -39,6 +39,15 @@ def mainthread(f):
         return f(*args, **kwargs)
     return wrapper
 
+def not_mainthread(f):
+    """
+    A debug decorator to assert main thread execution.
+    """
+    def wrapper(*args, **kwargs):
+        assert not is_mainthread()
+        return f(*args, **kwargs)
+    return wrapper
+
 def chunks(l, n):
     """
     Yield successive n-sized chunks from l.

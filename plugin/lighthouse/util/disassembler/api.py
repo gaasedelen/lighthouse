@@ -63,6 +63,34 @@ class DisassemblerAPI(object):
         pass
 
     #--------------------------------------------------------------------------
+    # Synchronization Decorators
+    #--------------------------------------------------------------------------
+
+    @staticmethod
+    def execute_read(function):
+        """
+        Thread-safe function decorator to READ from the disassembler database.
+        """
+        pass
+
+    @staticmethod
+    def execute_write(function):
+        """
+        Thread-safe function decorator to WRITE to the disassembler database.
+        """
+        pass
+
+    @staticmethod
+    def execute_ui(function):
+        """
+        Thread-safe function decorator to perform UI disassembler actions.
+
+        This should generally be used for scheduling any sort of UI (Qt)
+        events or dialog flows from a background thread.
+        """
+        pass
+
+    #--------------------------------------------------------------------------
     # API Shims
     #--------------------------------------------------------------------------
 
@@ -160,55 +188,6 @@ class DisassemblerAPI(object):
         """
         pass
 
-    #--------------------------------------------------------------------------
-    # Synchronization Decorators
-    #--------------------------------------------------------------------------
-
-    @staticmethod
-    def execute_read(function):
-        """
-        Thread-safe function decorator to read from the disassembler database.
-        """
-        pass
-
-    @staticmethod
-    def execute_ui(function):
-        """
-        Thread-safe function decorator to force mainthread execution.
-
-        This is generally used for scheduling UI (Qt) events originating from
-        a background thread.
-
-        NOTE: Using this decorator waives your right to a return value.
-        """
-        pass
-
-    #------------------------------------------------------------------------------
-    # WaitBox API
-    #------------------------------------------------------------------------------
-
-    def show_wait_box(self, text):
-        """
-        Show the disassembler universal WaitBox.
-        """
-        assert qt_available, "This function can only be used in a Qt runtime"
-        self._waitbox.set_text(text)
-        self._waitbox.show()
-
-    def hide_wait_box(self):
-        """
-        Hide the disassembler universal WaitBox.
-        """
-        assert qt_available, "This function can only be used in a Qt runtime"
-        self._waitbox.hide()
-
-    def replace_wait_box(self, text):
-        """
-        Replace the text in the disassembler universal WaitBox.
-        """
-        assert qt_available, "This function can only be used in a Qt runtime"
-        self._waitbox.set_text(text)
-
     #------------------------------------------------------------------------------
     # Function Prefix API
     #------------------------------------------------------------------------------
@@ -259,6 +238,32 @@ class DisassemblerAPI(object):
         """
         for function_address in function_addresses:
             self.clear_prefix(function_address)
+
+    #------------------------------------------------------------------------------
+    # WaitBox API
+    #------------------------------------------------------------------------------
+
+    def show_wait_box(self, text):
+        """
+        Show the disassembler universal WaitBox.
+        """
+        assert qt_available, "This function can only be used in a Qt runtime"
+        self._waitbox.set_text(text)
+        self._waitbox.show()
+
+    def hide_wait_box(self):
+        """
+        Hide the disassembler universal WaitBox.
+        """
+        assert qt_available, "This function can only be used in a Qt runtime"
+        self._waitbox.hide()
+
+    def replace_wait_box(self, text):
+        """
+        Replace the text in the disassembler universal WaitBox.
+        """
+        assert qt_available, "This function can only be used in a Qt runtime"
+        self._waitbox.set_text(text)
 
 #------------------------------------------------------------------------------
 # Hooking

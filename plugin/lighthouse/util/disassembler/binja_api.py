@@ -10,9 +10,64 @@ from binaryninja.plugin import BackgroundTaskThread
 
 from .api import DisassemblerAPI, DockableShim
 from ..qt import *
-from ..misc import is_mainthread
+from ..misc import is_mainthread, not_mainthread
 
 logger = logging.getLogger("Lighthouse.API.Binja")
+
+#------------------------------------------------------------------------------
+# Utils
+#------------------------------------------------------------------------------
+
+def execute_sync(function):
+    """
+    Allow for reading/writing to the disassembler database safely.
+    """
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+
+        #
+        # in Binary Ninja, it is only safe to access the BNDB from a thread
+        # that is *not* the mainthread. if we appear to already be in a
+        # background thread of some sort, simply execute the given function
+        #
+
+        if not is_mainthread():
+            return function(*args, **kwargs)
+
+        #
+        # if we are in the mainthread, we need to schedule a background
+        # task to perform our database task/function instead
+        #
+        # this inline function definition is technically what will execute
+        # in a database-safe background thread. we use this thunk to
+        # capture any output the function may want to return to the user.
+        #
+
+        output = [None]
+        def thunk():
+            output[0] = function(*args, **kwargs)
+            return 1
+
+        class DatabaseRead(BackgroundTaskThread):
+            """
+            A stub task to safely read from the BNDB.
+            """
+            def __init__(self, text, function):
+                super(DatabaseRead, self).__init__(text, False)
+                self._task_to_run = function
+            def run(self):
+                self._task_to_run()
+                self.finish()
+
+        # schedule the databases read and wait for its completion
+        t = DatabaseRead("Accessing database...", thunk)
+        t.start()
+        t.join()
+
+        # return the output of the synchronized execution / read
+        return output[0]
+    return wrapper
 
 #------------------------------------------------------------------------------
 # Disassembler API
@@ -72,8 +127,53 @@ class BinjaAPI(DisassemblerAPI):
         return self._version_patch
 
     #--------------------------------------------------------------------------
+    # Synchronization Decorators
+    #--------------------------------------------------------------------------
+
+    @staticmethod
+    def execute_read(function):
+        return execute_sync(function)
+
+    @staticmethod
+    def execute_write(function):
+        return execute_sync(function)
+
+    @staticmethod
+    def execute_ui(function):
+
+        @functools.wraps(function)
+        def wrapper(*args, **kwargs):
+            ff = functools.partial(function, *args, **kwargs)
+
+            # if we are already in the main (UI) thread, execute now
+            if is_mainthread():
+                ff()
+                return
+
+            # schedule the task to run in the main thread
+            try:
+                binaryninja.execute_on_main_thread(ff)
+            except AttributeError: # TODO/V35: binja bug, reported on 5/31/2018
+                pass
+
+        return wrapper
+
+    #--------------------------------------------------------------------------
     # API Shims
     #--------------------------------------------------------------------------
+
+
+    #
+    #  NOTE/TODO/V35:
+    #
+    #    The use of @not_mainthread or @execute_read on some of these API's
+    #    is to ensure the function is called from a background thread/task.
+    #    This is because calling database functions from the mainthread can
+    #    cause deadlocks (not threadsafe?) in Binary Ninja...
+    #
+    #    this is pretty annoying because it conflicts directly with IDA
+    #    which *needs* database accesses to be made from the mainthread
+    #
 
     def create_rename_hooks(self):
         return RenameHooks(self.bv)
@@ -85,36 +185,44 @@ class BinjaAPI(DisassemblerAPI):
                 return -1
         return self._python.current_addr
 
+    @execute_read.__func__
     def get_database_directory(self):
         return os.path.dirname(self.bv.file.filename)
 
+    @execute_read.__func__
     def get_disassembler_user_directory(self):
         return os.path.split(binaryninja.user_plugin_path)[0]
 
+    @execute_read.__func__
     def get_function_addresses(self):
         return [x.start for x in self.bv.functions]
 
+    @execute_read.__func__
     def get_function_name_at(self, address):
         func = self.bv.get_function_at(address)
         if not func:
             return None
         return func.symbol.short_name
 
+    @execute_read.__func__
     def get_function_raw_name_at(self, address):
         func = self.bv.get_function_at(address)
         if not func:
             return None
         return func.name
 
+    @execute_read.__func__
     def get_imagebase(self):
         return self.bv.start
 
+    @execute_read.__func__
     def get_root_filename(self):
         return os.path.basename(self.bv.file.original_filename)
 
     def navigate(self, address):
         return self.bv.navigate(self.bv.view, address)
 
+    @execute_write.__func__
     def set_function_name_at(self, function_address, new_name):
         func = self.bv.get_function_at(function_address)
         if not func:
@@ -142,82 +250,8 @@ class BinjaAPI(DisassemblerAPI):
     def warning(self, text):
         binaryninja.interaction.show_message_box("Warning", text)
 
-    #--------------------------------------------------------------------------
-    # Synchronization Decorators
-    #--------------------------------------------------------------------------
-
-    @staticmethod
-    def execute_read(function):
-
-        @functools.wraps(function)
-        def wrapper(*args, **kwargs):
-            output = [None]
-
-            #
-            # this inline function definition is technically what will execute
-            # in the context of the main thread. we use this thunk to capture
-            # any output the function may want to return to the user.
-            #
-
-            def thunk():
-                output[0] = function(*args, **kwargs)
-                return 1
-
-            #
-            # It is *only* safe to access the BNDB from a background task,
-            # so we must schedule all read/writes this way...
-            #
-
-            class DatabaseRead(BackgroundTaskThread):
-                """
-                A stub task to safely read from the BNDB.
-                """
-                def __init__(self, text, function):
-                    super(DatabaseRead, self).__init__(text, False)
-                    self._task_to_run = function
-                def run(self):
-                    self._task_to_run()
-                    self.finish()
-
-            # schedule the read and wait for its completion
-            t = DatabaseRead("Reading database...", thunk)
-            t.start()
-            t.join()
-
-            # return the output of the synchronized execution / read
-            return output[0]
-        return wrapper
-
-    @staticmethod
-    def execute_ui(function):
-        """
-        Decorator to execute a function in the disassembler main thread.
-
-        This is generally used for scheduling UI (Qt) events originating from
-        a background thread.
-
-        NOTE: Using this decorator waives your right to a return value.
-        """
-
-        @functools.wraps(function)
-        def wrapper(*args, **kwargs):
-            ff = functools.partial(function, *args, **kwargs)
-
-            # if we are already in the main (UI) thread, execute now
-            if is_mainthread():
-                ff()
-                return
-
-            # schedule the task to run in the main thread
-            try:
-                binaryninja.execute_on_main_thread(ff)
-            except AttributeError: # TODO/V35: binja bug, reported on 5/31/2018
-                pass
-
-        return wrapper
-
     #------------------------------------------------------------------------------
-    # High Level API
+    # Function Prefix API
     #------------------------------------------------------------------------------
 
     PREFIX_SEPARATOR = "▁" # Unicode 0x2581
@@ -350,7 +384,7 @@ class DockableWindow(DockableShim):
         self._dockable = None
 
 #------------------------------------------------------------------------------
-# Utils (Binary Ninja Hacks XXX / TODO)
+# Binary Ninja Hacks XXX / TODO
 #------------------------------------------------------------------------------
 
 def _binja_get_scripting_instance():
