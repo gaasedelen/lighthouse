@@ -189,15 +189,14 @@ class BinjaAPI(DisassemblerAPI):
     def get_database_directory(self):
         return os.path.dirname(self.bv.file.filename)
 
-    @execute_read.__func__
     def get_disassembler_user_directory(self):
         return os.path.split(binaryninja.user_plugin_path)[0]
 
-    @execute_read.__func__
+    @not_mainthread
     def get_function_addresses(self):
         return [x.start for x in self.bv.functions]
 
-    @execute_read.__func__
+    @not_mainthread
     def get_function_name_at(self, address):
         func = self.bv.get_function_at(address)
         if not func:
@@ -211,11 +210,11 @@ class BinjaAPI(DisassemblerAPI):
             return None
         return func.name
 
-    @execute_read.__func__
+    @not_mainthread
     def get_imagebase(self):
         return self.bv.start
 
-    @execute_read.__func__
+    @not_mainthread
     def get_root_filename(self):
         return os.path.basename(self.bv.file.original_filename)
 

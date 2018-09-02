@@ -6,7 +6,7 @@ import weakref
 import threading
 import collections
 
-from lighthouse.util.misc import mainthread, register_callback, notify_callback, chunks
+from lighthouse.util.misc import *
 from lighthouse.util.disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Metadata")
@@ -73,6 +73,7 @@ class DatabaseMetadata(object):
 
         # database defined functions
         self.functions = {}
+        self._blank_function = FunctionMetadata(-1)
 
         # database metadata cache status
         self.cached = False
@@ -300,38 +301,6 @@ class DatabaseMetadata(object):
         result_queue = Queue.Queue()
 
         #
-        # if no (function) addresses were specified by the caller, we proceed
-        # with a complete metadata refresh.
-        #
-
-        if function_addresses is None:
-
-            # retrieve a full function address list from the underlying database
-            function_addresses = disassembler.get_function_addresses()
-
-            #
-            # immediately drop function entries that are no longer present in the
-            # function address list we just pulled from the database
-            #
-
-            removed_functions = self.functions.viewkeys() - set(function_addresses)
-            for function_address in removed_functions:
-
-                # the function to delete
-                function_metadata = self.functions[function_address]
-
-                # delete all node metadata owned by this function from the db list
-                for node in function_metadata.nodes.itervalues():
-                    del self.nodes[node.address]
-
-                # now delete the function metadata from the db list
-                del self.functions[function_address]
-
-            # schedule a deferred lookup list refresh if we deleted any functions
-            if removed_functions:
-                self._stale_lookup = True
-
-        #
         # reset the async abort/stop flag that can be used used to cancel the
         # ongoing refresh task
         #
@@ -393,65 +362,22 @@ class DatabaseMetadata(object):
         if join:
             worker.join()
 
-    def _async_refresh(self, result_queue, function_addresses, progress_callback):
+    def _refresh_instructions(self):
         """
-        Internal asynchronous metadata collection worker.
+        Refresh the instructions list from function metadata.
         """
-        self.filename = disassembler.get_root_filename()
-        self.imagebase = disassembler.get_imagebase()
+        instructions = []
+        for function_metadata in self.functions.itervalues():
+            instructions.extend(function_metadata.instructions)
+        instructions = list(set(instructions))
+        instructions.sort()
 
-        # pause our rename listening hooks (more performant collection)
-        if self._rename_hooks:
-            self._rename_hooks.unhook()
-
-        # collect metadata
-        completed = self._async_collect_metadata(
-            function_addresses,
-            progress_callback
-        )
-
-        # refresh the lookup lists
-        self._refresh_lookup()
-
-        #
-        # NOTE:
-        #
-        #   creating the hooks inline like this is less than ideal, but they
-        #   they have been moved here (from the metadata constructor) to
-        #   accomodate shortfalls of the Binary Ninja API.
-        #
-        # TODO/FUTURE/V35:
-        #
-        #   it would be nice to move these back to the constructor once the
-        #   Binary Ninja API allows us to detect BV / sessions as they are
-        #   created, and able to load plugins on such events.
-        #
-
-        # create the disassembler hooks to listen for rename events
-        if not self._rename_hooks:
-            self._rename_hooks = disassembler.create_rename_hooks()
-            self._rename_hooks.renamed = self._name_changed
-            self._rename_hooks.metadata = weakref.proxy(self)
-
-        # resume our rename listening hooks
-        self._rename_hooks.hook()
-
-        # send the refresh result (good/bad) incase anyone is still listening
-        if completed:
-            self.cached = True
-            result_queue.put(True)
-        else:
-            result_queue.put(False)
-
-        # clean up our thread's reference as it is basically done/dead
-        self._refresh_worker = None
-
-        # thread exit...
-        return
+        # commit the updated intruction list
+        self.instructions = instructions
 
     def _refresh_lookup(self):
         """
-        Refresh the fast lookup address lists.
+        Refresh the fast lookup address lists from function metadata.
 
         This will only refresh the lists if they are believed to be stale.
         """
@@ -488,6 +414,91 @@ class DatabaseMetadata(object):
     # Metadata Collection
     #--------------------------------------------------------------------------
 
+    @not_mainthread
+    def _async_refresh(self, result_queue, function_addresses, progress_callback):
+        """
+        TODO/COMMENT
+        """
+
+        # pause our rename listening hooks (more performant collection)
+        if self._rename_hooks:
+            self._rename_hooks.unhook()
+
+        #
+        # if the caller provided no function addresses to target for refresh,
+        # we will perform a complete metadata refresh of all database defined
+        # functions. let's retrieve that list from the database now...
+        #
+
+        if not function_addresses:
+            function_addresses = disassembler.execute_read(
+                disassembler.get_function_addresses
+            )()
+
+        # refresh main meteadata properties
+        self._async_refresh_properties()
+
+        # refresh metadata asynchronously
+        completed = self._async_collect_metadata(
+            function_addresses,
+            progress_callback
+        )
+
+        # regenerate the instruction list from collected metadata
+        self._refresh_instructions()
+
+        # refresh the function/node lookup lists
+        self._refresh_lookup()
+
+        #
+        # NOTE:
+        #
+        #   creating the hooks inline like this is less than ideal, but they
+        #   they have been moved here (from the metadata constructor) to
+        #   accomodate shortfalls of the Binary Ninja API.
+        #
+        # TODO/FUTURE/V35:
+        #
+        #   it would be nice to move these back to the constructor once the
+        #   Binary Ninja API allows us to detect BV / sessions as they are
+        #   created, and able to load plugins on such events.
+        #
+
+        #----------------------------------------------------------------------
+
+        # create the disassembler hooks to listen for rename events
+        if not self._rename_hooks:
+            self._rename_hooks = disassembler.create_rename_hooks()
+            self._rename_hooks.renamed = self._name_changed
+            self._rename_hooks.metadata = weakref.proxy(self)
+
+        #----------------------------------------------------------------------
+
+        # resume our rename listening hooks
+        self._rename_hooks.hook()
+
+        # send the refresh result (good/bad) incase anyone is still listening
+        if completed:
+            self.cached = True
+            result_queue.put(True)
+        else:
+            result_queue.put(False)
+
+        # clean up our thread's reference as it is basically done/dead
+        self._refresh_worker = None
+
+        # thread exit...
+        return
+
+    @disassembler.execute_read
+    def _async_refresh_properties(self):
+        """
+        TODO/COMMENT
+        """
+        self.filename = disassembler.get_root_filename()
+        self.imagebase = disassembler.get_imagebase()
+
+    @not_mainthread
     def _async_collect_metadata(self, function_addresses, progress_callback):
         """
         Asynchronously collect metadata from the underlying database.
@@ -506,9 +517,7 @@ class DatabaseMetadata(object):
             fresh_metadata = collect_function_metadata(addresses_chunk)
 
             # update the database metadata with the collected metadata
-            delta = self._update_functions(fresh_metadata)
-
-            # TODO/FUTURE: delta callback?
+            self._update_functions(fresh_metadata)
 
             # report progress to an external subscriber
             if progress_callback:
@@ -519,12 +528,8 @@ class DatabaseMetadata(object):
             if self._stop_threads:
                 return False
 
-            # sleep some so we don't choke the main IDA thread
+            # sleep some so we don't choke the mainthread
             time.sleep(.0015)
-
-        # dedupe and sort the instructions
-        self.instructions = list(set(self.instructions))
-        self.instructions.sort()
 
         #----------------------------------------------------------------------
         end = time.time()
@@ -537,37 +542,10 @@ class DatabaseMetadata(object):
         """
         Update stored function metadata with the given fresh metadata.
 
+        NOTE: THIS DOES NOT UPDATE INSTRUCTIONS
+
         Returns a map of function metadata that has been updated.
         """
-        delta = {}
-
-        #
-        # the first step is to loop through the 'fresh' function metadata that
-        # has been given to us, and identify what is truly new or different
-        # from any existing metadata we hold.
-        #
-
-        for function_address, new_metadata in fresh_metadata.iteritems():
-
-            # extract the 'old' metadata from the database metadata
-            old_metadata = self.functions.get(function_address, None)
-
-            #
-            # if the fresh metadata for this function is identical to the
-            # existing metadata we have collected for it, there's nothing
-            # else for us to do - just ignore it.
-            #
-
-            if old_metadata and old_metadata == new_metadata:
-                continue
-
-            #
-            # this function is either new, or was updated since the last time
-            # its metadata was refreshed. save the function metadata to the
-            # delta map so we can notify listeners that it has been modified.
-            #
-
-            delta[function_address] = new_metadata
 
         #
         # save the current node & function count before we merge in the delta
@@ -579,18 +557,49 @@ class DatabaseMetadata(object):
         function_count = len(self.functions)
 
         #
-        # now we can update the database-wide metadata maps with only the new
-        # data that we know to have changed (the delta)
+        # the first step is to loop through the 'fresh' function metadata that
+        # has been given to us, and identify what is truly new or different
+        # from any existing metadata we hold.
         #
 
-        # update the functions metadata map
-        self.functions.update(delta)
+        for function_address, new_metadata in fresh_metadata.iteritems():
 
-        # update the node & instruction metadata maps
-        for function_metadata in delta.itervalues():
-            self.nodes.update(function_metadata.nodes)
-            for node_metadata in function_metadata.nodes.itervalues():
-                self.instructions.extend(node_metadata.instructions)
+            # extract the 'old' metadata from the database metadata
+            old_metadata = self.functions.get(
+                function_address,
+                self._blank_function
+            )
+
+            #
+            # if the fresh metadata for this function is identical to the
+            # existing metadata we have collected for it, there's nothing
+            # else for us to do - just ignore it.
+            #
+
+            if old_metadata == new_metadata:
+                continue
+
+            # delete old nodes that explictly no longer exist
+            nodes_removed = (old_metadata.nodes.viewkeys() -
+                             new_metadata.nodes.viewkeys())
+            for node_address in nodes_removed:
+                del self.nodes[node_address]
+
+            #
+            # the newly collected metadata for a given function is empty, this
+            # indicates that the function has been deleted. we go ahead and
+            # remove its old function metadata from the db metadata entirely
+            #
+
+            if new_metadata.empty:
+                del self.functions[function_address]
+                continue
+
+            # add or overwrite the new/updated basic blocks
+            self.nodes.update(new_metadata.nodes)
+
+            # save the new/updated function
+            self.functions[function_address] = new_metadata
 
         #
         # if the function or node count has changed, we will know that
@@ -600,9 +609,6 @@ class DatabaseMetadata(object):
 
         if (node_count != len(self.nodes)) or (function_count != len(self.functions)):
             self._stale_lookup = True
-
-        # return the delta for other interested consumers to use
-        return delta
 
     #--------------------------------------------------------------------------
     # Signal Handlers
@@ -648,7 +654,7 @@ class DatabaseMetadata(object):
 
         # rename the function, and notify metadata listeners
         #function.name = new_name
-        function._refresh_name()
+        function.refresh_name()
         self._notify_function_renamed()
 
         # necessary for IDP/IDB_Hooks
@@ -683,7 +689,7 @@ class FunctionMetadata(object):
 
         # function metadata
         self.address = address
-        self.name    = None
+        self.name = None
 
         # node metadata
         self.nodes = {}
@@ -697,7 +703,8 @@ class FunctionMetadata(object):
         self.cyclomatic_complexity = 0
 
         # collect metdata from the underlying database
-        self._build_metadata()
+        if address != -1:
+            self._build_metadata()
 
     #--------------------------------------------------------------------------
     # Properties
@@ -710,6 +717,24 @@ class FunctionMetadata(object):
         """
         return set([ea for node in self.nodes.itervalues() for ea in node.instructions])
 
+    @property
+    def empty(self):
+        """
+        Return a bool indicating whether the object is populated.
+        """
+        return len(self.nodes) == 0
+
+    #--------------------------------------------------------------------------
+    # Public
+    #--------------------------------------------------------------------------
+
+    @disassembler.execute_read
+    def refresh_name(self):
+        """
+        Refresh the function name against the open database.
+        """
+        self.name = disassembler.get_function_name_at(self.address)
+
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
@@ -718,15 +743,9 @@ class FunctionMetadata(object):
         """
         Collect function metadata from the underlying database.
         """
-        self._refresh_name()
+        self.name = disassembler.get_function_name_at(self.address)
         self._refresh_nodes()
         self._finalize()
-
-    def _refresh_name(self):
-        """
-        Refresh the function name against the open database.
-        """
-        self.name = disassembler.get_function_name_at(self.address)
 
     def _refresh_nodes(self):
         """
@@ -1243,4 +1262,3 @@ elif disassembler.NAME == "BINJA":
 
 else:
     raise RuntimeError("DISASSEMBLER-SPECIFIC SHIM MISSING")
-
