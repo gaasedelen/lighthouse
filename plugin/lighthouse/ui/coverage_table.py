@@ -12,7 +12,6 @@ from lighthouse.coverage import FunctionCoverage, BADADDR
 
 logger = logging.getLogger("Lighthouse.UI.Table")
 
-
 #------------------------------------------------------------------------------
 # View
 #------------------------------------------------------------------------------
@@ -572,8 +571,7 @@ class CoverageTableController(object):
             self._last_directory = disassembler.get_database_directory()
 
         # build filename for the coverage report based off the coverage name
-        coverage = self._model._director.coverage
-        name, _ = os.path.splitext(coverage.name)
+        name, _ = os.path.splitext(self._model._director.coverage_name)
         filename = name + ".html"
         suggested_filepath = os.path.join(self._last_directory, filename)
 
@@ -1047,7 +1045,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             detail("Target Binary", metadata.filename),
             detail("Coverage Name", coverage.name),
             detail("Coverage File", coverage.filepath),
-            detail("Datatbase Coverage", "%1.2f%%" % database_percent),
+            detail("Database Coverage", "%1.2f%%" % database_percent),
             detail("Table Coverage", "%1.2f%%" % table_percent),
             detail("Timestamp", time.ctime()),
         ]

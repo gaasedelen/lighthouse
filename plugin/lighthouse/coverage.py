@@ -39,7 +39,7 @@ class DatabaseCoverage(object):
     Database level coverage mapping.
     """
 
-    def __init__(self, palette, name=None, filepath=None, data=None):
+    def __init__(self, palette, name="", filepath=None, data=None):
 
         # color palette
         self.palette = palette
@@ -204,8 +204,6 @@ class DatabaseCoverage(object):
         """
         Install a new databasee metadata object.
         """
-
-        # install the new metadata
         self._metadata = weakref.proxy(metadata)
         self.unmap_all()
 
@@ -257,7 +255,7 @@ class DatabaseCoverage(object):
 
     def _finalize_instruction_percent(self):
         """
-        Finalize the database coverage % by instructions executed in all defined functions.
+        Finalize the database coverage % by instructions executed.
         """
 
         # sum all the instructions in the database metadata
@@ -748,4 +746,3 @@ class NodeCoverage(object):
 
         # the estimated number of executions this node has experienced.
         self.executions = float(self.hits) / node_metadata.instruction_count
-
