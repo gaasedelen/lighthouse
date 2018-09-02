@@ -99,6 +99,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_hide_zero.triggered[bool].connect(controller._model.filter_zero_coverage)
         self._action_pause_paint.triggered[bool].connect(lambda x: core.painter.set_enabled(not x))
         self._action_clear_paint.triggered.connect(core.painter.clear_paint)
+        self._action_export_html.triggered.connect(controller.export_to_html)
         core.painter.status_changed(self._ui_painter_changed_status)
 
     #--------------------------------------------------------------------------

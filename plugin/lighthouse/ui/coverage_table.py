@@ -1,7 +1,10 @@
+import os
+import time
 import string
 import logging
 from operator import itemgetter, attrgetter
 
+from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.misc import mainthread
 from lighthouse.util.disassembler import disassembler
@@ -409,6 +412,7 @@ class CoverageTableController(object):
 
     def __init__(self, model):
         self._model = model
+        self._last_directory = None
 
     #---------------------------------------------------------------------------
     # Renaming
@@ -559,6 +563,45 @@ class CoverageTableController(object):
 
         # all done
         disassembler.hide_wait_box()
+
+    def export_to_html(self):
+        """
+        Export the coverage table to an HTML report.
+        """
+        if not self._last_directory:
+            self._last_directory = disassembler.get_database_directory()
+
+        # build filename for the coverage report based off the coverage name
+        coverage = self._model._director.coverage
+        name, _ = os.path.splitext(coverage.name)
+        filename = name + ".html"
+        suggested_filepath = os.path.join(self._last_directory, filename)
+
+        # create & configure a Qt File Dialog for immediate use
+        file_dialog = QtWidgets.QFileDialog()
+        file_dialog.setFileMode(QtWidgets.QFileDialog.AnyFile)
+
+        # we construct kwargs here for cleaner PySide/PyQt5 compatibility
+        kwargs = \
+        {
+            "filter": "HTML Files (*.html)",
+            "caption": "Save HTML Report",
+            "directory" if using_pyqt5 else "dir": suggested_filepath
+        }
+
+        # prompt the user with the file dialog, and await their chosen filename(s)
+        filename, _ = file_dialog.getSaveFileName(**kwargs)
+        if not filename:
+            return
+
+        # remember the last directory we were in (parsed from the saved file)
+        self._last_directory = os.path.dirname(filename) + os.sep
+
+        # write the generated HTML report to disk
+        with open(filename, "wb") as fd:
+            fd.write(self._model.to_html())
+
+        lmsg("Saved HTML report to %s" % filename)
 
     #---------------------------------------------------------------------------
     # Internal
@@ -944,6 +987,148 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # compute coverage percentage of the visible functions
         return (float(instructions_executed) / (instruction_count or 1))*100
+
+    #--------------------------------------------------------------------------
+    # HTML Export
+    #--------------------------------------------------------------------------
+
+    def to_html(self):
+        """
+        Generate an HTML representation of the coverage table.
+        """
+
+        # table summary
+        summary_html, summary_css = self._generate_html_summary()
+
+        # coverage table
+        table_html, table_css = self._generate_html_table()
+
+        # page body
+        body_elements = [summary_html, table_html]
+        body_html = "<body>%s</body>" % '\n'.join(body_elements)
+        body_css = \
+        """
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+
+            color: white;
+            background-color: #363636;
+        }
+        """
+
+        # HTML <head> tag
+        css_elements = [body_css, summary_css, table_css]
+        head_contents = "<style>%s</style>" % '\n'.join(css_elements)
+        head_html = "<head>%s</head>" % head_contents
+
+        # generate the final HTML page
+        page_elements = [head_html, body_html]
+        page_html = "<html>%s</html>" % '\n'.join(page_elements)
+
+        # return the generated HTML report
+        return page_html
+
+    def _generate_html_summary(self):
+        """
+        Generate the HTML table summary.
+        """
+        metadata = self._director.metadata
+        coverage = self._director.coverage
+
+        # page title
+        title_html = "<h1>Lighthouse Coverage Report</h1>"
+
+        # summary details
+        detail = lambda x,y: '<li><span class="detail">%s:</span> %s</li>' % (x,y)
+        database_percent = coverage.instruction_percent*100
+        table_percent = self.get_modeled_coverage_percent()
+        details = \
+        [
+            detail("Target Binary", metadata.filename),
+            detail("Coverage Name", coverage.name),
+            detail("Coverage File", coverage.filepath),
+            detail("Datatbase Coverage", "%1.2f%%" % database_percent),
+            detail("Table Coverage", "%1.2f%%" % table_percent),
+            detail("Timestamp", time.ctime()),
+        ]
+        list_html = "<ul>%s</ul>" % '\n'.join(details)
+        list_css = \
+        """
+        .detail { font-weight: bold; color: white; }
+        li { color: #c0c0c0; }
+        """
+
+        # title + summary
+        summary_html = title_html + list_html
+        summary_css = list_css
+        return (summary_html, summary_css)
+
+    def _generate_html_table(self):
+        """
+        Generate the HTML coverage table.
+        """
+        palette = self._director._palette
+        table_rows = []
+
+        # generate the table's column title row
+        header_cells = []
+        for i in xrange(self.columnCount()-1):
+            header_cells.append(
+                "<th>%s</th>" % self.headerData(i, QtCore.Qt.Horizontal)
+            )
+        table_rows.append(("#505050", header_cells))
+
+        # generate the table's coverage rows
+        for row in xrange(self.rowCount()):
+            row_cells = []
+            for column in xrange(self.columnCount()-1):
+                index = self.index(row, column)
+                row_cells.append("<td>%s</td>" % self.data(index))
+            row_color = self.data(index, QtCore.Qt.BackgroundRole).name()
+            table_rows.append((row_color, row_cells))
+
+        # wrap each row of cells, into an HTML table row
+        html_rows = []
+        for row_color, row_cells in table_rows:
+            cell_html = ''.join(row_cells)
+            html_rows.append("<tr style='background-color: %s'>%s</tr>" % (row_color, cell_html))
+
+        # generate the final HTML table
+        table_html = "<table>%s</table>" % '\n'.join(html_rows)
+        table_css = \
+        """
+        table {{
+            text-align: center;
+            white-space: pre;
+            border-collapse: collapse;
+
+            background-color: {table_bg};
+            color: {table_fg};
+        }}
+
+        table, th, td {{
+            border: 1px solid black;
+        }}
+
+        table tr td:nth-child(2) {{
+            text-align: left;
+        }}
+
+        td {{
+            font-family: "Courier New", Courier, monospace;
+            font-size: 11pt;
+            padding: 0.5ex 1ex 0.5ex 1ex;
+        }}
+
+        th {{
+            padding: 1ex 1em 1ex 1em;
+        }}
+        """.format(
+            table_bg=palette.overview_bg.name(),
+            table_fg="white"
+        )
+
+        return (table_html, table_css)
 
     #--------------------------------------------------------------------------
     # Filters
