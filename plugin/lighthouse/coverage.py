@@ -39,10 +39,16 @@ class DatabaseCoverage(object):
     Database level coverage mapping.
     """
 
-    def __init__(self, data, palette):
+    def __init__(self, palette, name=None, filepath=None, data=None):
 
         # color palette
         self.palette = palette
+
+        # the name of the DatabaseCoverage object
+        self.name = name
+
+        # the filepath of the original coverage data
+        self.filepath = filepath
 
         #
         # the abstract above gives some background to the design employed by
@@ -352,7 +358,7 @@ class DatabaseCoverage(object):
             composite_data[address] = self._hitmap[address]
 
         # done, return a new DatabaseCoverage masked with the given coverage
-        return DatabaseCoverage(composite_data, self.palette)
+        return DatabaseCoverage(self.palette, data=composite_data)
 
     def _update_coverage_hash(self):
         """
@@ -738,7 +744,6 @@ class NodeCoverage(object):
         """
         Finalize the coverage metrics for faster access.
         """
-        palette = self._database.palette
         node_metadata = self._database._metadata.nodes[self.address]
 
         # the estimated number of executions this node has experienced.

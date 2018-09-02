@@ -246,7 +246,7 @@ class Lighthouse(object):
 
         # inject the the aggregated coverage set
         disassembler.replace_wait_box("Mapping coverage...")
-        self.director.create_coverage_from_addresses(coverage_name, new_coverage.data)
+        self.director.create_coverage(coverage_name, new_coverage.data)
 
         # select the newly created batch coverage
         disassembler.replace_wait_box("Selecting coverage...")
@@ -392,7 +392,7 @@ def load_coverage_files(filenames):
 
         # attempt to load/parse a single coverage data file from disk
         try:
-            coverage_data = DrcovData(filename)
+            drcov_data = DrcovData(filename)
 
         # catch all for parse errors / bad input / malformed files
         except Exception as e:
@@ -403,7 +403,7 @@ def load_coverage_files(filenames):
             continue
 
         # save the loaded coverage data to the output list
-        loaded_coverage.append(coverage_data)
+        loaded_coverage.append(drcov_data)
 
     # warn if we encountered malformed files...
     if load_failure:

@@ -67,9 +67,6 @@ class CoverageDirector(object):
         # loaded or composed database coverage mappings
         self._database_coverage = collections.OrderedDict()
 
-        # a NULL / empty coverage set
-        self._NULL_COVERAGE = DatabaseCoverage(None, palette)
-
         #
         # the director automatically maintains or generates a few coverage
         # sets of its own. these are not directly modifiable by the user,
@@ -81,9 +78,9 @@ class CoverageDirector(object):
 
         self._special_coverage = collections.OrderedDict(
         [
-            (HOT_SHELL,       DatabaseCoverage(None, palette)), # hot shell composition
-            (NEW_COMPOSITION, DatabaseCoverage(None, palette)), # slow shell composition
-            (AGGREGATE,       DatabaseCoverage(None, palette)), # aggregate composition
+            (HOT_SHELL,       DatabaseCoverage(palette, HOT_SHELL)),
+            (NEW_COMPOSITION, DatabaseCoverage(palette, NEW_COMPOSITION)),
+            (AGGREGATE,       DatabaseCoverage(palette, AGGREGATE)),
         ])
 
         #----------------------------------------------------------------------
@@ -336,13 +333,13 @@ class CoverageDirector(object):
     # Coverage Creation
     #----------------------------------------------------------------------
 
-    def create_coverage_from_addresses(self, coverage_name, addresses):
+    def create_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
         """
-        Create a new coverage object from a list of instruction addresses.
+        Create a new coverage object from the given data.
 
         This is effectively an alias of self.update_coverage
         """
-        return self.update_coverage(coverage_name, addresses)
+        return self.update_coverage(coverage_name, coverage_data, coverage_filepath)
 
     def create_coverage_from_drcov_list(self, drcov_list):
         """
@@ -376,7 +373,7 @@ class CoverageDirector(object):
 
             # normalize coverage data to the open database
             try:
-                addresses = self._normalize_drcov_data(drcov_data)
+                coverage_data = self._normalize_drcov_data(drcov_data)
             except ValueError as e:
                 errors.append((self.ERROR_COVERAGE_ABSENT, drcov_data.filepath))
                 lmsg("Failed to normalize coverage %s" % drcov_data.filepath)
@@ -384,12 +381,40 @@ class CoverageDirector(object):
                 continue
 
             #
-            # ask the director to create and track a new coverage set from
-            # the normalized coverage data we provide
+            # before injecting the new coverage data, we check to see if there
+            # is an existing coverage object under the same name.
+            #
+            # if there is an existing coverage object, odds are that the useer
+            # is probably re-loading the same coverage file in which case we
+            # simply overwrite the old DatabaseCoverage object.
+            #
+            # but we have to be careful for the case where the user loads a
+            # coverage file from a different directory, but under the same name
+            #
+            # e.g:
+            #  - C:\coverage\foo.log
+            #  - C:\coverage\testingn\foo.log
+            #
+            # in these cases, we will append a suffix to the new coverage file
             #
 
             coverage_name = os.path.basename(drcov_data.filepath)
-            coverage = self.create_coverage_from_addresses(coverage_name, addresses)
+            coverage = self.get_coverage(coverage_name)
+
+            # assign a suffix to the coverage name in the event of a collision
+            if coverage and coverage.filepath != drcov_data.filepath:
+                for i in xrange(2,0x100000):
+                    new_name = "%s_%u" % (coverage_name, i)
+                    if not self.get_coverage(new_name):
+                        break
+                coverage_name = new_name
+
+            # create (or update) the coverage
+            coverage = self.create_coverage(
+                coverage_name,
+                coverage_data,
+                drcov_data.filepath
+            )
 
             # save the coverage name to the list of succesful loads
             created_coverage.append(coverage_name)
@@ -416,12 +441,12 @@ class CoverageDirector(object):
         """
 
         # extract the coverage relevant to this IDB (well, the root binary)
-        root_filename   = disassembler.get_root_filename()
+        root_filename = self.metadata.filename
         coverage_blocks = drcov_data.get_blocks_by_module(root_filename)
 
-        # rebase the basic blocks
-        base = disassembler.get_imagebase()
-        rebased_blocks = rebase_blocks(base, coverage_blocks)
+        # rebase the coverage log's basic blocks to the database
+        imagebase = self.metadata.imagebase
+        rebased_blocks = rebase_blocks(imagebase, coverage_blocks)
 
         # coalesce the blocks into larger contiguous blobs
         condensed_blocks = coalesce_blocks(rebased_blocks)
@@ -436,7 +461,7 @@ class CoverageDirector(object):
         errors = []
 
         # create a new coverage set to manually aggregate data into
-        coverage = DatabaseCoverage({}, self._palette)
+        coverage = DatabaseCoverage(self._palette)
 
         #
         # loop through the coverage data we have loaded from disk, and begin
@@ -498,7 +523,7 @@ class CoverageDirector(object):
         # notify any listeners that we have switched our active coverage
         self._notify_coverage_switched()
 
-    def update_coverage(self, coverage_name, coverage_data):
+    def update_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
         """
         Create or update a coverage object.
         """
@@ -511,14 +536,24 @@ class CoverageDirector(object):
             logger.debug("Adding coverage %s" % coverage_name)
 
         # create & map a new database coverage object using the given data
-        new_coverage = self._new_coverage(coverage_data)
+        new_coverage = DatabaseCoverage(
+            self._palette,
+            coverage_name,
+            coverage_filepath,
+            coverage_data
+        )
+        new_coverage.update_metadata(self.metadata)
+        new_coverage.refresh()
 
         #
-        # coverage mapping complete, looks like we're good. add the new
+        # coverage mapping complete, looks like we're good. commit the new
         # coverage to the director's coverage table and surface it for use.
         #
+        # note that this will overwrite an existing coverage object present
+        # under the same name
+        #
 
-        self._update_coverage(coverage_name, new_coverage)
+        self._commit_coverage(coverage_name, new_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
         if not updating_coverage:
@@ -533,7 +568,7 @@ class CoverageDirector(object):
         # return the created/updated coverage
         return new_coverage
 
-    def _update_coverage(self, coverage_name, new_coverage):
+    def _commit_coverage(self, coverage_name, new_coverage):
         """
         Internal add/update of coverage.
 
@@ -563,15 +598,6 @@ class CoverageDirector(object):
         self.aggregate.add_data(new_coverage.data)
         if not self._aggregation_suspended:
             self._refresh_aggregate()
-
-    def _new_coverage(self, coverage_data):
-        """
-        Build a new database coverage object from the given data.
-        """
-        new_coverage = DatabaseCoverage(coverage_data, self._palette)
-        new_coverage.update_metadata(self.metadata)
-        new_coverage.refresh()
-        return new_coverage
 
     def delete_coverage(self, coverage_name):
         """
@@ -637,17 +663,13 @@ class CoverageDirector(object):
         # TODO/FUTURE: check if there's any references to the coverage aggregate?
 
         # assign a new, blank aggregate set
-        self._special_coverage[AGGREGATE] = DatabaseCoverage(None, self._palette)
+        self._special_coverage[AGGREGATE] = DatabaseCoverage(self._palette, AGGREGATE)
         self._refresh_aggregate() # probably not needed
 
     def get_coverage(self, name):
         """
         Retrieve coverage data for the requested coverage_name.
         """
-
-        # no matching coverage, return a blank coverage set
-        if not name:
-            return self._NULL_COVERAGE
 
         # if the given name was an alias, dereference it now
         coverage_name = self._alias2name.get(name, name)
@@ -660,7 +682,8 @@ class CoverageDirector(object):
         if coverage_name in self.special_names:
             return self._special_coverage[coverage_name]
 
-        raise ValueError("No coverage data found for %s" % coverage_name)
+        # no matching coverage
+        return None
 
     def get_coverage_string(self, coverage_name, color=False):
         """
@@ -821,7 +844,7 @@ class CoverageDirector(object):
         composite_coverage = self._evaluate_composition(ast)
 
         # save the evaluated coverage under the given name
-        self._update_coverage(composite_name, composite_coverage)
+        self._commit_coverage(composite_name, composite_coverage)
 
         # assign a shorthand alias (if available) to new coverage additions
         if not updating_coverage:
@@ -888,7 +911,7 @@ class CoverageDirector(object):
 
         # if the AST is effectively 'null', return a blank coverage set
         if isinstance(ast, TokenNull):
-            return self._NULL_COVERAGE
+            return DatabaseCoverage(self._palette)
 
         #
         # the director's composition evaluation code (this function) is most
@@ -1026,7 +1049,7 @@ class CoverageDirector(object):
             # return a masked copy of said DatabaseCoverage
             #
 
-            new_composition = DatabaseCoverage(coverage_mask, self._palette)
+            new_composition = DatabaseCoverage(self._palette, data=coverage_mask)
 
             # cache & return the newly computed composition
             self._composition_cache[composition_hash] = new_composition
@@ -1073,7 +1096,7 @@ class CoverageDirector(object):
         assert isinstance(range_token, TokenCoverageRange)
 
         # initialize output to a null coverage set
-        output = DatabaseCoverage(None, self._palette)
+        output = DatabaseCoverage(self._palette)
 
         # exapand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
         symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]

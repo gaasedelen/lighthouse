@@ -61,6 +61,10 @@ class DatabaseMetadata(object):
 
     def __init__(self):
 
+        # name & imagebase of the executable this metadata is based on
+        self.filename = ""
+        self.imagebase = -1
+
         # database defined instructions
         self.instructions = []
 
@@ -393,8 +397,10 @@ class DatabaseMetadata(object):
         """
         Internal asynchronous metadata collection worker.
         """
+        self.filename = disassembler.get_root_filename()
+        self.imagebase = disassembler.get_imagebase()
 
-        # pause our rename listening hooks, for speed
+        # pause our rename listening hooks (more performant collection)
         if self._rename_hooks:
             self._rename_hooks.unhook()
 
