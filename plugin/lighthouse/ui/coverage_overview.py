@@ -51,7 +51,6 @@ class CoverageOverview(DockableWindow):
         self.refresh()
         super(CoverageOverview, self).show()
         self._visible = True
-        self._widget.setMinimumWidth(0) # TODO/HACK: remove with table rework
 
     def terminate(self):
         """
@@ -193,7 +192,6 @@ class CoverageOverview(DockableWindow):
         layout.addWidget(self._toolbar)
 
         # apply the layout to the containing form
-        self._widget.setMinimumWidth(800) # TODO/HACK: remove with table rework
         self._widget.setLayout(layout)
 
     #--------------------------------------------------------------------------

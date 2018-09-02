@@ -355,7 +355,15 @@ class DockableWindow(DockableShim):
         self._dockable = QtWidgets.QDockWidget(window_title, self._main_window)
         self._dockable.setWidget(self._widget)
         self._dockable.setWindowIcon(self._window_icon)
-        self._dockable.resize(800,600)
+        self._dockable.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self._dockable.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding,
+            QtWidgets.QSizePolicy.Expanding
+        )
+        self._widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding,
+            QtWidgets.QSizePolicy.Expanding
+        )
 
         # dock the widget on the right side of Binja
         self._main_window.addDockWidget(
@@ -363,24 +371,22 @@ class DockableWindow(DockableShim):
             self._dockable
         )
 
-        # TODO, kind of hacky? will invesigate later...
-        self._dockable.visibilityChanged.connect(self._vis_changed)
-
-    def _vis_changed(self, visibile):
-        if visibile:
-            return
-        self.hide()
-
     def show(self):
+
+        #
+        # NOTE/HACK:
+        #   this is a little dirty, but is used to set the default width
+        #   of the coverage overview / dockable widget when it is first shown
+        #
+
+        default_width = self._widget.sizeHint().width()
+        self._dockable.setMinimumWidth(default_width)
+
+        # show the widget
         self._dockable.show()
 
-    def hide(self,):
-        self._widget.hide()
-        self._dockable.hide()
-        self._widget.deleteLater()
-        self._dockable.deleteLater()
-        self._widget = None
-        self._dockable = None
+        # undo the HACK
+        self._dockable.setMinimumWidth(0)
 
 #------------------------------------------------------------------------------
 # Binary Ninja Hacks XXX / TODO

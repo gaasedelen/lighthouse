@@ -966,7 +966,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._column_alignment[column] = alignment
 
         # redraw the column header & row contents with the new alignment
-        self._alignment_changed()
+        self._alignment_changed(column)
 
     def get_modeled_coverage_percent(self):
         """
