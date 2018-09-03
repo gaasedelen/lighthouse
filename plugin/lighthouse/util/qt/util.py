@@ -14,6 +14,19 @@ logger = logging.getLogger("Lighthouse.Qt.Util")
 # Qt Util
 #------------------------------------------------------------------------------
 
+def move_mouse_event(mouse_event, position):
+    """
+    Move the given mouse event to a different position.
+    """
+    new_event = QtGui.QMouseEvent(
+        mouse_event.type(),
+        position,
+        mouse_event.button(),
+        mouse_event.buttons(),
+        mouse_event.modifiers()
+    )
+    return new_event
+
 def get_qt_icon(name):
     """
     Get a standard Qt icon by name.
@@ -41,18 +54,30 @@ def flush_qt_events():
     app = QtCore.QCoreApplication.instance()
     app.processEvents()
 
+def normalize_to_dpi(font_size):
+    """
+    Return a font that has been normalized based on the system DPI.
+    """
+    return (font_size*get_dpi_scale())/5.0
+
+def get_default_font_size():
+    """
+    Get the default font size for this QApplication.
+    """
+    return QtGui.QFont().pointSizeF()
+
 def get_dpi_scale():
     """
     Get a DPI-afflicted value useful for consistent UI scaling.
     """
     font = QtGui.QFont("Times", 15)
-    return QtGui.QFontMetrics(font).xHeight()
+    return QtGui.QFontMetricsF(font).xHeight()
 
-def MonospaceFont(size=-1):
+def MonospaceFont():
     """
     Convenience alias for creating a monospace Qt font object.
     """
-    font = QtGui.QFont("Monospace", pointSize=size)
+    font = QtGui.QFont("Courier New")
     font.setStyleHint(QtGui.QFont.TypeWriter)
     return font
 

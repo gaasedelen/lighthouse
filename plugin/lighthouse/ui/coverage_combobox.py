@@ -46,19 +46,41 @@ class CoverageComboBox(QtWidgets.QComboBox):
     # Initialization - UI
     #--------------------------------------------------------------------------
 
+    def mousePressEvent(self, e):
+        """
+        TODO/COMMENT
+        """
+        hovering = self.childAt(e.pos())
+        if hovering == self.lineEdit():
+            new_pos = QtCore.QPoint(
+                self.rect().right() - 10,
+                self.rect().height()/2
+            )
+            logger.debug("Moved click %s --> %s" % (e.pos(), new_pos))
+            e = move_mouse_event(e, new_pos)
+        super(CoverageComboBox, self).mousePressEvent(e)
+
     def _ui_init(self):
         """
         Initialize UI elements.
         """
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont(9)
+        self._font = MonospaceFont()
+        self._font.setPointSizeF(normalize_to_dpi(9))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
         # create the underlying model & table to power the combobox dropwdown
         self.setModel(CoverageComboBoxModel(self._director, self))
         self.setView(CoverageComboBoxView(self.model(), self))
+
+        # TODO/COMMENT
+        self.setEditable(True)
+        self.lineEdit().setFont(self._font)
+        self.lineEdit().setReadOnly(True)
+        self.lineEdit().setEnabled(False)
+        self.setMaximumHeight(self._font_metrics.height()*1.75)
 
         #
         # the combobox will pick a size based on its contents when it is first
@@ -80,6 +102,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         #
 
         self.setStyleSheet("QComboBox { padding: 0 2ex 0 2ex; }")
+        self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
 
         # connect relevant signals
         self._ui_init_signals()
@@ -220,6 +243,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.blockSignals(True)
         new_index = self.findData(self._director.coverage_name)
         self.setCurrentIndex(new_index)
+        self.lineEdit().home(False)
         self.blockSignals(False)
 
 #------------------------------------------------------------------------------
@@ -252,7 +276,8 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         palette = self.model()._director._palette
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont(9)
+        self._font = MonospaceFont()
+        self._font.setPointSizeF(normalize_to_dpi(9))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
@@ -263,7 +288,10 @@ class CoverageComboBoxView(QtWidgets.QTableView):
             "  color: %s;" % palette.combobox_fg.name() +
             "  selection-background-color: %s;" % palette.combobox_selection_bg.name() +
             "  selection-color: %s;" % palette.combobox_selection_fg.name() +
-            "}"
+            "  margin: 0; outline: none;"
+            "} "
+            "QTableView::item{ padding: 0.5ex; } "
+            "QTableView::item:focus { padding: 0; }"
         )
 
         # hide dropdown table headers, and default grid
@@ -381,14 +409,15 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         self._seperator_index = 0
 
         # initialize a monospace font to use with our widget(s)
-        self._font = MonospaceFont(9)
+        self._font = MonospaceFont()
+        self._font.setPointSizeF(normalize_to_dpi(9))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # load the raw 'X' delete icon from disk
         delete_icon = QtGui.QPixmap(plugin_resource("icons/delete_coverage.png"))
 
         # compute the appropriate size for the deletion icon
-        icon_height = self._font_metrics.height()/2
+        icon_height = self._font_metrics.height()*0.75
         icon_width  = icon_height
 
         # scale the icon as appropriate (very likely scaling it down)
@@ -487,7 +516,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
             return QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft
 
         # data display request
-        elif role == QtCore.Qt.DisplayRole:
+        elif role in [QtCore.Qt.DisplayRole, QtCore.Qt.EditRole]:
             if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
                 return self._director.get_coverage_string(self._entries[index.row()])
 

@@ -43,9 +43,6 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         Initialize UI elements.
         """
-        self._font = MonospaceFont(9)
-
-        # initialize our ui elements
         self._ui_init_table()
         self._ui_init_table_ctx_menu_actions()
         self._ui_init_header_ctx_menu_actions()
@@ -150,14 +147,14 @@ class CoverageTableView(QtWidgets.QTableView):
             vh.setResizeMode(QtWidgets.QHeaderView.Fixed)
 
         # specify the fixed pixel height for the table headers
-        title_rect = title_fm.boundingRect("TEST")
-        title_height = int(title_rect.height() * 1.7)
-        hh.setFixedHeight(title_height)
+        spacing = title_fm.height() - title_fm.xHeight()
+        tweak = 24 - spacing
+        hh.setFixedHeight(entry_fm.height()+tweak)
 
         # specify the fixed pixel height for the table rows
-        entry_rect = entry_fm.boundingRect("TEST")
-        entry_height = int(entry_rect.height() * 1.2)
-        vh.setDefaultSectionSize(entry_height)
+        spacing = entry_fm.height() - entry_fm.xHeight()
+        tweak = 16 - spacing
+        vh.setDefaultSectionSize(entry_fm.height()+tweak)
 
     def _ui_init_table_ctx_menu_actions(self):
         """
@@ -698,11 +695,13 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         ]
 
         # initialize a monospace font to use for table row / cell text
-        self._entry_font = MonospaceFont(9)
+        self._entry_font = MonospaceFont()
+        self._entry_font.setStyleStrategy(QtGui.QFont.ForceIntegerMetrics)
+        self._entry_font.setPointSizeF(normalize_to_dpi(9))
 
         # use the default / system font for the column titles
         self._title_font = QtGui.QFont()
-        self._title_font.setPointSize(9)
+        self._title_font.setPointSizeF(normalize_to_dpi(9))
 
         #----------------------------------------------------------------------
         # Sorting
