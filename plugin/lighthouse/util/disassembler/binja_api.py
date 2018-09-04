@@ -226,6 +226,8 @@ class BinjaAPI(DisassemblerAPI):
         func = self.bv.get_function_at(function_address)
         if not func:
             return
+        if new_name == "":
+            new_name = None
         func.name = new_name
 
         #
