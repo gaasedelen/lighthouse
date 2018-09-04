@@ -83,37 +83,36 @@ class IDAPainter(DatabasePainter):
     # Paint Actions
     #------------------------------------------------------------------------------
 
+    #
+    # NOTE:
+    #   these are 'internal' functions meant only to be used by the painter.
+    #   they are decorated with @execute_paint to force execution into the
+    #   mainthread, where it is safe to paint (in IDA)
+    #
+
     @execute_paint
     def _paint_instructions(self, instructions):
-        """
-        Internal routine to force called action to the main thread.
-        """
         self.paint_instructions(instructions)
         self._action_complete.set()
 
     @execute_paint
     def _clear_instructions(self, instructions):
-        """
-        Internal routine to force called action to the main thread.
-        """
         self.clear_instructions(instructions)
         self._action_complete.set()
 
     @execute_paint
     def _paint_nodes(self, nodes_coverage):
-        """
-        Internal routine to force called action to the main thread.
-        """
         self.paint_nodes(nodes_coverage)
         self._action_complete.set()
 
     @execute_paint
     def _clear_nodes(self, nodes_metadata):
-        """
-        Internal routine to force called action to the main thread.
-        """
         self.clear_nodes(nodes_metadata)
         self._action_complete.set()
+
+    @disassembler.execute_ui
+    def _refresh_ui(self):
+        idaapi.refresh_idaview_anyway()
 
     def _cancel_action(self, job_id):
         idaapi.cancel_exec_request(job_id)
@@ -303,7 +302,7 @@ class IDAPainter(DatabasePainter):
             lines_painted += 1
 
         # finally, refresh the view
-        idaapi.refresh_idaview_anyway()
+        self._refresh_ui()
 
     def _hxe_callback(self, event, *args):
         """
@@ -345,10 +344,7 @@ class IDAPainter(DatabasePainter):
         #    return False # a repaint was requested
 
         # refresh the view
-        idaapi.execute_sync(
-            idaapi.refresh_idaview_anyway,
-            idaapi.MFF_FAST
-        )
+        self._refresh_ui()
 
         # succesful completion
         return True

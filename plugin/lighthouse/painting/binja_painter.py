@@ -18,6 +18,7 @@ class BinjaPainter(DatabasePainter):
     """
     Asynchronous Binary Ninja database painter.
     """
+    PAINTER_SLEEP = 0.01
 
     def __init__(self, director, palette):
         super(BinjaPainter, self).__init__(director, palette)
@@ -27,10 +28,11 @@ class BinjaPainter(DatabasePainter):
     #------------------------------------------------------------------------------
 
     #
-    # NOTE: due to the manner in which Binary Ninja implements basic block
-    # (node) highlighting, I am not sure it is worth it to paint individual
-    # ividual instructions. for now we, will simply make the instruction
-    # painting functions no-op's
+    # NOTE:
+    #   due to the manner in which Binary Ninja implements basic block
+    #   (node) highlighting, I am not sure it is worth it to paint individual
+    #   instructions. for now we, will simply make the instruction
+    #   painting functions no-op's
     #
 
     def _paint_instructions(self, instructions):
@@ -58,6 +60,9 @@ class BinjaPainter(DatabasePainter):
             self._painted_nodes.discard(node_metadata.address)
         self._action_complete.set()
 
+    def _refresh_ui(self):
+        pass
+
     def _cancel_action(self, job):
         pass # TODO/BINJA
 
@@ -68,4 +73,6 @@ class BinjaPainter(DatabasePainter):
     def _priority_paint(self):
         current_address = disassembler.get_current_address()
         current_function = disassembler.bv.get_function_at(current_address)
-        return self._paint_function(current_function.start)
+        self._paint_function(current_function.start)
+        return True
+

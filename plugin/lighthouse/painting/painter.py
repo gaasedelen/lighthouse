@@ -14,6 +14,8 @@ class DatabasePainter(object):
     """
     __metaclass__ = abc.ABCMeta
 
+    PAINTER_SLEEP = 0.001
+
     MSG_TERMINATE = 0
     MSG_REPAINT = 1
     MSG_CLEAR = 2
@@ -179,6 +181,13 @@ class DatabasePainter(object):
         pass
 
     @abc.abstractmethod
+    def _refresh_ui(self):
+        """
+        Refresh the disassembler UI to ensure paint is rendered.
+        """
+        pass
+
+    @abc.abstractmethod
     def _cancel_action(self, job):
         """
         Cancel a paint action using something representing its job.
@@ -296,6 +305,7 @@ class DatabasePainter(object):
         if not self._async_action(self._paint_instructions, db_coverage.coverage):
             return False # a repaint was requested
 
+
         # paint new nodes
         if not self._async_action(self._paint_nodes, db_coverage.nodes.itervalues()):
             return False # a repaint was requested
@@ -401,6 +411,9 @@ class DatabasePainter(object):
                 logger.error("UNKNOWN COMMAND! %s" % str(action))
                 break
 
+            # refresh the UI to ensure paint changes are rendered
+            self._refresh_ui()
+
         # thread exit
         logger.debug("Exiting DatabasePainter thread...")
 
@@ -463,7 +476,7 @@ class DatabasePainter(object):
             # sleep some so we don't choke the main IDA thread
             #
 
-            time.sleep(.001)
+            time.sleep(self.PAINTER_SLEEP)
 
         # operation completed successfully
         return True

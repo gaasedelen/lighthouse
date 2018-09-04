@@ -486,7 +486,7 @@ class CoverageTableController(object):
             name_index = model.index(row_number, model.FUNC_NAME)
             function_names += model.data(name_index)
             function_names += "\n"
-        copy_to_clipboard(function_names)
+        copy_to_clipboard(function_names.rstrip())
         return function_names
 
     @mainthread
@@ -500,7 +500,7 @@ class CoverageTableController(object):
             addr_index = model.index(row_number, model.FUNC_ADDR)
             address_string += model.data(addr_index)
             address_string += "\n"
-        copy_to_clipboard(address_string)
+        copy_to_clipboard(address_string.rstrip())
         return address_string
 
     @mainthread
@@ -517,7 +517,7 @@ class CoverageTableController(object):
             function_name_and_address += " "
             function_name_and_address += model.data(name_index)
             function_name_and_address += "\n"
-        copy_to_clipboard(function_name_and_address)
+        copy_to_clipboard(function_name_and_address.rstrip())
         return function_name_and_address
 
     #---------------------------------------------------------------------------
