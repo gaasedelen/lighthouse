@@ -2,11 +2,10 @@ import os
 import logging
 
 import idaapi
-
 from lighthouse.core import Lighthouse
 from lighthouse.util.misc import plugin_resource
 
-logger = logging.getLogger("Lighthouse.Integration.IDA")
+logger = logging.getLogger("Lighthouse.IDA.Integration")
 
 #------------------------------------------------------------------------------
 # Lighthouse IDA Integration
@@ -14,7 +13,7 @@ logger = logging.getLogger("Lighthouse.Integration.IDA")
 
 class LighthouseIDA(Lighthouse):
     """
-    The IDA specific Lighthouse (UI) integration code.
+    Lighthouse UI Integration for IDA Pro.
     """
 
     def __init__(self):
@@ -47,12 +46,12 @@ class LighthouseIDA(Lighthouse):
 
         # describe a custom IDA UI action
         action_desc = idaapi.action_desc_t(
-            self.ACTION_LOAD_FILE,                     # The action name.
-            "~C~ode coverage file...",                 # The action text.
-            IDACtxEntry(self.interactive_load_file),   # The action handler.
-            None,                                      # Optional: action shortcut
-            "Load individual code coverage file(s)",   # Optional: tooltip
-            self._icon_id_file                         # Optional: the action icon
+            self.ACTION_LOAD_FILE,                   # The action name
+            "~C~ode coverage file...",               # The action text
+            IDACtxEntry(self.interactive_load_file), # The action handler
+            None,                                    # Optional: action shortcut
+            "Load individual code coverage file(s)", # Optional: tooltip
+            self._icon_id_file                       # Optional: the action icon
         )
 
         # register the action with IDA
@@ -62,9 +61,9 @@ class LighthouseIDA(Lighthouse):
 
         # attach the action to the File-> dropdown menu
         result = idaapi.attach_action_to_menu(
-            "File/Load file/",       # Relative path of where to add the action
-            self.ACTION_LOAD_FILE,   # The action ID (see above)
-            idaapi.SETMENU_APP       # We want to append the action after ^
+            "File/Load file/",      # Relative path of where to add the action
+            self.ACTION_LOAD_FILE,  # The action ID (see above)
+            idaapi.SETMENU_APP      # We want to append the action after ^
         )
         if not result:
             RuntimeError("Failed action attach load_file")
@@ -83,9 +82,9 @@ class LighthouseIDA(Lighthouse):
 
         # describe a custom IDA UI action
         action_desc = idaapi.action_desc_t(
-            self.ACTION_LOAD_BATCH,                   # The action name.
-            "~C~ode coverage batch...",               # The action text.
-            IDACtxEntry(self.interactive_load_batch), # The action handler.
+            self.ACTION_LOAD_BATCH,                   # The action name
+            "~C~ode coverage batch...",               # The action text
+            IDACtxEntry(self.interactive_load_batch), # The action handler
             None,                                     # Optional: action shortcut
             "Load and aggregate code coverage files", # Optional: tooltip
             self._icon_id_batch                       # Optional: the action icon
@@ -98,9 +97,9 @@ class LighthouseIDA(Lighthouse):
 
         # attach the action to the File-> dropdown menu
         result = idaapi.attach_action_to_menu(
-            "File/Load file/",          # Relative path of where to add the action
-            self.ACTION_LOAD_BATCH,     # The action ID (see above)
-            idaapi.SETMENU_APP          # We want to append the action after ^
+            "File/Load file/",      # Relative path of where to add the action
+            self.ACTION_LOAD_BATCH, # The action ID (see above)
+            idaapi.SETMENU_APP      # We want to append the action after ^
         )
         if not result:
             RuntimeError("Failed action attach load_batch")
@@ -119,9 +118,9 @@ class LighthouseIDA(Lighthouse):
 
         # describe a custom IDA UI action
         action_desc = idaapi.action_desc_t(
-            self.ACTION_COVERAGE_OVERVIEW,            # The action name.
-            "~C~overage Overview",                    # The action text.
-            IDACtxEntry(self.open_coverage_overview), # The action handler.
+            self.ACTION_COVERAGE_OVERVIEW,            # The action name
+            "~C~overage Overview",                    # The action text
+            IDACtxEntry(self.open_coverage_overview), # The action handler
             None,                                     # Optional: action shortcut
             "Open database code coverage overview",   # Optional: tooltip
             self._icon_id_overview                    # Optional: the action icon
@@ -135,7 +134,7 @@ class LighthouseIDA(Lighthouse):
         # attach the action to the View-> dropdown menu
         result = idaapi.attach_action_to_menu(
             "View/Open subviews/Hex dump", # Relative path of where to add the action
-            self.ACTION_COVERAGE_OVERVIEW,    # The action ID (see above)
+            self.ACTION_COVERAGE_OVERVIEW, # The action ID (see above)
             idaapi.SETMENU_INS             # We want to insert the action before ^
         )
         if not result:
@@ -221,7 +220,7 @@ class LighthouseIDA(Lighthouse):
 
 class IDACtxEntry(idaapi.action_handler_t):
     """
-    A basic Context Menu class to utilize IDA's action handlers.
+    A minimal context menu entry class to utilize IDA's action handlers.
     """
 
     def __init__(self, action_function):

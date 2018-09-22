@@ -79,7 +79,7 @@ def cleanup_log_directory(log_directory):
         if os.path.isfile(filepath):
             filetimes[os.path.getmtime(filepath)] = filepath
 
-    # get the filetimes and check if there's enough enough to warrant cleanup
+    # get the filetimes and check if there's enough to warrant cleanup
     times = filetimes.keys()
     if len(times) < MAX_LOGS:
         return

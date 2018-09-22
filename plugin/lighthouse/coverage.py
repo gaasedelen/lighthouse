@@ -1,37 +1,38 @@
 import logging
 import weakref
-import itertools
 import collections
 
 from lighthouse.util import *
-from lighthouse.util.qt import QtGui #TODO remove
 from lighthouse.palette import compute_color_on_gradiant
 from lighthouse.metadata import DatabaseMetadata
 
 logger = logging.getLogger("Lighthouse.Coverage")
 
 #------------------------------------------------------------------------------
-# Coverage / Data Mapping
+# Coverage Mapping
 #------------------------------------------------------------------------------
 #
-#    Raw runtime data (eg, coverage or trace) passed into the director is
-#    stored internally in DatabaseCoverage objects. A DatabaseCoverage
-#    object can be roughly equated to a single loaded runtime data file.
+#    When raw runtime data (eg, coverage or trace data) is passed into the
+#    director, it is stored internally in DatabaseCoverage objects. A
+#    DatabaseCoverage object (as defined below) roughly equates to a single
+#    loaded coverage file.
 #
-#    DatabaseCoverage objects simply map their raw runtime data to the
-#    database using the lifted metadata described in metadata.py. The
-#    'mapping' objects detailed in this file are effectively produced as
-#    a thin layer on top of cached metadata.
+#    Besides holding loaded coverage data, the DatabaseCoverage objects are
+#    also responsible for mapping the coverage data to the open database using
+#    the lifted metadata described in metadata.py.
+#
+#    The 'mapping' objects detailed in this file exist only as a thin layer on
+#    top of the lifted database metadata.
 #
 #    As mapping objects retain the raw runtime data internally, we are
-#    able to rebuild mappings should the database/metadata get updated or
-#    refreshed by the user.
+#    able to rebuild mappings should the database structure (and its metadata)
+#    get updated or refreshed by the user.
 #
 
 BADADDR = 0xFFFFFFFFFFFFFFFF
 
 #------------------------------------------------------------------------------
-# Database Coverage / Data Mapping
+# Database Coverage
 #------------------------------------------------------------------------------
 
 class DatabaseCoverage(object):
@@ -47,29 +48,26 @@ class DatabaseCoverage(object):
         # the name of the DatabaseCoverage object
         self.name = name
 
-        # the filepath of the original coverage data
+        # the filepath this coverage data was sourced from
         self.filepath = filepath
 
         #
-        # the abstract above gives some background to the design employed by
-        # Lighthouse to map coverage data to the database.
+        # this is the coverage mapping's reference to the underlying database
+        # metadata. it will use this for all its mapping operations.
         #
-        # coverage objects such as this (DatabaseCoverage) are basically
-        # glorified mappings of coverage / runtime data on top of their
-        # metadata counterparts. A coverage object by itself is mostly useless
-        # without its corresponding metadata object.
-        #
-        # here we simply populate self._metadata with a stub metadata object,
-        # but at runtime we will inject a fully collected DatabaseMetadata
-        # object as maintained by the director.
+        # here we simply populate the DatabaseCoverage object with a stub
+        # DatabaseMetadata object, but at runtime we will inject a fully
+        # collected DatabaseMetadata object as maintained by the director.
         #
 
         self._metadata = DatabaseMetadata()
 
         #
-        # the hitmap effectively holds the raw coverage data. the name
-        # should speak for itself, but a hitmap will track the number of
-        # times a given address / instruction was executed.
+        # the address hitmap is a dictionary that effectively holds the lowest
+        # level representation of the original coverage data loaded from disk.
+        #
+        # as the name implies, the hitmap will track the number of times a
+        # given address appeared in the original coverage data.
         #
         #  Eg:
         #      hitmap =
@@ -83,22 +81,29 @@ class DatabaseCoverage(object):
         #          ...
         #      }
         #
-        # this structure gives us an interesting degree of flexibility with
-        # regard to what data sources we can consue (inst trace, coverage, etc)
-        # and ways we can leverage said data (visualize coverage, heatmaps)
+        # the hitmap gives us an interesting degree of flexibility with regard
+        # to what data sources we can load coverage data from, and how we
+        # choose to consume it (eg, visualize coverage, heatmaps, ...)
+        #
+        # using hitmap.keys(), we effectively have a coverage bitmap of all
+        # the addresses executed in the coverage log
         #
 
         self._hitmap = build_hitmap(data)
 
         #
-        # the coverage hash is a simple hash of the coverage bitmap/mask.
-        # it is primarily used by the director as a means of quickly comparing
-        # coverage, and predicting outputs of logical / arithmetic operations.
+        # the coverage hash is a simple hash of the coverage mask (hitmap keys)
         #
-        # the hash will need to be updated via _update_coverage_hash() anytime
-        # the hitmap is modified or changed internally. we cache a concrete
-        # result of the coverage hash because computing the hash on demand can
-        # be expensive in terms of time.
+        # it is primarily used by the director as a means of quickly comparing
+        # two database coverage objects against each other, and speculating on
+        # the output of logical/arithmetic operations of their coverage data.
+        #
+        # this hash will need to be recomputed via _update_coverage_hash()
+        # anytime new coverage data is introduced to this object, or when the
+        # hitmap is otherwise modified internally.
+        #
+        # this is necessary because we cache the coverage hash. computing the
+        # hash on demand is expensive, and it really shouldn't changne often.
         #
         # see the usage of 'coverage_hash' in director.py for more info
         #
@@ -107,35 +112,54 @@ class DatabaseCoverage(object):
         self._update_coverage_hash()
 
         #
-        # Lighthouse will only compute coverage for code within defined
-        # functions. therefore, all coverage / runtime data will get bucketed
-        # into its appropriate NodeCoverage object (eg, a basic block) or it
-        # will be considered 'unmapped'
+        # unmapped data is a list of addresses that we have coverage for, but
+        # could not map to any defined function in the database.
         #
-        # starting out, all coverage data is marked as unmapped
+        # a shortcoming of lighthouse (as recently as v0.8) is that it does
+        # *not* compute statistics for, or paint, loaded coverage that falls
+        # outside of defined functions.
+        #
+        # under normal circumstances, one can just define a function at the
+        # area of interest (assuming it was a disassembler issue) and refresh
+        # the lighthouse metadata to 'map' the missing coverage.
+        #
+        # in cases of obfuscation, abnormal control flow, or self modifying
+        # code, lighthouse will probably not perform well. but to be fair,
+        # lighthouse was designed for displaying coverage more-so than hit
+        # tracing or trace exploration.
+        #
+        # initially, all loaded coverage data is marked as unmapped
         #
 
         self._unmapped_data = set(self._hitmap.keys())
         self._unmapped_data.add(BADADDR)
+        self._misaligned_data = set()
 
         #
-        # self._map_coverage is responsible for mapping coverage data to the
-        # database (via the lifted 'DatabaseMetadata' cache). The mapping
-        # process will yield NodeCoverage & FunctionCoverage objects.
+        # at runtime, the map_coverage() member function of this class is
+        # responsible for taking the unmapped_data mapping it on top of the
+        # lifted database metadata (self._metadata).
+        #
+        # the process of mapping the raw coverage data will yield NodeCoverage
+        # and FunctionCoverage objects. these are the buckets that the unmapped
+        # coverage data is poured into during the mappinng process.
         #
         # NodeCoverage objects represent coverage at the node (basic block)
-        # level and are owned by their respective FunctionCoverage objects.
+        # level and are owned by a respective FunctionCoverage object.
         #
-        # FunctionCoverage represent coverage at the function level by
-        # leveraging their respective NodeCoverage children.
+        # FunctionCoverage represent coverage at the function level, grouping
+        # children NodeCoverage objects and providing higher level statistics.
+        #
+        # self.nodes: address --> NodeCoverage
+        # self.functions: address --> FunctionCoverage
         #
 
-        self.nodes     = {}
+        self.nodes = {}
         self.functions = {}
         self.instruction_percent = 0.0
 
         #
-        # we instantiate a single weakref of ourself (the DatbaseMapping
+        # we instantiate a single weakref of ourself (the DatbaseCoverage
         # object) such that we can distribute it to the children we create
         # without having to repeatedly instantiate new ones.
         #
@@ -149,14 +173,14 @@ class DatabaseCoverage(object):
     @property
     def data(self):
         """
-        The data (a hitmap) used by this mapping.
+        Return the backing coverage data (a hitmap).
         """
         return self._hitmap
 
     @property
     def coverage(self):
         """
-        The instruction-level coverage bitmap/mask of this mapping.
+        Return the instruction-level coverage bitmap/mask.
         """
         return self._hitmap.viewkeys()
 
@@ -169,8 +193,9 @@ class DatabaseCoverage(object):
         total = len(self.nodes)
 
         #
-        # count the number of nodes that allegedly have coverage data, but
-        # don't actually have their first instruction marked as executed
+        # count the number of nodes (basic blocks) that allegedly were executed
+        # (they have coverage data) but don't actually have their first
+        # instruction logged as executed.
         #
         # this is considered 'suspicious' and should be a red flag that the
         # provided coverage data is malformed, or for a different binary
@@ -224,16 +249,9 @@ class DatabaseCoverage(object):
         # dump the unmappable coverage data
         #self.dump_unmapped()
 
-    def refresh_nodes(self):
-        """
-        Special fast-refresh of nodes as used in the un-painting process.
-        """
-        dirty_nodes = self._map_nodes()
-        self._finalize_nodes(dirty_nodes)
-
     def _finalize(self, dirty_nodes, dirty_functions):
         """
-        Finalize coverage objects for use.
+        Finalize the DatabaseCoverage statistics / data for use.
         """
         self._finalize_nodes(dirty_nodes)
         self._finalize_functions(dirty_functions)
@@ -241,21 +259,21 @@ class DatabaseCoverage(object):
 
     def _finalize_nodes(self, dirty_nodes):
         """
-        Finalize coverage nodes for use.
+        Finalize the NodeCoverage objects statistics / data for use.
         """
         for node_coverage in dirty_nodes.itervalues():
             node_coverage.finalize()
 
     def _finalize_functions(self, dirty_functions):
         """
-        Finalize coverage nodes for use.
+        Finalize the FunctionCoverage objects statistics / data for use.
         """
         for function_coverage in dirty_functions.itervalues():
             function_coverage.finalize()
 
     def _finalize_instruction_percent(self):
         """
-        Finalize the database coverage % by instructions executed.
+        Finalize the DatabaseCoverage's coverage % by instructions executed.
         """
 
         # sum all the instructions in the database metadata
@@ -264,10 +282,10 @@ class DatabaseCoverage(object):
             self.instruction_percent = 0.0
             return
 
-        # sum all the instructions executed by the coverage
+        # sum the unique instructions executed across all functions
         executed = sum(f.instructions_executed for f in self.functions.itervalues())
 
-        # return the average function coverage % aka 'the database coverage %'
+        # save the computed percentage of database instructions executed (0 to 1.0)
         self.instruction_percent = float(executed) / total
 
     #--------------------------------------------------------------------------
@@ -276,7 +294,7 @@ class DatabaseCoverage(object):
 
     def add_data(self, data, update=True):
         """
-        Add runtime data to this mapping.
+        Add an existing instruction hitmap to the coverage mapping.
         """
 
         # add the given runtime data to our data source
@@ -287,7 +305,7 @@ class DatabaseCoverage(object):
         if not update:
             return
 
-        # update the coverage hash incase the hitmap changed
+        # update the coverage hash in case the hitmap changed
         self._update_coverage_hash()
 
         # mark these touched addresses as dirty
@@ -295,7 +313,7 @@ class DatabaseCoverage(object):
 
     def add_addresses(self, addresses, update=True):
         """
-        Add a list of instruction addresses to this mapping (eg, a trace).
+        Add a list of instruction addresses to the coverage mapping.
         """
 
         # increment the hit count for an address
@@ -306,7 +324,7 @@ class DatabaseCoverage(object):
         if not update:
             return
 
-        # update the coverage hash incase the hitmap changed
+        # update the coverage hash in case the hitmap changed
         self._update_coverage_hash()
 
         # mark these touched addresses as dirty
@@ -314,18 +332,16 @@ class DatabaseCoverage(object):
 
     def subtract_data(self, data):
         """
-        Subtract runtime data from this mapping.
+        Subtract an existing instruction hitmap from the coverage mapping.
         """
 
-        # subtract the given runtime data from our data source
+        # subtract the given hitmap from our existing hitmap
         for address, hit_count in data.iteritems():
             self._hitmap[address] -= hit_count
 
-            #assert self._hitmap[address] >= 0
-
             #
             # if there is no longer any hits for this address, delete its
-            # entry from the source_data dictonary. we don't want its entry to
+            # entry from the hitmap dictionary. we don't want its entry to
             # hang around because we use self._hitmap.viewkeys() as a
             # coverage bitmap/mask
             #
@@ -333,7 +349,7 @@ class DatabaseCoverage(object):
             if not self._hitmap[address]:
                 del self._hitmap[address]
 
-        # update the coverage hash incase the hitmap changed
+        # update the coverage hash as the hitmap has probably changed
         self._update_coverage_hash()
 
         #
@@ -373,93 +389,93 @@ class DatabaseCoverage(object):
 
     def _map_coverage(self):
         """
-        Map loaded coverage data to the given database metadata.
+        Map loaded coverage data to the underlying database metadata.
         """
-
-        # re-map any unmapped coverage to nodes
         dirty_nodes = self._map_nodes()
-
-        # re-map nodes to functions
         dirty_functions = self._map_functions(dirty_nodes)
-
-        # return the modified objects
         return (dirty_nodes, dirty_functions)
 
     def _map_nodes(self):
         """
-        Map loaded runtime data to database defined nodes (basic blocks).
+        Map loaded coverage data to database defined nodes (basic blocks).
         """
         dirty_nodes = {}
-        addresses_to_map = collections.deque(sorted(self._unmapped_data))
+
+        # the coverage data we will attempt to process in this function
+        coverage_addresses = collections.deque(sorted(self._unmapped_data))
 
         #
-        # This while loop is the core of our coverage mapping process.
+        # the loop below is the core of our coverage mapping process.
         #
-        # The '_unmapped_data' list is consumed by this loop, mapping
-        # any unmapped runtime data maintained by this DatabaseCoverage
-        # to the given database metadata.
+        # operating on whatever coverage data (instruction addresses) reside
+        # within unmapped_data, this loop will attempt to bucket the coverage
+        # into NodeCoverage objects where possible.
         #
-        # It should be noted that the rest of the database coverage
-        # mapping (eg functions) gets built ontop of the mappings we build
-        # for nodes here using the more or less raw/recycled runtime data.
+        # the higher level coverage mappings (eg FunctionCoverage,
+        # DatabaseCoverage) get built on top of the node mapping that we
+        # perform here.
+        #
+        # since this loop is the most computationally expensive part of the
+        # mapping process, it has been carefully profiled & optimized for
+        # speed. please be careful if you wish to modify it...
         #
 
-        while addresses_to_map:
+        while coverage_addresses:
 
-            # get the next address to map
-            address = addresses_to_map.popleft()
+            # get the next coverage address to map
+            address = coverage_addresses.popleft()
 
-            # get the node (basic block) that contains this address
+            # get the node (basic block) metadata that this address falls in
             node_metadata = self._metadata.get_node(address)
 
             #
-            # failed to locate the node (basic block) for this address.
-            # this address must not fall inside of a defined function...
+            # should we fail to locate node metadata for the coverage address
+            # that we are trying to map, then the address must not fall inside
+            # of a defined function.
+            #
+            # in this case, the coverage address will remain unmapped...
             #
 
             if not node_metadata:
                 continue
 
             #
-            # we found applicable node metadata for this address, now try
-            # to find the mapping object for this node address
+            # we found applicable node metadata for this address, now we will
+            # try to find an existing bucket (NodeCoverage) for the address
             #
 
             if node_metadata.address in self.nodes:
                 node_coverage = self.nodes[node_metadata.address]
 
             #
-            # failed to locate a node coverage object, looks like this is
-            # the first time we have identiied coverage for this node.
-            # create a coverage node object and use it now.
+            # failed to locate an existing NodeCoverage object for this
+            # address, it looks like this is the first time we have attempted
+            # to bucket coverage for this node.
+            #
+            # create a new NodeCoverage bucket and use it now
             #
 
             else:
                 node_coverage = NodeCoverage(node_metadata.address, self._weak_self)
                 self.nodes[node_metadata.address] = node_coverage
 
-            # compute the basic block end now to reduce overhead in the loop below
+            # compute the end address of the current basic block
             node_end = node_metadata.address + node_metadata.size
 
             #
-            # the loop below can be thought of almost as an inlined fast-path
-            # where we expect the next several addresses to belong to the same
-            # node (basic block).
-            #
-            # with the assumption of linear program execution, we can reduce
-            # the heavier overhead of all the lookup code above by simply
-            # checking if the next address in the queue (addresses_to_map)
-            # falls into the same / current node (basic block).
+            # the loop below is as an inlined fast-path that assumes the next
+            # several coverage addresses will likely belong to the same node
+            # that we just looked up (or created) in the code above
             #
             # we can simply re-use the current node and its coverage object
-            # until the next address to be processed falls outside our scope
+            # until the next address to be processed falls outside the node
             #
 
             while 1:
 
                 #
                 # map the hitmap data for the current address (an instruction)
-                # to this node mapping and mark the instruction as mapped by
+                # to this NodeCoverage and mark the instruction as mapped by
                 # discarding its address from the unmapped data list
                 #
 
@@ -467,8 +483,22 @@ class DatabaseCoverage(object):
                     node_coverage.executed_instructions[address] = self._hitmap[address]
                     self._unmapped_data.discard(address)
 
+                #
+                # if the given address allegedly falls within this node's
+                # address range, but doesn't line up with the known
+                # instructions, log it as 'misaligned' / suspicious
+                #
+
+                else:
+                    self._misaligned_data.add(address)
+
                 # get the next address to attempt mapping on
-                address = addresses_to_map.popleft()
+                try:
+                    address = coverage_addresses.popleft()
+
+                # an IndexError implies there is nothing left to map...
+                except IndexError:
+                    break;
 
                 #
                 # if the next address is not in this node, it's time break out
@@ -476,20 +506,13 @@ class DatabaseCoverage(object):
                 #
 
                 if not (node_metadata.address <= address < node_end):
-                    addresses_to_map.appendleft(address)
+                    coverage_addresses.appendleft(address)
                     break
 
-                #
-                # the next address to be mapped DOES fall within our current
-                # node, loop back around in the fast-path and map it
-                #
-
-                # ...
-
-            # since we updated this node, ensure we're tracking it as dirty
+            # the node was updated, so save its coverage as dirty
             dirty_nodes[node_metadata.address] = node_coverage
 
-        # done
+        # done, return a map of NodeCoverage objects that were modified
         return dirty_nodes
 
     def _map_functions(self, dirty_nodes):
@@ -499,30 +522,31 @@ class DatabaseCoverage(object):
         dirty_functions = {}
 
         #
-        # thanks to the _map_nodes function, we now have a repository of
-        # node coverage objects that are considered 'dirty' and can be used
-        # precisely guide the generation of our function level coverage
+        # thanks to the map_nodes(), we now have a repository of NodeCoverage
+        # objects that are considered 'dirty' and can be used precisely to
+        # build or update the function level coverage metadata
         #
 
         for node_coverage in dirty_nodes.itervalues():
 
             #
-            # using the node_coverage object, we retrieve its underlying
-            # metadata so that we can perform a reverse lookup of the fun
+            # using a given NodeCoverage object, we retrieve its underlying
+            # metadata so that we can perform a reverse lookup of its function
+            # (parent) metadata.
             #
 
             function_metadata = self._metadata.nodes[node_coverage.address].function
 
             #
-            # now we can add this node to its respective function level
-            # coverage mapping
+            # now we will attempt to retrieve the the FunctionCoverage object
+            # that we need to parent the given NodeCoverage object to
             #
 
             function_coverage = self.functions.get(function_metadata.address, None)
 
             #
-            # if we failed to locate a function coverage object, it means
-            # that this is the first time we have identified coverage for this
+            # if we failed to locate a FunctionCoverage for this node, it means
+            # that this is the first time we have seen coverage for this
             # function. create a new coverage function object and use it now.
             #
 
@@ -530,71 +554,22 @@ class DatabaseCoverage(object):
                 function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
                 self.functions[function_metadata.address] = function_coverage
 
-            # mark this node as executed in the function level mappping
+            # add the NodeCoverage object to its parent FunctionCoverage
             function_coverage.mark_node(node_coverage)
             dirty_functions[function_metadata.address] = function_coverage
 
-            # end of nodes loop
-
-        # done
+        # done, return a map of FunctionCoverage objects that were modified
         return dirty_functions
 
     def unmap_all(self):
         """
-        Unmap all mapped data.
+        Unmap all mapped coverage data.
         """
         self._unmapped_data = set(self._hitmap.keys())
         self._unmapped_data.add(BADADDR)
-        self.nodes     = {}
+        self._misaligned_data = set()
+        self.nodes = {}
         self.functions = {}
-
-    def _unmap_delta(self, delta):
-        """
-        Unmap node & function coverage affected by the metadata delta.
-
-        The metadata delta tells us exactly which parts of the database
-        changed since our last coverage mapping. This function surgically
-        unmaps the pieces of our coverage that may now be stale.
-
-        This enables us to recompute only what is necessary upon refresh.
-        """
-        self._unmap_nodes(itertools.chain(delta.nodes_removed, delta.nodes_modified))
-        self._unmap_functions(delta.functions_removed)
-
-    def _unmap_nodes(self, node_addresses):
-        """
-        Unmap any data associated with a given list of node addresses.
-        """
-
-        #
-        # using the metdata delta as a guide, we loop through all the nodes it
-        # has noted as either modified, or deleted. it is in our best interest
-        # unmap any of these dirty (stale) node addresses in OUR coverage
-        # mapping so we can selectively regenerate their coverage later.
-        #
-
-        for node_address in node_addresses:
-
-            #
-            # if there's no coverage for this node, then we have nothing to do.
-            # continue on to the next dirty node address
-            #
-
-            node_coverage = self.nodes.pop(node_address, None)
-            if not node_coverage:
-                continue
-
-            # the node was found, unmap any of its tracked coverage blocks
-            self._unmapped_data.update(
-                node_coverage.executed_instructions.viewkeys()
-            )
-
-    def _unmap_functions(self, function_addresses):
-        """
-        Unmap any data associated with a given list of function addresses.
-        """
-        for function_address in function_addresses:
-            self.functions.pop(function_address, None)
 
     #--------------------------------------------------------------------------
     # Debug
@@ -609,7 +584,7 @@ class DatabaseCoverage(object):
             lmsg(" * 0x%X" % address)
 
 #------------------------------------------------------------------------------
-# Function Level Coverage
+# Function Coverage
 #------------------------------------------------------------------------------
 
 class FunctionCoverage(object):
@@ -618,7 +593,7 @@ class FunctionCoverage(object):
     """
 
     def __init__(self, function_address, database=None):
-        self._database = database
+        self.database = database
         self.address = function_address
 
         # addresses of nodes executed
@@ -629,10 +604,7 @@ class FunctionCoverage(object):
         self.node_percent = 0.0
 
         # baked colors
-        if function_address == BADADDR:
-            self.coverage_color = QtGui.QColor(30, 30, 30) #TODO: remove
-        else:
-            self.coverage_color = 0
+        self.coverage_color = 0
 
     #--------------------------------------------------------------------------
     # Properties
@@ -641,28 +613,28 @@ class FunctionCoverage(object):
     @property
     def hits(self):
         """
-        The cumulative instruction executions in this function.
+        Return the number of instruction executions in this function.
         """
         return sum(x.hits for x in self.nodes.itervalues())
 
     @property
     def nodes_executed(self):
         """
-        The number of nodes executed in this function.
+        Return the number of unique nodes executed in this function.
         """
         return len(self.nodes)
 
     @property
     def instructions_executed(self):
         """
-        The number of unique instructions executed in this function.
+        Return the number of unique instructions executed in this function.
         """
         return sum(x.instructions_executed for x in self.nodes.itervalues())
 
     @property
     def instructions(self):
         """
-        The instruction addresses in this function.
+        Return the executed instruction addresses in this function.
         """
         return set([ea for node in self.nodes.itervalues() for ea in node.executed_instructions.keys()])
 
@@ -672,15 +644,15 @@ class FunctionCoverage(object):
 
     def mark_node(self, node_coverage):
         """
-        Mark the given node address as executed.
+        Save the given NodeCoverage to this function.
         """
         self.nodes[node_coverage.address] = node_coverage
 
     def finalize(self):
         """
-        Finalize coverage data for use.
+        Finalize the FunctionCoverage data for use.
         """
-        function_metadata = self._database._metadata.functions[self.address]
+        function_metadata = self.database._metadata.functions[self.address]
 
         # compute the % of nodes executed
         self.node_percent = float(self.nodes_executed) / function_metadata.node_count
@@ -698,12 +670,12 @@ class FunctionCoverage(object):
         # bake colors
         self.coverage_color = compute_color_on_gradiant(
             self.instruction_percent,
-            self._database.palette.coverage_bad,
-            self._database.palette.coverage_good
+            self.database.palette.coverage_bad,
+            self.database.palette.coverage_good
         )
 
 #------------------------------------------------------------------------------
-# Node Coverage / Data Mapping
+# Node Coverage
 #------------------------------------------------------------------------------
 
 class NodeCoverage(object):
@@ -712,7 +684,7 @@ class NodeCoverage(object):
     """
 
     def __init__(self, node_address, database=None):
-        self._database = database
+        self.database = database
         self.address = node_address
         self.executed_instructions = {}
 
@@ -723,14 +695,14 @@ class NodeCoverage(object):
     @property
     def hits(self):
         """
-        The cumulative instruction executions in this node.
+        Return the number of instruction executions in this node.
         """
         return sum(self.executed_instructions.itervalues())
 
     @property
     def instructions_executed(self):
         """
-        The number of unique instructions executed in this node.
+        Return the number of unique instructions executed in this node.
         """
         return len(self.executed_instructions)
 
@@ -742,7 +714,7 @@ class NodeCoverage(object):
         """
         Finalize the coverage metrics for faster access.
         """
-        node_metadata = self._database._metadata.nodes[self.address]
+        node_metadata = self.database._metadata.nodes[self.address]
 
         # the estimated number of executions this node has experienced.
         self.executions = float(self.hits) / node_metadata.instruction_count

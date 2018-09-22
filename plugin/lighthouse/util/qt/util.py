@@ -8,44 +8,35 @@ from ..disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Qt.Util")
 
-# TODO/CLEANUP: this file is kind of a mess
+#------------------------------------------------------------------------------
+# Qt Fonts
+#------------------------------------------------------------------------------
+
+def MonospaceFont():
+    """
+    Convenience alias for creating a monospace Qt font object.
+    """
+    font = QtGui.QFont("Courier New")
+    font.setStyleHint(QtGui.QFont.TypeWriter)
+    return font
 
 #------------------------------------------------------------------------------
 # Qt Util
 #------------------------------------------------------------------------------
 
-def move_mouse_event(mouse_event, position):
-    """
-    Move the given mouse event to a different position.
-    """
-    new_event = QtGui.QMouseEvent(
-        mouse_event.type(),
-        position,
-        mouse_event.button(),
-        mouse_event.buttons(),
-        mouse_event.modifiers()
-    )
-    return new_event
-
-def get_qt_icon(name):
-    """
-    Get a standard Qt icon by name.
-    """
-    icon_type = getattr(QtWidgets.QStyle, name)
-    return QtWidgets.QApplication.style().standardIcon(icon_type)
-
 def color_text(text, color):
     """
-    Return a coloroized (HTML) version of the given string.
+    Return a colorized (HTML) version of the given string.
     """
     return "<font color=\"%s\">%s</font>" % (color.name(), text)
 
-def get_qt_main_window():
+def copy_to_clipboard(data):
     """
-    Get the QMainWindow instance for the current Qt runtime.
+    Copy the given data (a string) to the system clipboard.
     """
-    app = QtCore.QCoreApplication.instance()
-    return [x for x in app.allWidgets() if x.__class__ is QtWidgets.QMainWindow][0]
+    cb = QtWidgets.QApplication.clipboard()
+    cb.clear(mode=cb.Clipboard)
+    cb.setText(data, mode=cb.Clipboard)
 
 def flush_qt_events():
     """
@@ -54,11 +45,19 @@ def flush_qt_events():
     app = QtCore.QCoreApplication.instance()
     app.processEvents()
 
-def normalize_to_dpi(font_size):
+def get_qt_icon(name):
     """
-    Return a font that has been normalized based on the system DPI.
+    Get a standard Qt icon by name.
     """
-    return (font_size*get_dpi_scale())/5.0
+    icon_type = getattr(QtWidgets.QStyle, name)
+    return QtWidgets.QApplication.style().standardIcon(icon_type)
+
+def get_qt_main_window():
+    """
+    Get the QMainWindow instance for the current Qt runtime.
+    """
+    app = QtCore.QCoreApplication.instance()
+    return [x for x in app.allWidgets() if x.__class__ is QtWidgets.QMainWindow][0]
 
 def get_default_font_size():
     """
@@ -73,44 +72,24 @@ def get_dpi_scale():
     font = QtGui.QFont("Times", 15)
     return QtGui.QFontMetricsF(font).xHeight()
 
-def MonospaceFont():
+def move_mouse_event(mouse_event, position):
     """
-    Convenience alias for creating a monospace Qt font object.
+    Move the given mouse event to a different position.
     """
-    font = QtGui.QFont("Courier New")
-    font.setStyleHint(QtGui.QFont.TypeWriter)
-    return font
-
-def singleshot(ms, function=None):
-    """
-    A Qt Singleshot timer that can be stopped.
-    """
-    timer = QtCore.QTimer()
-    timer.setInterval(ms)
-    timer.setSingleShot(True)
-    timer.timeout.connect(function)
-    return timer
-
-def remap_event(event, new_key):
-    """
-    Create an identical QKeyEvent, under a new key binding.
-    """
-    return QtGui.QKeyEvent(
-        QtCore.QEvent.KeyPress,
-        new_key,
-        event.modifiers(),
-        event.text(),
-        event.isAutoRepeat(),
-        event.count()
+    new_event = QtGui.QMouseEvent(
+        mouse_event.type(),
+        position,
+        mouse_event.button(),
+        mouse_event.buttons(),
+        mouse_event.modifiers()
     )
+    return new_event
 
-def copy_to_clipboard(data):
+def normalize_to_dpi(font_size):
     """
-    Copy the given data (a string) to the user clipboard.
+    Normalize the given font size based on the system DPI.
     """
-    cb = QtWidgets.QApplication.clipboard()
-    cb.clear(mode=cb.Clipboard)
-    cb.setText(data, mode=cb.Clipboard)
+    return (font_size*get_dpi_scale())/5.0
 
 def prompt_string(label, title, default=""):
     """
@@ -135,17 +114,11 @@ def prompt_string(label, title, default=""):
 
 def predict_bg_color(image):
     """
-    Predict the background color of an IDA View from a given image slice.
-
-    We hypothesize that the 'background color' of a given image slice of an
-    IDA form will be the color that appears in the longest 'streaks' or
-    continuous sequences. This will probably be true 99% of the time.
+    Predict the 'background color' of a given image.
 
     This function takes an image, and analyzes its first row of pixels. It
     will return the color that it believes to be the 'background color' based
-    on its sequence length.
-
-    TODO: we should probably move this
+    on the longest sequence of identical pixels.
     """
     assert image.width() and image.height()
 
@@ -174,7 +147,7 @@ def predict_bg_color(image):
         # color change, determine if this was the longest continuous color streak
         if sequence > longest:
 
-            # save the last pixel as the longest seqeuence / most likely BG color
+            # save the last pixel as the longest sequence / most likely BG color
             longest = sequence
             speculative_bg = image.pixel(x-1, 0)
 
@@ -184,12 +157,37 @@ def predict_bg_color(image):
     # return the color we speculate to be the background color
     return speculative_bg
 
+def remap_key_event(event, new_key):
+    """
+    Change a given KeyPress QEvent to a different key.
+    """
+    return QtGui.QKeyEvent(
+        QtCore.QEvent.KeyPress,
+        new_key,
+        event.modifiers(),
+        event.text(),
+        event.isAutoRepeat(),
+        event.count()
+    )
+
+def singleshot(ms, function=None):
+    """
+    A Qt Singleshot timer that can be stopped.
+    """
+    timer = QtCore.QTimer()
+    timer.setInterval(ms)
+    timer.setSingleShot(True)
+    timer.timeout.connect(function)
+    return timer
+
 #------------------------------------------------------------------------------
-# IDA Async Magic
+# Async Util
 #------------------------------------------------------------------------------
 
 def await_future(future):
     """
+    Wait for a queue (future) message without blocking the main (Qt) thread.
+
     This is effectively a technique I use to get around completely blocking
     IDA's mainthread while waiting for a threaded result that may need to make
     use of the execute_sync operators.
@@ -199,7 +197,7 @@ def await_future(future):
     """
     interval = 0.02    # the interval which we wait for a response
 
-    # run until the the future arrives
+    # run until the message arrives through the future (a queue)
     while True:
 
         # block for a brief period to see if the future completes
@@ -221,12 +219,12 @@ def await_future(future):
         # to flush the event loop so IDA does not hang
         #
 
-        if qt_available and is_mainthread():
+        if QT_AVAILABLE and is_mainthread():
             flush_qt_events()
 
 def await_lock(lock):
     """
-    Attempt to acquire a lock without blocking the IDA mainthread.
+    Wait for a lock without blocking the main (Qt) thread.
 
     See await_future() for more details.
     """
@@ -236,12 +234,12 @@ def await_lock(lock):
     timeout  = 60.0    # the total time allotted to acquiring the lock
     end_time = time.time() + timeout
 
-    # wait until the the lock is available
+    # wait until the lock is available
     while time.time() < end_time:
 
         #
         # attempt to acquire the given lock without blocking (via 'False').
-        # if we succesfully aquire the lock, then we can return (success)
+        # if we successfully acquire the lock, then we can return (success)
         #
 
         if lock.acquire(False):
@@ -261,7 +259,7 @@ def await_lock(lock):
         # to flush the event loop so IDA does not hang
         #
 
-        if qt_available and is_mainthread():
+        if QT_AVAILABLE and is_mainthread():
             flush_qt_events()
 
     #

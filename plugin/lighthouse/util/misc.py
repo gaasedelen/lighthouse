@@ -21,18 +21,18 @@ def plugin_resource(resource_name):
     )
 
 #------------------------------------------------------------------------------
-# Python Util
+# Thread Util
 #------------------------------------------------------------------------------
 
 def is_mainthread():
     """
-    Return a bool indicating main thread execution.
+    Return a bool that indicates if this is the main application thread.
     """
     return isinstance(threading.current_thread(), threading._MainThread)
 
 def mainthread(f):
     """
-    A debug decorator to assert main thread execution.
+    A debug decorator to ensure that a function is always called from the main thread.
     """
     def wrapper(*args, **kwargs):
         assert is_mainthread()
@@ -41,16 +41,20 @@ def mainthread(f):
 
 def not_mainthread(f):
     """
-    A debug decorator to assert main thread execution.
+    A debug decorator to ensure that a function is never called from the main thread.
     """
     def wrapper(*args, **kwargs):
         assert not is_mainthread()
         return f(*args, **kwargs)
     return wrapper
 
+#------------------------------------------------------------------------------
+# Python Util
+#------------------------------------------------------------------------------
+
 def chunks(l, n):
     """
-    Yield successive n-sized chunks from l.
+    Yield successive n-sized chunks from a list (l).
 
     From http://stackoverflow.com/a/312464
     """
@@ -59,15 +63,19 @@ def chunks(l, n):
 
 def hex_list(items):
     """
-    Return a string of a python-like list string, with hex numbers.
+    Return a string of a python-like list, with hex numbers.
 
     [0, 5420, 1942512] --> '[0x0, 0x152C, 0x1DA30]'
     """
     return '[{}]'.format(', '.join('0x%X' % x for x in items))
 
+#------------------------------------------------------------------------------
+# Python Callback / Signals
+#------------------------------------------------------------------------------
+
 def register_callback(callback_list, callback):
     """
-    Register a given callable (callback) to the given callback_list.
+    Register a callable function to the given callback_list.
 
     Adapted from http://stackoverflow.com/a/21941670
     """
@@ -85,13 +93,15 @@ def register_callback(callback_list, callback):
 
 def notify_callback(callback_list, *args):
     """
-    Notify the given list of registered callbacks.
+    Notify the given list of registered callbacks of an event.
 
     The given list (callback_list) is a list of weakref'd callables
-    registered through the _register_callback function. To notify the
-    callbacks we simply loop through the list and call them.
+    registered through the register_callback() function. To notify the
+    callbacks of an event, this function will simply loop through the list
+    and call them.
 
-    This routine self-heals by removing dead callbacks for deleted objects.
+    This routine self-heals by removing dead callbacks for deleted objects as
+    it encounters them.
 
     Adapted from http://stackoverflow.com/a/21941670
     """
@@ -122,7 +132,7 @@ def notify_callback(callback_list, *args):
             try:
                 callback(obj, *args)
 
-            # assume a Qt cleanup/deletion occured
+            # assume a Qt cleanup/deletion occurred
             except RuntimeError as e:
                 cleanup.append(callback_ref)
                 continue
@@ -150,9 +160,7 @@ def coalesce_blocks(blocks):
     """
     Coalesce a list of (address, size) blocks.
 
-    ----------------------------------------------------------------------
-
-    Example:
+    eg:
         blocks = [
             (4100, 10),
             (4200, 100),
@@ -161,7 +169,7 @@ def coalesce_blocks(blocks):
             (4400, 10),
         ]
 
-    Returns:
+    returns:
         coalesced = [(4100, 10), (4200, 130), (4400, 10)]
 
     """
@@ -204,7 +212,7 @@ def coalesce_blocks(blocks):
 
 def rebase_blocks(base, basic_blocks):
     """
-    Rebase a list of basic blocks (address, size) to the given base.
+    Rebase a list of basic block offsets (offset, size) to the given imagebase.
     """
     return map(lambda x: (base + x[0], x[1]), basic_blocks)
 
@@ -215,7 +223,7 @@ def build_hitmap(data):
     A hitmap is a map of address --> number of executions.
 
     The list of input addresses can be any sort of runtime trace, coverage,
-    or profiiling data that one would like to build a hitmap for.
+    or profiling data that one would like to build a hitmap for.
     """
     output = collections.defaultdict(int)
 

@@ -1,39 +1,36 @@
 import abc
 
-from ..qt import qt_available, QtGui
-
-# TODO/COMMENT: update
-#------------------------------------------------------------------------------
-# Compatability File
-#------------------------------------------------------------------------------
-#
-#    This file is used to reduce the number of compatibility checks made
-#    throughout Lighthouse for varying versions of IDA.
-#
-#    As of July 2017, Lighthouse fully supports IDA 6.8 - 7.0. I expect that
-#    much of this compatibility layer and IDA 6.x support will be dropped for
-#    maintainability reasons sometime in 2018 as the userbase migrates up to
-#    IDA 7.0 and beyond.
-#
+from ..qt import QT_AVAILABLE, QtGui
 
 #------------------------------------------------------------------------------
 # Disassembler API
 #------------------------------------------------------------------------------
+#
+#    the purpose of this file is to provide an abstraction layer for the more
+#    generic disassembler APIs required by the plugin codebase. we strive to
+#    use (or extend) this API for the bulk of our disassembler operations,
+#    making the plugin as disassembler-agnostic as possible.
+#
+#    by subclassing the templated classes below, the plugin can support other
+#    disassembler plaforms relatively easily. at the moment, implementing these
+#    subclasses is ~50% of the work that is required to add lighthouse support
+#    to any given interactive disassembler.
+#
 
 class DisassemblerAPI(object):
     """
-    TODO/COMMENT
+    An abstract implementation of the required disassembler API.
     """
     __metaclass__ = abc.ABCMeta
 
-    # the name of the disassembler framework / platform
+    # the name of the disassembler framework, eg 'IDA' or 'BINJA'
     NAME = NotImplemented
 
     @abc.abstractmethod
     def __init__(self):
         self._waitbox = None
 
-        if qt_available:
+        if QT_AVAILABLE:
             from ..qt import WaitBox
             self._waitbox = WaitBox("Please wait...")
 
@@ -71,24 +68,26 @@ class DisassemblerAPI(object):
         """
         Thread-safe function decorator to READ from the disassembler database.
         """
-        pass
+        raise NotImplementedError("execute_read() has not been implemented")
 
     @staticmethod
     def execute_write(function):
         """
         Thread-safe function decorator to WRITE to the disassembler database.
         """
-        pass
+        raise NotImplementedError("execute_write() has not been implemented")
 
     @staticmethod
     def execute_ui(function):
         """
         Thread-safe function decorator to perform UI disassembler actions.
 
-        This should generally be used for scheduling any sort of UI (Qt)
-        events or dialog flows from a background thread.
+        This function is generally used for executing UI (Qt) events from
+        a background thread. as such, your implementation is expected to
+        transfer execution to the main application thread where it is safe to
+        perform Qt actions.
         """
-        pass
+        raise NotImplementedError("execute_ui() has not been implemented")
 
     #--------------------------------------------------------------------------
     # API Shims
@@ -97,7 +96,7 @@ class DisassemblerAPI(object):
     @abc.abstractmethod
     def get_database_directory(self):
         """
-        Return the directory for the current database.
+        Return the directory for the open database.
         """
         pass
 
@@ -111,7 +110,7 @@ class DisassemblerAPI(object):
     @abc.abstractmethod
     def get_function_addresses(self):
         """
-        Return all defined function addresses.
+        Return all defined function addresses in the open database.
         """
         pass
 
@@ -138,7 +137,7 @@ class DisassemblerAPI(object):
     @abc.abstractmethod
     def get_imagebase(self):
         """
-        Return the base address of the current database.
+        Return the base address of the open database.
         """
         pass
 
@@ -152,7 +151,7 @@ class DisassemblerAPI(object):
     @abc.abstractmethod
     def navigate(self, address):
         """
-        Jump the disassembler UI to the given addreess.
+        Jump the disassembler UI to the given address.
         """
         pass
 
@@ -177,7 +176,7 @@ class DisassemblerAPI(object):
     @abc.abstractmethod
     def is_msg_inited(self):
         """
-        Is the disassembler ready to recieve messages to its output window?
+        Return a bool if the disassembler output window is initialized.
         """
         pass
 
@@ -188,11 +187,27 @@ class DisassemblerAPI(object):
         """
         pass
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Function Prefix API
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
-    # TODO/COMMENT
+    #
+    # the following APIs are used to apply or clear prefixes to multiple
+    # functions in the disassembly database. the only thing you're expected
+    # to do here is select an appropriate PREFIX_SEPARATOR.
+    #
+    # your prefix separator is expected to be something unique, that a user
+    # would probably *never* put into their function name themselves but
+    # looks somewhat normal.
+    #
+    # in IDA, putting '%' in a function name appears as '_' in the function
+    # list, so we use that as a prefix separator. in Binary Ninja, we use a
+    # unicode character that looks like an underscore character.
+    #
+    # it is probably safe to steal the unicode char we use with binja for
+    # your own implementation.
+    #
+
     PREFIX_SEPARATOR = NotImplemented
 
     def prefix_function(self, function_address, prefix):
@@ -247,7 +262,7 @@ class DisassemblerAPI(object):
         """
         Show the disassembler universal WaitBox.
         """
-        assert qt_available, "This function can only be used in a Qt runtime"
+        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
         self._waitbox.set_text(text)
         self._waitbox.show()
 
@@ -255,14 +270,14 @@ class DisassemblerAPI(object):
         """
         Hide the disassembler universal WaitBox.
         """
-        assert qt_available, "This function can only be used in a Qt runtime"
+        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
         self._waitbox.hide()
 
     def replace_wait_box(self, text):
         """
         Replace the text in the disassembler universal WaitBox.
         """
-        assert qt_available, "This function can only be used in a Qt runtime"
+        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
         self._waitbox.set_text(text)
 
 #------------------------------------------------------------------------------
@@ -271,21 +286,21 @@ class DisassemblerAPI(object):
 
 class RenameHooks(object):
     """
-    TODO/COMMENT
+    An abstract implementation of disassembler hooks to capture rename events.
     """
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def hook(self):
         """
-        Install disassmbler-specific hooks necessary to capture rename events.
+        Install hooks into the disassembler that capture rename events.
         """
         pass
 
     @abc.abstractmethod
     def unhook(self):
         """
-        Remove disassmbler-specific hooks used to capture rename events.
+        Remove hooks used to capture rename events.
         """
         pass
 
@@ -296,12 +311,19 @@ class RenameHooks(object):
         pass
 
 #------------------------------------------------------------------------------
-# Hooking
+# Dockable Window
 #------------------------------------------------------------------------------
 
 class DockableShim(object):
     """
-    TODO/COMMENT
+    A minimal template of the DockableWindow.
+
+    this class is only to demonstrate the minimal set of attributes and
+    functions that a disassembler's DockableWindow class should contain.
+
+    show/hide can be overridden entirely depending on your needs, but the
+    self._widget field should contain a reference to a blank widget that has
+    been installed into a QDockWidget in the disassembler interface.
     """
     __metaclass__ = abc.ABCMeta
 
@@ -321,9 +343,4 @@ class DockableShim(object):
         Show the dockable widget.
         """
         self._widget.hide()
-
-#------------------------------------------------------------------------------
-# Utils
-#------------------------------------------------------------------------------
-#     Populate with disassmbler specific functions or helpers, as needed.
 

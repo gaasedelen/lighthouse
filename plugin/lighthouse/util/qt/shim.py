@@ -1,47 +1,55 @@
-# TODO/COMMENT: explain the global
 
-qt_available = False
+#
+# this global is used to indicate whether Qt bindings for python are present
+# and available for use by Lighthouse.
+#
 
-# TODO/COMMENT: update this
+QT_AVAILABLE = False
+
 #------------------------------------------------------------------------------
 # PyQt5 <--> PySide (Qt4) Interoperability
 #------------------------------------------------------------------------------
 #
-#    As of IDA 6.9, IDA now uses PyQt5 instead PySide on Qt4.
+#    from Qt4 --> Qt5, a number of objects / modules have changed places
+#    within the Qt codebase. we use this file to shim/re-alias a few of these
+#    changes to reduce the number of compatibility checks / code churn in the
+#    plugin code that consumes them.
 #
-#    From Qt4 --> Qt5, the organization of some of the code / objects has
-#    changed. We use this file to shim/re-alias a few of these to reduce the
-#    number of compatibility checks / code churn in the code that consumes them.
+#    this makes the plugin codebase compatible with both PySide & PyQt5, a
+#    necessary requirement to maintain compatibility with IDA 6.8 --> 7.x
 #
-#    The 'using_pyqt5' global defined below is used to help us cut back
-#    on compatibility checks in relevant UI code.
+#    additionally, the 'USING_PYQT5' global can be used to check if we are
+#    running in a PyQt5 context (versus PySide/Qt4). This may be used in a few
+#    places throughout the project that could not be covered by our shims.
 #
 
-using_pyqt5 = False
+USING_PYQT5 = False
 
 #------------------------------------------------------------------------------
-# PyQt5 Compatability
+# PyQt5 Compatibility
 #------------------------------------------------------------------------------
 
-if qt_available == False:
+# attempt to load PyQt5
+if QT_AVAILABLE == False:
     try:
         import PyQt5.QtGui as QtGui
         import PyQt5.QtCore as QtCore
         import PyQt5.QtWidgets as QtWidgets
 
         # importing went okay, PyQt5 must be available for use
-        qt_available = True
-        using_pyqt5 = True
+        QT_AVAILABLE = True
+        USING_PYQT5 = True
 
     # import failed, PyQt5 is not available
     except ImportError:
         pass
 
 #------------------------------------------------------------------------------
-# PySide Compatability
+# PySide Compatibility
 #------------------------------------------------------------------------------
 
-if qt_available == False:
+# if PyQt5 did not import, try to load PySide
+if QT_AVAILABLE == False:
     try:
         import PySide.QtGui as QtGui
         import PySide.QtCore as QtCore
@@ -52,9 +60,9 @@ if qt_available == False:
         QtCore.pyqtSlot = QtCore.Slot
 
         # importing went okay, PySide must be available for use
-        qt_available = True
+        QT_AVAILABLE = True
 
-    # import failed, PySide is not available
+    # import failed. No Qt / UI bindings available...
     except ImportError:
         pass
 

@@ -12,27 +12,99 @@ from lighthouse.painting import DatabasePainter
 logger = logging.getLogger("Lighthouse.Painting.IDA")
 
 #------------------------------------------------------------------------------
-# Util
+# MFF_NOWAIT Workaound
 #------------------------------------------------------------------------------
-# TODO/COMMENT
+#
+#    due to the asynchronous nature of the database painter core, we need
+#    to use IDA's execute_sync() with idaapi.MFF_WRITE to perform 'paint'
+#    actions (which modify the database).
+#
+#     1. the first issue is that a deadlock can occur when attempting to use
+#     execute_sync() with MFF_WRITE from a thread when IDA is in the process
+#     of closing. This would occur when a paint was in progress, and the user
+#     attempts to abruptly close the database.
+#
+#     the solution to this is to use the MFF_NOWAIT flag with MFF_WRITE, which
+#     means execute_sync() is non-blocking. this avoids the deadlock that could
+#     occur between the main thread and the async (painting) thread on close.
+#
+#     2. but prior to IDA 7.0 SP1, there was a bug with execute_sync() that
+#     could cause IDA to abort() non-deterministically when using the
+#     MFF_NOWAIT flag. The abort manifests as a hard-crash of IDA.
+#
+#    this is an issue that has haunted lighthouse since almost the beginning,
+#    causing a number of compatibility/stability issues. the bug was fixed in
+#    in IDA 7.0 SP1, but older versions of IDA are afflicted.
+#
+#    this section of code constitutes some of the most fragile, convoluted,
+#    and regression prone code in lighthouse. through some miraculous feats
+#    of engineering, the solution below appears to safely resolve both of
+#    these problems for downlevel versions (IDA 6.8 --> 7.0)
+#
 
 from lighthouse.util.qt import QtCore
 
-def on_mainthread(fff):
-    fff()
-
 class ToMainthread(QtCore.QObject):
+    """
+    A Qt object whose sole purpose is to execute code on the mainthread.
+
+    Below, we define a Qt signal called 'mainthread'. Any thread can emit() this
+    signal, where it will be handled in the main application thread.
+    """
     mainthread = QtCore.pyqtSignal(object)
 
+    def __init__(self):
+        super(ToMainthread, self).__init__()
+
+        #
+        # from any thread, one can call 'mainthread.emit(a_function)', passing
+        # in a callable object (a_function) which will be executed (through the
+        # lambda) on the main application thread.
+        #
+
+        self.mainthread.connect(lambda x: x())
+
 def execute_paint(function):
+    """
+    A function decorator to safely paint the IDA database from any thread.
+    """
+
     @functools.wraps(function)
     def wrapper(*args, **kwargs):
-        self = args[0]
+
+        #
+        # the first argument passed to this decorator will be the
+        # IDAPainter class instance
+        #
+
+        ida_painter = args[0]
+
+        #
+        # we wrap up the remaining args (and paint function) into a single
+        # packaged up callable object (a functools.partial)
+        #
+
         ff = functools.partial(function, *args, **kwargs)
+
+        #
+        # if we are using a 'bugged' downlevel version of IDA, package another
+        # callable to 'synchronize' a database write. This callable will get
+        # passed to the main thread and executed through the Qt event loop.
+        #
+        # the execute_sync should technically happy in-line, avoiding the
+        # possibility of deadlocks or aborts as described above.
+        #
+
         if idaapi.IDA_SDK_VERSION < 710:
             fff = functools.partial(idaapi.execute_sync, ff, idaapi.MFF_WRITE)
-            self._signal.mainthread.emit(fff)
+            ida_painter._signal.mainthread.emit(fff)
             return idaapi.BADADDR
+
+        #
+        # in IDA 7.1, the MFF_NOWAIT bug is definitely fixed, so we can just
+        # use it to schedule our paint action ... as designed.
+        #
+
         return idaapi.execute_sync(ff, idaapi.MFF_NOWAIT | idaapi.MFF_WRITE)
     return wrapper
 
@@ -59,9 +131,8 @@ class IDAPainter(DatabasePainter):
 
         self._attempted_hook = False
 
-        # TODO/COMMENT
+        # see the MFF_NOWAIT workaround details above
         self._signal = ToMainthread()
-        self._signal.mainthread.connect(on_mainthread)
 
         # continue normal painter initialization
         super(IDAPainter, self).__init__(director, palette)
@@ -147,7 +218,7 @@ class IDAPainter(DatabasePainter):
         node_info = idaapi.node_info_t()
 
         # NOTE/COMPAT:
-        if disassembler.using_ida7api:
+        if disassembler.USING_IDA7API:
             set_node_info = idaapi.set_node_info
         else:
             set_node_info = idaapi.set_node_info2
@@ -183,7 +254,7 @@ class IDAPainter(DatabasePainter):
         node_info.bg_color = idc.DEFCOLOR
 
         # NOTE/COMPAT:
-        if disassembler.using_ida7api:
+        if disassembler.USING_IDA7API:
             set_node_info = idaapi.set_node_info
         else:
             set_node_info = idaapi.set_node_info2
@@ -211,7 +282,7 @@ class IDAPainter(DatabasePainter):
 
     def _init_hexrays_hooks(self):
         """
-        Install Hex-Rrays hooks (when available).
+        Install Hex-Rays hooks (when available).
         """
         result = False
 
@@ -293,8 +364,8 @@ class IDAPainter(DatabasePainter):
 
         #
         # if we made it this far, we must have painted *some* lines inside the
-        # function. that means we should paint the function decleration, and
-        # header (variable decleration) lines as their execution will be implied
+        # function. that means we should paint the function declaration, and
+        # header (variable declaration) lines as their execution will be implied
         #
 
         for line_number in xrange(0, cfunc.hdrlines):
@@ -346,7 +417,7 @@ class IDAPainter(DatabasePainter):
         # refresh the view
         self._refresh_ui()
 
-        # succesful completion
+        # successful completion
         return True
 
     def _priority_paint_functions(self, target_address):
@@ -367,7 +438,7 @@ class IDAPainter(DatabasePainter):
             return False # a repaint was requested
 
         # select the range of functions around us that we would like to paint
-        func_num = db_metadata.get_function_num(function_metadata.address)
+        func_num = db_metadata.get_function_index(function_metadata.address)
         func_num_start = max(func_num - FUNCTION_BUFFER, 0)
         func_num_end   = func_num + FUNCTION_BUFFER + 1
 
@@ -376,7 +447,7 @@ class IDAPainter(DatabasePainter):
 
             # get the next function to paint
             try:
-                function_metadata = db_metadata.get_function_by_num(current_num)
+                function_metadata = db_metadata.get_function_by_index(current_num)
                 function_address = function_metadata.address
             except IndexError:
                 continue
@@ -394,7 +465,7 @@ class IDAPainter(DatabasePainter):
             if not self._paint_function(function_address):
                 return False # a repaint was requested
 
-        # paint finished succesfully
+        # paint finished successfully
         return True
 
     def _priority_paint_instructions(self, target_address):
@@ -427,5 +498,5 @@ class IDAPainter(DatabasePainter):
         if not self._async_action(self._paint_instructions, instructions_coverage):
             return False # a repaint was requested
 
-        # paint finished succesfully
+        # paint finished successfully
         return True

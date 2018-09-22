@@ -78,7 +78,7 @@ class DatabasePainter(object):
         self._director.coverage_modified(self.repaint)
 
     #--------------------------------------------------------------------------
-    # Staus
+    # Status
     #--------------------------------------------------------------------------
 
     @property
@@ -248,7 +248,7 @@ class DatabasePainter(object):
         if not self._async_action(self._paint_nodes, nodes):
             return False # a repaint was requested
 
-        # paint finished succesfully
+        # paint finished successfully
         return True
 
     def _clear_function(self, address):
@@ -267,7 +267,7 @@ class DatabasePainter(object):
         if not self._async_action(self._clear_nodes, nodes):
             return False # a repaint was requested
 
-        # paint finished succesfully
+        # paint finished successfully
         return True
 
     def _paint_database(self):
@@ -282,7 +282,7 @@ class DatabasePainter(object):
         start = time.time()
         #------------------------------------------------------------------
 
-        # immediately paint user-visible regions of the the database
+        # immediately paint user-visible regions of the database
         if not self._priority_paint():
             return False # a repaint was requested
 
@@ -305,7 +305,6 @@ class DatabasePainter(object):
         if not self._async_action(self._paint_instructions, db_coverage.coverage):
             return False # a repaint was requested
 
-
         # paint new nodes
         if not self._async_action(self._paint_nodes, db_coverage.nodes.itervalues()):
             return False # a repaint was requested
@@ -318,7 +317,7 @@ class DatabasePainter(object):
         logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
         logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(db_coverage.nodes)))
 
-        # paint finished succesfully
+        # paint finished successfully
         return True
 
     def _clear_database(self):
@@ -337,7 +336,7 @@ class DatabasePainter(object):
         if not self._async_action(self._clear_nodes, nodes):
             return False # a repaint was requested
 
-        # paint finished succesfully
+        # paint finished successfully
         return True
 
     #--------------------------------------------------------------------------
@@ -372,14 +371,7 @@ class DatabasePainter(object):
     # Asynchronous Painting
     #--------------------------------------------------------------------------
 
-    # TODO/REMOVE
     def _async_database_painter(self):
-        try:
-            self._async_database_painter2()
-        except Exception as e:
-            logger.exception("FAIL")
-
-    def _async_database_painter2(self):
         """
         Asynchronous database painting worker loop.
         """
@@ -444,7 +436,7 @@ class DatabasePainter(object):
             paint_job = paint_action(work_chunk)
 
             #
-            # wait for the asynchrnous paint event to complete or a signal that
+            # wait for the asynchronous paint event to complete or a signal that
             # we should end this thread (via end_threads)
             #
 

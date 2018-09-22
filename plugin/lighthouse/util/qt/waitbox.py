@@ -10,7 +10,7 @@ logger = logging.getLogger("Lighthouse.Qt.WaitBox")
 
 class WaitBox(QtWidgets.QDialog):
     """
-    A Generic WaitBox Dialog.
+    A Generic Qt WaitBox Dialog.
     """
 
     def __init__(self, text, title="Please wait...", abort=None):

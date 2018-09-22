@@ -1,7 +1,31 @@
-import idaapi
+import logging
 
-from lighthouse.util.log import logger
+import idaapi
+from lighthouse.util.log import lmsg
 from lighthouse.ida_integration import LighthouseIDA
+
+logger = logging.getLogger("Lighthouse.IDA.Loader")
+
+#------------------------------------------------------------------------------
+# Lighthouse IDA Loader
+#------------------------------------------------------------------------------
+#
+#    This file contains a stub 'plugin' class for Lighthouse as required by
+#    IDA Pro. Practically speaking, there should be little to *no* logic placed
+#    in this file because it is disassembler-specific.
+#
+#    When IDA Pro is starting up, it will import all python files placed in its
+#    root plugin folder. It will then attempt to call PLUGIN_ENTRY() on each of
+#    the imported 'plugins'. We import PLUGIN_ENTRY into lighthouse_plugin.py
+#    so that IDA can see it.
+#
+#    PLUGIN_ENTRY() is expected to return a plugin object (LighthouseIDAPlugin)
+#    derived from idaapi.plugin_t. IDA will register the plugin, and interface
+#    with the plugin object to load / unload the plugin at certain times, per
+#    its configuration (flags, hotkeys).
+#
+#    There should be virtually no reason for you to modify this file.
+#
 
 def PLUGIN_ENTRY():
     """
@@ -11,8 +35,15 @@ def PLUGIN_ENTRY():
 
 class LighthouseIDAPlugin(idaapi.plugin_t):
     """
-    The Lighthouse IDA Plugin Loader.
+    The IDA plugin stub for Lighthouse.
     """
+
+    #
+    # Plugin flags:
+    # - PLUGIN_MOD: Lighthouse is a plugin that may modify the database
+    # - PLUGIN_PROC: Load/unload Lighthouse when an IDB opens / closes
+    # - PLUGIN_HIDE: Hide Lighthouse from the IDA plugin menu
+    #
 
     flags = idaapi.PLUGIN_PROC | idaapi.PLUGIN_MOD | idaapi.PLUGIN_HIDE
     comment = "Code Coverage Explorer"
@@ -28,15 +59,12 @@ class LighthouseIDAPlugin(idaapi.plugin_t):
         """
         This is called by IDA when it is loading the plugin.
         """
-        self._lighthouse = LighthouseIDA()
-
-        # attempt plugin initialization
         try:
+            self._lighthouse = LighthouseIDA()
             self._lighthouse.load()
-
-        # failed to initialize or integrate the plugin, log and skip loading
         except Exception as e:
-            logger.exception("Failed to initialize Lighthouse in IDA")
+            lmsg("Failed to initialize Lighthouse")
+            logger.exception("Exception details:")
             return idaapi.PLUGIN_SKIP
 
         # tell IDA to keep the plugin loaded (everything is okay)
@@ -52,12 +80,9 @@ class LighthouseIDAPlugin(idaapi.plugin_t):
         """
         This is called by IDA when it is unloading the plugin.
         """
-
-        # attempt to cleanup and uninstall our plugin instance
         try:
             self._lighthouse.unload()
-
-        # failed to cleanly remove the plugin, log failure
+            self._lighthouse = None
         except Exception as e:
             logger.exception("Failed to cleanly unload Lighthouse from IDA.")
 

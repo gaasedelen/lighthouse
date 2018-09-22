@@ -20,7 +20,7 @@ logger = logging.getLogger("Lighthouse.API.Binja")
 
 def execute_sync(function):
     """
-    Allow for reading/writing to the disassembler database safely.
+    Synchronize with the disassembler for safe database access.
     """
 
     @functools.wraps(function)
@@ -75,7 +75,7 @@ def execute_sync(function):
 
 class BinjaAPI(DisassemblerAPI):
     """
-    TODO/COMMENT
+    The Binary Ninja implementation of the disassembler API abstraction.
     """
     NAME = "BINJA"
 
@@ -153,7 +153,7 @@ class BinjaAPI(DisassemblerAPI):
             # schedule the task to run in the main thread
             try:
                 binaryninja.execute_on_main_thread(ff)
-            except AttributeError: # TODO/V35: binja bug, reported on 5/31/2018
+            except AttributeError: # TODO/V35: binja bug, fixed on dev
                 pass
 
         return wrapper
@@ -161,7 +161,6 @@ class BinjaAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
     # API Shims
     #--------------------------------------------------------------------------
-
 
     #
     #  NOTE/TODO/V35:
@@ -263,7 +262,7 @@ class BinjaAPI(DisassemblerAPI):
 
 class RenameHooks(object):
     """
-    TODO/COMMENT
+    A Hooking class to catch function renames in Binary Ninja.
     """
 
     def __init__(self, bv):
@@ -345,7 +344,7 @@ class RenameHooks(object):
 
 class DockableWindow(DockableShim):
     """
-    TODO/COMMENT
+    A dockable Qt widget for Binary Ninja.
     """
 
     def __init__(self, window_title, icon_path):
@@ -391,7 +390,7 @@ class DockableWindow(DockableShim):
         self._dockable.setMinimumWidth(0)
 
 #------------------------------------------------------------------------------
-# Binary Ninja Hacks XXX / TODO
+# Binary Ninja Hacks XXX / TODO / V35
 #------------------------------------------------------------------------------
 
 def _binja_get_scripting_instance():

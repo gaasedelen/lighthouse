@@ -1,6 +1,6 @@
 from .shim import *
 
-if qt_available:
+if QT_AVAILABLE:
     from .util import *
     from .waitbox import WaitBox
 

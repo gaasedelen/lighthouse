@@ -13,7 +13,7 @@ from lighthouse.coverage import FunctionCoverage, BADADDR
 logger = logging.getLogger("Lighthouse.UI.Table")
 
 #------------------------------------------------------------------------------
-# View
+# CoverageTableView
 #------------------------------------------------------------------------------
 
 class CoverageTableView(QtWidgets.QTableView):
@@ -34,6 +34,37 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # configure the widget for use
         self._ui_init()
+
+    #--------------------------------------------------------------------------
+    # QTableView Overloads
+    #--------------------------------------------------------------------------
+
+    def keyPressEvent(self, event):
+        """
+        Overload QTableView key press events.
+        """
+
+        # remap h/j/k/l to arrow keys (VIM bindings)
+        if event.key() == QtCore.Qt.Key_J:
+            event = remap_key_event(event, QtCore.Qt.Key_Down)
+        elif event.key() == QtCore.Qt.Key_K:
+            event = remap_key_event(event, QtCore.Qt.Key_Up)
+        elif event.key() == QtCore.Qt.Key_H:
+            event = remap_key_event(event, QtCore.Qt.Key_Left)
+        elif event.key() == QtCore.Qt.Key_L:
+            event = remap_key_event(event, QtCore.Qt.Key_Right)
+
+        # handle the keypress as normal
+        super(CoverageTableView, self).keyPressEvent(event)
+
+        #
+        # after handling the keypress, immediately repaint the table. we use
+        # this to try to cut down on flicker / row skipping while scrolling
+        # using the keypad
+        #
+
+        self.repaint()
+        flush_qt_events()
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -141,7 +172,7 @@ class CoverageTableView(QtWidgets.QTableView):
         #
 
         # force the table row heights to be fixed height
-        if using_pyqt5:
+        if USING_PYQT5:
             vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
         else:
             vh.setResizeMode(QtWidgets.QHeaderView.Fixed)
@@ -235,7 +266,7 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         hh = self.horizontalHeader()
 
-        # get the table column where the right-click occured
+        # get the table column where the right-click occurred
         column = hh.logicalIndexAt(position)
 
         # create a right click menu based on the state and context
@@ -248,37 +279,6 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # process the user action
         self._process_header_ctx_menu_action(action, column)
-
-    #--------------------------------------------------------------------------
-    # QTableView Overloads
-    #--------------------------------------------------------------------------
-
-    def keyPressEvent(self, event):
-        """
-        Overload QTableView key press events.
-        """
-
-        # remap h/j/k/l to arrow keys (VIM bindings)
-        if event.key() == QtCore.Qt.Key_J:
-            event = remap_event(event, QtCore.Qt.Key_Down)
-        elif event.key() == QtCore.Qt.Key_K:
-            event = remap_event(event, QtCore.Qt.Key_Up)
-        elif event.key() == QtCore.Qt.Key_H:
-            event = remap_event(event, QtCore.Qt.Key_Left)
-        elif event.key() == QtCore.Qt.Key_L:
-            event = remap_event(event, QtCore.Qt.Key_Right)
-
-        # handle the keypress as normal
-        super(CoverageTableView, self).keyPressEvent(event)
-
-        #
-        # after handling the keypress, immediately repaint the table. we use
-        # this to try to cut down on flicker / row skipping while scrolling
-        # using the keypad
-        #
-
-        self.repaint()
-        flush_qt_events()
 
     #--------------------------------------------------------------------------
     # Context Menu (Table Rows)
@@ -398,7 +398,7 @@ class CoverageTableView(QtWidgets.QTableView):
             self._controller.toggle_column_alignment(column)
 
 #------------------------------------------------------------------------------
-# Controller
+# CoverageTableController
 #------------------------------------------------------------------------------
 
 class CoverageTableController(object):
@@ -466,7 +466,7 @@ class CoverageTableController(object):
     @mainthread
     def clear_function_prefixes(self, rows):
         """
-        Clear prefixes of database functitons via the coverage table.
+        Clear prefixes of database functions via the coverage table.
         """
         function_addresses = self._get_function_addresses(rows)
         disassembler.clear_prefixes(function_addresses)
@@ -526,7 +526,7 @@ class CoverageTableController(object):
 
     def navigate_to_function(self, row):
         """
-        Navigate to the function depcited by the given row.
+        Navigate to the function depicted by the given row.
         """
         disassembler.navigate(self._model.row2func[row])
 
@@ -548,7 +548,7 @@ class CoverageTableController(object):
 
     def refresh_metadata(self):
         """
-        Hard refresh of the director and tabe metadata layers.
+        Hard refresh of the director and table metadata layers.
         """
         disassembler.show_wait_box("Building database metadata...")
         self._model._director.refresh()
@@ -581,7 +581,7 @@ class CoverageTableController(object):
         {
             "filter": "HTML Files (*.html)",
             "caption": "Save HTML Report",
-            "directory" if using_pyqt5 else "dir": suggested_filepath
+            "directory" if USING_PYQT5 else "dir": suggested_filepath
         }
 
         # prompt the user with the file dialog, and await their chosen filename(s)
@@ -613,7 +613,7 @@ class CoverageTableController(object):
         return function_addresses
 
 #------------------------------------------------------------------------------
-# Model
+# CoverageTableModel
 #------------------------------------------------------------------------------
 
 class CoverageTableModel(QtCore.QAbstractTableModel):
@@ -659,7 +659,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         FINAL_COLUMN: ""
     }
 
-    # sample coulumn
+    # sample column
     SAMPLE_CONTENTS = \
     [
         " 100.00% ",
@@ -687,6 +687,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # a fallback coverage object for functions with no coverage
         self._blank_coverage = FunctionCoverage(BADADDR)
+        self._blank_coverage.coverage_color = director._palette.coverage_none
 
         # set the default column text alignment for each column (centered)
         self._default_alignment = QtCore.Qt.AlignCenter
@@ -751,7 +752,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
     def headerData(self, column, orientation, role=QtCore.Qt.DisplayRole):
         """
-        Define the properties of the the table rows & columns.
+        Define the properties of the table rows & columns.
         """
 
         if orientation == QtCore.Qt.Horizontal:
@@ -760,7 +761,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             if role == QtCore.Qt.DisplayRole:
                 return self.COLUMN_HEADERS[column]
 
-            # the text alignment of the header has beeen requested
+            # the text alignment of the header has been requested
             elif role == QtCore.Qt.TextAlignmentRole:
 
                 # center align all columns
@@ -820,7 +821,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
             # Coverage % - (by instruction execution)
             if column == self.COV_PERCENT:
-                return "%5.2f%%" % (function_coverage.instruction_percent*100)
+                return "%5.2f" % (function_coverage.instruction_percent*100)
 
             # Function Name
             elif column == self.FUNC_NAME:
@@ -1197,8 +1198,8 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # if the search string is all lowercase, then we are going to perform
         # a case insensitive search/filter.
         #
-        # that means we we want to 'normalize' all the function names by
-        # making them lowercase before searching for our needle (search str)
+        # that means we want to 'normalize' all the function names by making
+        # them lowercase before searching for our needle (search str)
         #
 
         normalize = lambda x: x

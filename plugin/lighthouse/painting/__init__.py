@@ -6,4 +6,4 @@ if disassembler.NAME == "IDA":
 elif disassembler.NAME == "BINJA":
     from .binja_painter import BinjaPainter as CoveragePainter
 else:
-    raise RuntimeError("DISASSEMBLER-SPECIFIC SHIM MISSING")
+    raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

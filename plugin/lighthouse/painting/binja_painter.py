@@ -23,9 +23,9 @@ class BinjaPainter(DatabasePainter):
     def __init__(self, director, palette):
         super(BinjaPainter, self).__init__(director, palette)
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Paint Primitives
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     #
     # NOTE:
@@ -46,7 +46,7 @@ class BinjaPainter(DatabasePainter):
         b, g, r = to_rgb(self.palette.coverage_paint)
         color = HighlightColor(red=r, green=g, blue=b)
         for node_coverage in nodes_coverage:
-            node_metadata = node_coverage._database._metadata.nodes[node_coverage.address]
+            node_metadata = node_coverage.database._metadata.nodes[node_coverage.address]
             for node in bv.get_basic_blocks_starting_at(node_metadata.address):
                 node.highlight = color
             self._painted_nodes.add(node_metadata.address)
@@ -64,11 +64,11 @@ class BinjaPainter(DatabasePainter):
         pass
 
     def _cancel_action(self, job):
-        pass # TODO/BINJA
+        pass
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Priority Painting
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     def _priority_paint(self):
         current_address = disassembler.get_current_address()

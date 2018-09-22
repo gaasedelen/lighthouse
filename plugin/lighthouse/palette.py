@@ -2,15 +2,18 @@
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
+#
+# TODO/FUTURE: this file is a huge mess, and will probably be refactored
+# whenever I add external theme customization/controls (v0.9?)
+#
+
 #------------------------------------------------------------------------------
-# IDA Plugin Palette
+# Plugin Color Palette
 #------------------------------------------------------------------------------
 
 class LighthousePalette(object):
     """
     Color Palette for the Lighthouse plugin.
-
-    TODO/FUTURE: add external theme customization, controls
     """
 
     def __init__(self):
@@ -37,6 +40,7 @@ class LighthousePalette(object):
         #
 
         self._selection     = [QtGui.QColor(100, 0, 130),  QtGui.QColor(226, 143, 0)]
+        self._coverage_none = [QtGui.QColor(30, 30, 30),   QtGui.QColor(30, 30, 30)]
         self._coverage_bad  = [QtGui.QColor(221, 0, 0),    QtGui.QColor(207, 31, 0)]
         self._coverage_okay = [QtGui.QColor("#bf7ae7"),    QtGui.QColor(207, 31, 0)]
         self._coverage_good = [QtGui.QColor(51, 153, 255), QtGui.QColor(75, 209, 42)]
@@ -173,7 +177,7 @@ class LighthousePalette(object):
         #   lmao, don't ask me why they forgot about this attribute from 5.0 - 5.6
         #
 
-        if using_pyqt5:
+        if USING_PYQT5:
             test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
         else:
             test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)
@@ -198,6 +202,10 @@ class LighthousePalette(object):
     @property
     def selection(self):
         return self._selection[self.qt_theme]
+
+    @property
+    def coverage_none(self):
+        return self._coverage_none[self.qt_theme]
 
     @property
     def coverage_bad(self):

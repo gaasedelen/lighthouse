@@ -19,7 +19,7 @@ logger = logging.getLogger("Lighthouse.API.IDA")
 
 def execute_sync(function, sync_type):
     """
-    Allow for reading/writing to the disassembler database safely.
+    Synchronize with the disassembler for safe database access.
 
     Modified from https://github.com/vrtadmin/FIRST-plugin-ida
     """
@@ -43,7 +43,7 @@ def execute_sync(function, sync_type):
         else:
             idaapi.execute_sync(thunk, sync_type)
 
-        # return the output of the synchronized execution / read
+        # return the output of the synchronized execution
         return output[0]
     return wrapper
 
@@ -53,22 +53,19 @@ def execute_sync(function, sync_type):
 
 class IDAAPI(DisassemblerAPI):
     """
-    TODO/COMMENT
+    The IDA implementation of the disassembler API abstraction.
     """
     NAME = "IDA"
 
-    #--------------------------------------------------------------------------
-    # IDA 7 API - COMPAT
-    #--------------------------------------------------------------------------
     #
-    #    In IDA 7.0, Hex-Rays refactored the IDA API quite a bit. This
-    #    impacts Lighthouse in a few places, so we use version checks at
-    #    these junctions to determine which API's to use (v7.x or v6.x)
+    # in IDA 7.0, Hex-Rays refactored the IDA API quite a bit. This
+    # impacts Lighthouse in a few places, so we use version checks at
+    # these junctions to determine which API's to use (v7.x or v6.x)
     #
-    #    Search 'using_ida7api' in the codebase for example casese
+    # search 'USING_IDA7API' in the codebase for example cases
     #
 
-    using_ida7api = bool(idaapi.IDA_SDK_VERSION >= 700)
+    USING_IDA7API = bool(idaapi.IDA_SDK_VERSION >= 700)
 
     def __init__(self):
         super(IDAAPI, self).__init__()
@@ -122,7 +119,7 @@ class IDAAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
 
     def create_rename_hooks(self):
-        if self.using_ida7api:
+        if self.USING_IDA7API:
             class RenameHooks(idaapi.IDB_Hooks):
                 pass
         else:
@@ -143,7 +140,7 @@ class IDAAPI(DisassemblerAPI):
         return idaapi.get_short_name(address)
 
     def get_function_raw_name_at(self, function_address):
-        if self.using_ida7api:
+        if self.USING_IDA7API:
             return idaapi.get_name(function_address)
         return idaapi.get_true_name(idaapi.BADADDR, function_address)
 
@@ -165,22 +162,14 @@ class IDAAPI(DisassemblerAPI):
 
     def get_disassembly_background_color(self):
         """
-        Get the background color of an IDA disassembly view.
-
-        -----------------------------------------------------------------------
-
-        The necessity of this function is pretty silly. I would like lighthouse
-        to be color-aware of the user's IDA theme such that it selects reasonable
-        colors that maintain readability.
+        Get the background color of the IDA disassembly view.
 
         Since there is no supported way to probe the palette & colors in use by
         IDA, we must get creative. This function attempts to locate an IDA
         disassembly view, and take a screenshot of said widget. It will then
         attempt to extract the color of a single background pixel (hopefully).
-
-        PS: please expose the get_graph_color(...) palette accessor, Ilfak ;_;
         """
-        if self.using_ida7api:
+        if self.USING_IDA7API:
             return self._get_ida_bg_color_ida7()
         else:
             return self._get_ida_bg_color_ida6()
@@ -203,7 +192,7 @@ class IDAAPI(DisassemblerAPI):
 
     def _get_ida_bg_color_ida7(self):
         """
-        Get the background color of an IDA disassembly view. (IDA 7+)
+        Get the background color of the IDA disassembly view. (IDA 7+)
         """
         names  = ["Enums", "Structures"]
         names += ["Hex View-%u" % i for i in range(5)]
@@ -233,7 +222,7 @@ class IDAAPI(DisassemblerAPI):
 
     def _get_ida_bg_color_ida6(self):
         """
-        Get the background color of an IDA disassembly view. (IDA 6.x)
+        Get the background color of the IDA disassembly view. (IDA 6.x)
         """
         names  = ["Enums", "Structures"]
         names += ["Hex View-%u" % i for i in range(5)]
@@ -251,7 +240,7 @@ class IDAAPI(DisassemblerAPI):
         self._touch_ida_window(form)
 
         # locate the Qt Widget for a form and take 1px image slice of it
-        if using_pyqt5:
+        if USING_PYQT5:
             widget = idaapi.PluginForm.FormToPyQtWidget(form, sys.modules[__name__])
             pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
         else:
@@ -281,7 +270,7 @@ class IDAAPI(DisassemblerAPI):
         """
 
         # get the currently active widget/form title (the form itself seems transient...)
-        if self.using_ida7api:
+        if self.USING_IDA7API:
             twidget = idaapi.get_current_widget()
             title = idaapi.get_widget_title(twidget)
         else:
@@ -289,7 +278,7 @@ class IDAAPI(DisassemblerAPI):
             title = idaapi.get_tform_title(form)
 
         # touch/draw the widget by playing musical chairs
-        if self.using_ida7api:
+        if self.USING_IDA7API:
 
             # touch the target window by switching to it
             idaapi.activate_widget(target, True)
@@ -315,24 +304,20 @@ class IDAAPI(DisassemblerAPI):
             idaapi.switchto_tform(previous_form, True)
             flush_qt_events()
 
-
 #------------------------------------------------------------------------------
-# UI
+# Dockable Window
 #------------------------------------------------------------------------------
 
 class DockableWindow(DockableShim):
     """
-    A compatibility layer for dockable widgets (IDA 6.8 --> IDA 7.0)
-
-    IDA 7.0 got rid of 'TForms' and instead only uses TWidgets (QWidgets),
-    this class acts as a basic compatibility shim for IDA 6.8 --> IDA 7.0.
+    A Dockable Qt widget, compatible with IDA 6.8 --> 7.x.
     """
 
     def __init__(self, window_title, icon_path):
         super(DockableWindow, self).__init__(window_title, icon_path)
 
         # IDA 7+ Widgets
-        if IDAAPI.using_ida7api:
+        if IDAAPI.USING_IDA7API:
             import sip
             self._form = idaapi.create_empty_widget(self._window_title)
             self._widget = sip.wrapinstance(long(self._form), QtWidgets.QWidget)
@@ -340,7 +325,7 @@ class DockableWindow(DockableShim):
         # legacy IDA PluginForm's
         else:
             self._form = idaapi.create_tform(self._window_title, None)
-            if using_pyqt5:
+            if USING_PYQT5:
                 self._widget = idaapi.PluginForm.FormToPyQtWidget(self._form, sys.modules[__name__])
             else:
                 self._widget = idaapi.PluginForm.FormToPySideWidget(self._form, sys.modules[__name__])
@@ -354,7 +339,7 @@ class DockableWindow(DockableShim):
         """
 
         # IDA 7+ Widgets
-        if IDAAPI.using_ida7api:
+        if IDAAPI.USING_IDA7API:
             flags = idaapi.PluginForm.WOPN_TAB     | \
                     idaapi.PluginForm.WOPN_MENU    | \
                     idaapi.PluginForm.WOPN_RESTORE | \
@@ -378,12 +363,8 @@ def map_line2citem(decompilation_text):
     """
     Map decompilation line numbers to citems.
 
-    -----------------------------------------------------------------------
-
     This function allows us to build a relationship between citems in the
     ctree and specific lines in the hexrays decompilation text.
-
-    -----------------------------------------------------------------------
 
     Output:
 
@@ -415,12 +396,8 @@ def map_line2node(cfunc, metadata, line2citem):
     """
     Map decompilation line numbers to node (basic blocks) addresses.
 
-    -----------------------------------------------------------------------
-
     This function allows us to build a relationship between graph nodes
     (basic blocks) and specific lines in the hexrays decompilation text.
-
-    -----------------------------------------------------------------------
 
     Output:
 
@@ -448,7 +425,7 @@ def map_line2node(cfunc, metadata, line2citem):
 
         #
         # we are at the level of a single line (line_number). we now consume
-        # its set of citems (citem_indexes) and attempt to identify the explict
+        # its set of citems (citem_indexes) and attempt to identify explicit
         # graph nodes they claim to be sourced from (by their reported EA)
         #
 
@@ -473,7 +450,7 @@ def map_line2node(cfunc, metadata, line2citem):
 
             #
             # we made it this far, so we must have found a node that contains
-            # this citem. save the computed node_id to the list of of known
+            # this citem. save the computed node_id to the list of known
             # nodes we have associated with this line of text
             #
 
@@ -492,8 +469,6 @@ def map_line2node(cfunc, metadata, line2citem):
 def lex_citem_indexes(line):
     """
     Lex all ctree item indexes from a given line of text.
-
-    -----------------------------------------------------------------------
 
     The HexRays decompiler output contains invisible text tokens that can
     be used to attribute spans of text to the ctree items that produced them.

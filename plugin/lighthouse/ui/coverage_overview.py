@@ -2,7 +2,6 @@ import os
 import logging
 import weakref
 
-#from lighthouse.util import * # TODO: removee?
 from lighthouse.util.qt import *
 from lighthouse.util.misc import plugin_resource
 from lighthouse.util.disassembler import disassembler, DockableWindow
@@ -28,9 +27,9 @@ class CoverageOverview(DockableWindow):
             plugin_resource(os.path.join("icons", "overview.png"))
         )
         self._core = core
-
-        # pseudo widget science
         self._visible = False
+
+        # see the EventProxy class below for more details
         self._events = EventProxy(self)
         self._widget.installEventFilter(self._events)
 
@@ -107,7 +106,7 @@ class CoverageOverview(DockableWindow):
 
         #
         # create the 'toolbar', and customize its style. specifically, we are
-        # interested in tweaking the seperator and padding between elements.
+        # interested in tweaking the separator and padding between elements.
         #
 
         self._toolbar = QtWidgets.QToolBar()
@@ -229,15 +228,12 @@ class CoverageOverview(DockableWindow):
         self._combobox.refresh()
 
 #------------------------------------------------------------------------------
-# Pseudo Widget Filter
+# Qt Event Filter
 #------------------------------------------------------------------------------
 
 debugger_docked = False
 
 class EventProxy(QtCore.QObject):
-    """
-    TODO/COMMENT
-    """
 
     def __init__(self, target):
         super(EventProxy, self).__init__()
@@ -255,14 +251,14 @@ class EventProxy(QtCore.QObject):
 
         #
         # this is an unknown event, but it seems to fire when the widget is
-        # being saved/restored by a QMainWidget. We use this to try and ensure
+        # being saved/restored by a QMainWidget. we use this to try and ensure
         # the Coverage Overview stays docked when flipping between Reversing
         # and Debugging states in IDA.
         #
         # See issue #16 on github for more information.
         #
 
-        if int(event.type()) == 2002:
+        if int(event.type()) == 2002 and disassembler.NAME == "IDA":
             import idaapi
 
             #
@@ -271,7 +267,7 @@ class EventProxy(QtCore.QObject):
             #
 
             # NOTE / COMPAT:
-            if disassembler.using_ida7api:
+            if disassembler.USING_IDA7API:
                 debug_mode = bool(idaapi.find_widget("General registers"))
             else:
                 debug_mode = bool(idaapi.find_tform("General registers"))

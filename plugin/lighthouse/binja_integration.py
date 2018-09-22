@@ -1,11 +1,10 @@
 import logging
 
 from binaryninja import PluginCommand
-
 from lighthouse.core import Lighthouse
 from lighthouse.util.disassembler import disassembler
 
-logger = logging.getLogger("Lighthouse.Integration.Binja")
+logger = logging.getLogger("Lighthouse.Binja.Integration")
 
 #------------------------------------------------------------------------------
 # Lighthouse Binja Integration
@@ -13,7 +12,7 @@ logger = logging.getLogger("Lighthouse.Integration.Binja")
 
 class LighthouseBinja(Lighthouse):
     """
-    The Binary Ninja specific Lighthouse (UI) integration code.
+    Lighthouse UI Integration for Binary Ninja.
     """
 
     def __init__(self):
@@ -37,6 +36,7 @@ class LighthouseBinja(Lighthouse):
             "Load individual code coverage file(s)",
             self.interactive_load_file
         )
+        logger.info("Installed the 'Code coverage file' menu entry")
 
     def _install_load_batch(self):
         PluginCommand.register(
@@ -44,13 +44,15 @@ class LighthouseBinja(Lighthouse):
             "Load and aggregate code coverage files",
             self.interactive_load_batch
         )
+        logger.info("Installed the 'Code coverage batch' menu entry")
 
     def _install_open_coverage_overview(self):
         PluginCommand.register(
             "Lighthouse - Coverage Overview",
-            "Open the database code covereage overview",
+            "Open the database code coverage overview",
             self.interactive_load_batch
         )
+        logger.info("Installed the 'Coverage Overview' menu entry")
 
     # TODO/V35: No good signals to unload (core) plugin on
     def _uninstall_load_file(self):

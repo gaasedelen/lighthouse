@@ -20,12 +20,12 @@ logger = logging.getLogger("Lighthouse.Core")
 # Plugin Metadata
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.7.2"
+PLUGIN_VERSION = "0.8.0-DEV"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2018"
 
 #------------------------------------------------------------------------------
-# Lighthouse Core
+# Lighthouse Plugin Core
 #------------------------------------------------------------------------------
 
 class Lighthouse(object):
@@ -37,21 +37,21 @@ class Lighthouse(object):
 
     def load(self):
         """
-        Initialize & integrate the plugin into IDA.
+        Load the plugin, and integrate its UI into the disassembler.
         """
         self._init()
         self._install_ui()
 
-        # plugin loaded successfully, print the Lighthouse banner
+        # plugin loaded successfully, print the plugin banner
         self.print_banner()
         logger.info("Successfully loaded plugin")
 
     def _init(self):
         """
-        Initialize plugin members.
+        Initialize the core components of the plugin.
         """
 
-        # plugin color palette
+        # the plugin's color palette
         self.palette = LighthousePalette()
 
         # the coverage engine
@@ -68,7 +68,7 @@ class Lighthouse(object):
 
     def print_banner(self):
         """
-        Print the Lighthouse plugin banner.
+        Print the plugin banner.
         """
 
         # build the main banner title
@@ -88,7 +88,7 @@ class Lighthouse(object):
 
     def unload(self):
         """
-        Cleanup & uninstall the plugin from IDA.
+        Unload the plugin, and remove any UI integrations.
         """
         self._uninstall_ui()
         self._cleanup()
@@ -98,18 +98,18 @@ class Lighthouse(object):
 
     def _cleanup(self):
         """
-        IDB closing event, last chance to spin down threaded workers.
+        Spin down any lingering core components before plugin unload.
         """
         self.painter.terminate()
         self.director.terminate()
 
     #--------------------------------------------------------------------------
-    # UI - Integration (Internal)
+    # UI Integration (Internal)
     #--------------------------------------------------------------------------
 
     def _install_ui(self):
         """
-        Initialize & integrate all UI elements.
+        Initialize & integrate all plugin UI elements.
         """
         self._install_load_file()
         self._install_load_batch()
@@ -117,7 +117,7 @@ class Lighthouse(object):
 
     def _uninstall_ui(self):
         """
-        Cleanup & uninstall the plugin UI from IDA.
+        Cleanup & remove all plugin UI integrations.
         """
         self._uninstall_open_coverage_overview()
         self._uninstall_load_batch()
@@ -171,31 +171,28 @@ class Lighthouse(object):
 
     def open_coverage_overview(self):
         """
-        Open the 'Coverage Overview' dialog.
+        Open the dockable 'Coverage Overview' dialog.
         """
-        try:
-            self.palette.refresh_colors()
+        self.palette.refresh_colors()
 
-            # the coverage overview is already open & visible, simply refresh it
-            if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
-                self._ui_coverage_overview.refresh()
-                return
+        # the coverage overview is already open & visible, simply refresh it
+        if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
+            self._ui_coverage_overview.refresh()
+            return
 
-            # create a new coverage overview if there is not one visible
-            self._ui_coverage_overview = CoverageOverview(self)
-            self._ui_coverage_overview.show()
-        except Exception as e: # TODO: remove
-            logger.exception(e)
+        # create a new coverage overview if there is not one visible
+        self._ui_coverage_overview = CoverageOverview(self)
+        self._ui_coverage_overview.show()
 
     def interactive_load_batch(self):
         """
-        Interactive loading & aggregation of coverage files.
+        Perform the user-interactive loading of a coverage batch.
         """
         self.palette.refresh_colors()
 
         #
-        # kick off an asynchronous metadata refresh. this collects underlying
-        # database metadata while the user is busy selecting coverage files.
+        # kick off an asynchronous metadata refresh. this will run in the
+        # background while the user is selecting which coverage files to load
         #
 
         future = self.director.refresh_metadata(
@@ -204,14 +201,14 @@ class Lighthouse(object):
 
         #
         # we will now prompt the user with an interactive file dialog so they
-        # can select the coverage files they would like to load from disk.
+        # can select the coverage files they would like to load from disk
         #
 
         filenames = self._select_coverage_files()
 
         #
-        # load the selected coverage files from disk (if any) and return their
-        # data as a list of DrcovData objects
+        # load the selected coverage files from disk (if any), returning a list
+        # of loaded DrcovData objects (which contain coverage data)
         #
 
         drcov_list = load_coverage_files(filenames)
@@ -227,24 +224,39 @@ class Lighthouse(object):
             default_name
         )
 
-        # if user didn't enter a name for the batch, or hit cancel, we abort
+        #
+        # if user didn't enter a name for the batch (or hit cancel) we should
+        # abort the loading process...
+        #
+
         if not (ok and coverage_name):
-            lmsg("Canceling batch load...")
+            lmsg("User failed to enter a name for the loaded batch...")
+            self.director.metadata.abort_refresh()
             return
 
         #
-        # to continue any further, we need the database metadata. hopefully
-        # it has finished with its asynchronous collection, otherwise we will
-        # block until it completes. the user will be shown a progress dialog.
+        # to begin mapping the loaded coverage data, we require that the
+        # asynchronous database metadata refresh has completed. if it is
+        # not done yet, we will block here until it completes.
+        #
+        # a progress dialog depicts the work remaining in the refresh
         #
 
         disassembler.show_wait_box("Building database metadata...")
         await_future(future)
 
-        # aggregate all the selected files into one new coverage set
+        #
+        # now that the database metadata is available, we can use the director
+        # to normalize and condense (aggregate) all the coverage data
+        #
+
         new_coverage, errors = self.director.aggregate_drcov_batch(drcov_list)
 
-        # inject the the aggregated coverage set
+        #
+        # finally, we can inject the aggregated coverage data into the
+        # director under the user specified batch name
+        #
+
         disassembler.replace_wait_box("Mapping coverage...")
         self.director.create_coverage(coverage_name, new_coverage.data)
 
@@ -257,18 +269,18 @@ class Lighthouse(object):
         lmsg("Successfully loaded batch %s..." % coverage_name)
         self.open_coverage_overview()
 
-        # finally, emit any notable issues that occured during load
+        # finally, emit any notable issues that occurred during load
         warn_errors(errors)
 
     def interactive_load_file(self):
         """
-        Interactive loading of individual coverage files.
+        Perform the user-interactive loading of individual coverage files.
         """
         self.palette.refresh_colors()
 
         #
-        # kick off an asynchronous metadata refresh. this collects underlying
-        # database metadata while the user is busy selecting coverage files.
+        # kick off an asynchronous metadata refresh. this will run in the
+        # background while the user is selecting which coverage files to load
         #
 
         future = self.director.refresh_metadata(
@@ -277,14 +289,14 @@ class Lighthouse(object):
 
         #
         # we will now prompt the user with an interactive file dialog so they
-        # can select the coverage files they would like to load from disk.
+        # can select the coverage files they would like to load from disk
         #
 
         filenames = self._select_coverage_files()
 
         #
-        # load the selected coverage files from disk (if any) and return their
-        # data as a list of DrcovData objects
+        # load the selected coverage files from disk (if any), returning a list
+        # of loaded DrcovData objects (which contain coverage data)
         #
 
         disassembler.show_wait_box("Loading coverage from disk...")
@@ -295,9 +307,11 @@ class Lighthouse(object):
             return
 
         #
-        # to continue any further, we need the database metadata. hopefully
-        # it has finished with its asynchronous collection, otherwise we will
-        # block until it completes. the user will be shown a progress dialog.
+        # to begin mapping the loaded coverage data, we require that the
+        # asynchronous database metadata refresh has completed. if it is
+        # not done yet, we will block here until it completes.
+        #
+        # a progress dialog depicts the work remaining in the refresh
         #
 
         disassembler.replace_wait_box("Building database metadata...")
@@ -330,7 +344,7 @@ class Lighthouse(object):
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
         self.open_coverage_overview()
 
-        # finally, emit any notable issues that occured during load
+        # finally, emit any notable issues that occurred during load
         warn_errors(errors)
 
     #--------------------------------------------------------------------------
@@ -339,7 +353,9 @@ class Lighthouse(object):
 
     def _select_coverage_files(self):
         """
-        Internal - prompt a file selection dialog, returning file selections
+        Prompt a file selection dialog, returning file selections.
+
+        NOTE: This saves & reuses the last known directory for subsequent uses.
         """
         if not self._last_directory:
             self._last_directory = disassembler.get_database_directory()
@@ -409,7 +425,7 @@ def load_coverage_files(filenames):
     if load_failure:
         warn_drcov_malformed()
 
-    # return all the succesfully loaded coverage files
+    # return all the successfully loaded coverage files
     return loaded_coverage
 
 #------------------------------------------------------------------------------

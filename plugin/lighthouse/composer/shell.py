@@ -106,7 +106,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
 
         # NOTE/COMPAT:
-        if using_pyqt5:
+        if USING_PYQT5:
             self._completer_model = QtCore.QStringListModel([])
         else:
             self._completer_model = QtGui.QStringListModel([])
@@ -151,7 +151,7 @@ class ComposingShell(QtWidgets.QWidget):
         Layout the major UI elements of the widget.
         """
 
-        # create a qt layout for the 'compser' (the shell)
+        # create a qt layout for the 'composer' (the shell)
         layout = QtWidgets.QHBoxLayout()
         layout.setContentsMargins(0,0,0,0)
 
@@ -1002,7 +1002,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
            e.key() == QtCore.Qt.Key_Enter:
 
             #
-            # fire our convenience signal notifying listerns that the user
+            # fire our convenience signal notifying listeners that the user
             # pressed enter. this signal firing indicates the user is
             # probably trying to complete their query / input.
             #

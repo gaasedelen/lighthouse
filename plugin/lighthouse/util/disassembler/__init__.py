@@ -1,6 +1,19 @@
+#--------------------------------------------------------------------------
+# Disassembler API Selector
+#--------------------------------------------------------------------------
+#
+#    this file will select and load the shimmed disassembler API for the
+#    appropriate (current) disassembler platform.
+#
+#    see api.py for more details regarding this API shim layer
+#
+
 disassembler = None
 
-# attempt to load IDA imports
+#--------------------------------------------------------------------------
+# IDA API Shim
+#--------------------------------------------------------------------------
+
 if disassembler == None:
     try:
         from ida_api import IDAAPI, DockableWindow
@@ -8,7 +21,10 @@ if disassembler == None:
     except ImportError:
         pass
 
-# attempt to load Binary Ninja imports
+#--------------------------------------------------------------------------
+# Binary Ninja API Shim
+#--------------------------------------------------------------------------
+
 if disassembler == None:
     try:
         from binja_api import BinjaAPI, DockableWindow
@@ -16,7 +32,10 @@ if disassembler == None:
     except ImportError:
         pass
 
-# throw a hard error on unknown disassembly frameworks
+#--------------------------------------------------------------------------
+# Unknown Disassembler
+#--------------------------------------------------------------------------
+
 if disassembler == None:
-    raise RuntimeError("Unknown or unsupported disassembler!")
+    raise NotImplementedError("Unknown or unsupported disassembler!")
 

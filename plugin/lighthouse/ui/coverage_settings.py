@@ -14,7 +14,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._visible_action = None
         self._ui_init_actions()
 
-        if using_pyqt5:
+        if USING_PYQT5:
             self.setToolTipsVisible(True)
 
     #--------------------------------------------------------------------------
@@ -35,7 +35,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
                 return True
 
         # show action tooltips (for Qt < 5.1)
-        elif event.type() == QtCore.QEvent.ToolTip and not using_pyqt5:
+        elif event.type() == QtCore.QEvent.ToolTip and not USING_PYQT5:
             if action and self._visible_action != action:
                 QtWidgets.QToolTip.showText(event.globalPos(), action.toolTip())
                 self._visible_action = action
@@ -43,7 +43,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
             return True
 
         # clear tooltips (for Qt < 5.1)
-        if not (action or using_pyqt5):
+        if not (action or USING_PYQT5):
             QtWidgets.QToolTip.hideText()
             self._visible_action = None
 
@@ -62,8 +62,8 @@ class TableSettingsMenu(QtWidgets.QMenu):
         # lighthouse colors
         self._action_colors = QtWidgets.QAction("Colors", None)
         self._action_colors.setToolTip("Lighthouse color & theme customization")
-        self.addAction(self._action_colors)
-        self.addSeparator()
+        #self.addAction(self._action_colors)
+        #self.addSeparator()
 
         # painting
         self._action_pause_paint = QtWidgets.QAction("Pause painting", None)
