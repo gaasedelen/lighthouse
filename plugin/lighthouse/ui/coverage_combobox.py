@@ -549,6 +549,14 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
             if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
                 return self._director.get_coverage_string(self._entries[index.row()])
 
+        # tooltip
+        elif role == QtCore.Qt.ToolTipRole:
+            if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
+                coverage = self._director.get_coverage(self._entries[index.row()])
+                return coverage.filepath if coverage.filepath else ""
+            elif index.column() == COLUMN_DELETE:
+                return "Delete loaded coverage"
+
         # icon display request
         elif role == QtCore.Qt.DecorationRole:
 
