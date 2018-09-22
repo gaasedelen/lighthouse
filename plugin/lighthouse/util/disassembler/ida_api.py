@@ -98,6 +98,10 @@ class IDAAPI(DisassemblerAPI):
     def version_patch(self):
         return self._version_patch
 
+    @property
+    def headless(self):
+        return False
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------

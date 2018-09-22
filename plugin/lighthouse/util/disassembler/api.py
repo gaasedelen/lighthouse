@@ -30,7 +30,7 @@ class DisassemblerAPI(object):
     def __init__(self):
         self._waitbox = None
 
-        if QT_AVAILABLE:
+        if not self.headless and QT_AVAILABLE:
             from ..qt import WaitBox
             self._waitbox = WaitBox("Please wait...")
 
@@ -56,6 +56,13 @@ class DisassemblerAPI(object):
     def version_minor(self):
         """
         Return the patch version number of the disassembler framework.
+        """
+        pass
+
+    @abc.abstractproperty
+    def headless(self):
+        """
+        Return a bool indicating if the disassembler is running headlessly.
         """
         pass
 

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import sys
 import logging
 import functools
 import threading
@@ -7,6 +8,27 @@ import threading
 import binaryninja
 from binaryninja import PythonScriptingInstance, binaryview
 from binaryninja.plugin import BackgroundTaskThread
+
+#------------------------------------------------------------------------------
+# External PyQt5 Dependency
+#------------------------------------------------------------------------------
+#
+#    amend the Python import path with a Libs folder for additional pip
+#    packages required by Lighthouse (at least on Windows, and maybe macOS)
+#
+#    TODO/FUTURE: it is kind of dirty that we have to do this here. maybe it
+#    can be moved with a later refactor. in the long run, binary ninja will
+#    ship with PyQt5 bindings in-box.
+#
+
+DEPENDENCY_PATH = os.path.join(
+    binaryninja.user_plugin_path,
+    "Lib",
+    "site-packages"
+)
+sys.path.append(DEPENDENCY_PATH)
+
+#------------------------------------------------------------------------------
 
 from .api import DisassemblerAPI, DockableShim
 from ..qt import *
@@ -125,6 +147,10 @@ class BinjaAPI(DisassemblerAPI):
     @property
     def version_patch(self):
         return self._version_patch
+
+    @property
+    def headless(self):
+        return not binaryninja.core_ui_enabled
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
