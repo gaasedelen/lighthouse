@@ -1,3 +1,4 @@
+set LIGHTHOUSE_LOGGING=1
 REM - Close any running instances of IDA
 call close_IDA.bat
 

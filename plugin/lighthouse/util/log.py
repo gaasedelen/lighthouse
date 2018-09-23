@@ -2,11 +2,7 @@ import os
 import sys
 import logging
 
-import idaapi
-
-#
-# shamelessly ripped from Solidarity
-#
+from .disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # Log / Print helpers
@@ -14,14 +10,14 @@ import idaapi
 
 def lmsg(message):
     """
-    Print a message to the IDA output window, prefixed with [Lighthouse]
+    Print a message to the disassembler output window, prefixed with [Lighthouse]
     """
 
     # prefix the message
     prefix_message = "[Lighthouse] %s" % message
 
-    # only print to IDA if the output window is alive
-    if idaapi.is_msg_inited():
+    # only print to disassembler if its output window is alive
+    if disassembler.is_msg_inited():
         print prefix_message
     else:
         logger.info(message)
@@ -30,7 +26,11 @@ def get_log_dir():
     """
     Return the Lighthouse log directory.
     """
-    return os.path.join(idaapi.get_user_idadir(), "lighthouse_logs")
+    log_directory = os.path.join(
+        disassembler.get_disassembler_user_directory(),
+        "lighthouse_logs"
+    )
+    return log_directory
 
 def logging_started():
     """
@@ -79,7 +79,7 @@ def cleanup_log_directory(log_directory):
         if os.path.isfile(filepath):
             filetimes[os.path.getmtime(filepath)] = filepath
 
-    # get the filetimes and check if there's enough enough to warrant cleanup
+    # get the filetimes and check if there's enough to warrant cleanup
     times = filetimes.keys()
     if len(times) < MAX_LOGS:
         return
@@ -124,7 +124,7 @@ def start_logging():
     # config the logger
     logging.basicConfig(
         filename=log_path,
-        format='%(asctime)s | %(name)20s | %(levelname)7s: %(message)s',
+        format='%(asctime)s | %(name)28s | %(levelname)7s: %(message)s',
         datefmt='%m-%d-%Y %H:%M:%S',
         level=logging.DEBUG
     )

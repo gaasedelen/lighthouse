@@ -4,6 +4,7 @@ import os
 import sys
 import mmap
 import struct
+import re
 from ctypes import *
 
 #------------------------------------------------------------------------------
@@ -87,7 +88,7 @@ class DrcovData(object):
 
         # if we fail to find a module that matches the given name, bail
         if not module:
-            raise ValueError("Failed to find module '%s' in coverage data" % module_name)
+            raise ValueError("No coverage for module '%s' in log" % module_name)
 
         # extract module id for speed
         mod_id = module.id
@@ -115,7 +116,7 @@ class DrcovData(object):
         """
         Parse drcov coverage from the given data blob.
         """
-        pass # TODO
+        pass # TODO/DRCOV
 
     #--------------------------------------------------------------------------
     # Parsing Routines - Internals
@@ -284,23 +285,42 @@ class DrcovData(object):
         # is this an ascii table?
         if f.read(len(token)) == token:
             self.bb_table_is_binary = False
-            raise ValueError("ASCII DrCov logs are not supported at this time.")
 
-        # nope! binary table, seek back to the start of the table
+        # nope! binary table
         else:
             self.bb_table_is_binary = True
-            f.seek(saved_position)
+
+        # seek back to the start of the table
+        f.seek(saved_position)
 
     def _parse_bb_table_entries(self, f):
         """
         Parse drcov log basic block table entries from filestream.
         """
-
         # allocate the ctypes structure array of basic blocks
         self.basic_blocks = (DrcovBasicBlock * self.bb_table_count)()
 
-        # read the basic block entries directly into the newly allocated array
-        f.readinto(self.basic_blocks)
+        if self.bb_table_is_binary:
+            # read the basic block entries directly into the newly allocated array
+            f.readinto(self.basic_blocks)
+
+        else:  # let's parse the text records
+            text_entry = f.readline().strip()
+
+            if text_entry != "module id, start, size:":
+                raise ValueError("Invalid BB header: %r" % text_entry)
+
+            pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-f]+)\,\s*(?P<size>[0-9]+)$")
+            for basic_block in self.basic_blocks:
+                text_entry = f.readline().strip()
+
+                match = pattern.match(text_entry)
+                if not match:
+                    raise ValueError("Invalid BB entry: %r" % text_entry)
+
+                basic_block.start = int(match.group("start"), 16)
+                basic_block.size = int(match.group("size"), 10)
+                basic_block.mod_id = int(match.group("mod"), 10)
 
 #------------------------------------------------------------------------------
 # drcov module parser
