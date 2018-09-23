@@ -73,6 +73,7 @@ class BinjaPainter(DatabasePainter):
     def _priority_paint(self):
         current_address = disassembler.get_current_address()
         current_function = disassembler.bv.get_function_at(current_address)
-        self._paint_function(current_function.start)
+        if current_function:
+            self._paint_function(current_function.start)
         return True
 
