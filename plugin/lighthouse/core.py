@@ -20,7 +20,7 @@ logger = logging.getLogger("Lighthouse.Core")
 # Plugin Metadata
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.8.0-DEV"
+PLUGIN_VERSION = "0.8.0"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2018"
 
