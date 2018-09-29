@@ -381,7 +381,7 @@ class DatabasePainter(object):
         # Asynchronous Database Painting Loop
         #
 
-        while True:
+        while not self._end_threads:
 
             # wait for the next command to come through
             action = self._msg_queue.get()
