@@ -188,7 +188,7 @@ class CoverageOverview(DockableWindow):
 
         # layout the major elements of our widget
         layout = QtWidgets.QGridLayout()
-        layout.setSpacing(get_dpi_scale())
+        layout.setSpacing(get_dpi_scale()*5.0)
         layout.addWidget(self._table_view)
         layout.addWidget(self._toolbar)
 

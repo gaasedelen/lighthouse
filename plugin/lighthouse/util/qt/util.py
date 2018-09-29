@@ -1,3 +1,4 @@
+import sys
 import time
 import Queue
 import logging
@@ -69,8 +70,12 @@ def get_dpi_scale():
     """
     Get a DPI-afflicted value useful for consistent UI scaling.
     """
-    font = QtGui.QFont("Times", 15)
-    return QtGui.QFontMetricsF(font).xHeight()
+    font = MonospaceFont()
+    font.setPointSize(normalize_to_dpi(120))
+    fm = QtGui.QFontMetricsF(font)
+
+    # xHeight is expected to be 40.0 at normal DPI
+    return fm.height() / 173.0
 
 def move_mouse_event(mouse_event, position):
     """
@@ -89,7 +94,9 @@ def normalize_to_dpi(font_size):
     """
     Normalize the given font size based on the system DPI.
     """
-    return (font_size*get_dpi_scale())/5.0
+    if sys.platform == "darwin": # macos is lame
+        return font_size + 3
+    return font_size
 
 def prompt_string(label, title, default=""):
     """
@@ -105,8 +112,8 @@ def prompt_string(label, title, default=""):
     dlg.setWindowTitle(title)
     dlg.setTextValue(default)
     dlg.resize(
-        dpi_scale*80,
-        dpi_scale*10
+        dpi_scale*400,
+        dpi_scale*50
     )
     ok = dlg.exec_()
     text = str(dlg.textValue())
