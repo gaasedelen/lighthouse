@@ -51,6 +51,15 @@ class CoverageOverview(DockableWindow):
         super(CoverageOverview, self).show()
         self._visible = True
 
+        #
+        # if no metadata had been collected prior to showing the coverage
+        # overview (eg, through loading coverage), we should do that now
+        # before the user can interact with the view...
+        #
+
+        if not self._core.director.metadata.cached:
+            self._table_controller.refresh_metadata()
+
     def terminate(self):
         """
         The CoverageOverview is being hidden / deleted.
