@@ -128,8 +128,17 @@ class DatabasePainter(object):
         """
         Clear all paint from the current database (based on metadata)
         """
-        if self.enabled:
+
+        #
+        # we should only disable the painter (as a result of clear_paint()) if
+        # the user has coverage open & in use. for example, there is no reason
+        # to *preemptively* disable painting if no other coverage is loaded.
+        #
+
+        if self.enabled and len(self._director.coverage_names):
             self.set_enabled(False)
+
+        # trigger the database clear
         self._msg_queue.put(self.MSG_CLEAR)
 
     #--------------------------------------------------------------------------
