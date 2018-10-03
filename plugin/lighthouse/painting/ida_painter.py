@@ -181,11 +181,17 @@ class IDAPainter(DatabasePainter):
         self.clear_nodes(nodes_metadata)
         self._action_complete.set()
 
-    @disassembler.execute_ui
+    @execute_paint
     def _refresh_ui(self):
+        """
+        Note that this has been decorated with @execute_paint (vs @execute_ui)
+        to help avoid deadlocking on exit.
+        """
         idaapi.refresh_idaview_anyway()
 
     def _cancel_action(self, job_id):
+        if idaapi.IDA_SDK_VERSION < 710:
+            return
         idaapi.cancel_exec_request(job_id)
 
     #------------------------------------------------------------------------------

@@ -127,6 +127,15 @@ class DatabaseMetadata(object):
         #
 
         index = bisect.bisect_right(self._node_addresses, address) - 1
+        node_metadata = self.nodes.get(self._node_addresses[index], None)
+
+        #
+        # if the given address does not fall within the selected node (or the
+        # node simply does not exist), then we have no match/metadata to return
+        #
+
+        if not (node_metadata and address in node_metadata):
+            return None
 
         #
         # if the selected node metadata contains the given target address, it
@@ -134,11 +143,9 @@ class DatabaseMetadata(object):
         # faster consecutive lookups
         #
 
-        node_metadata = self.nodes.get(self._node_addresses[index], None)
-        if node_metadata and address in node_metadata:
-            self._last_node = node_metadata
+        self._last_node = node_metadata
 
-        # return the located node_metadata, or None
+        # return the located node_metadata
         return node_metadata
 
     def get_function(self, address):

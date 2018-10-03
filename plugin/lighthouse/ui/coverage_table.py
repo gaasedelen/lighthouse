@@ -179,12 +179,13 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # specify the fixed pixel height for the table headers
         spacing = title_fm.height() - title_fm.xHeight()
-        tweak = 24 - spacing
+        tweak = 26*get_dpi_scale() - spacing
         hh.setFixedHeight(entry_fm.height()+tweak)
 
         # specify the fixed pixel height for the table rows
+        # NOTE: don't ask too many questions about this voodoo math :D
         spacing = entry_fm.height() - entry_fm.xHeight()
-        tweak = 16 - spacing
+        tweak = (17*get_dpi_scale() - spacing)/get_dpi_scale()
         vh.setDefaultSectionSize(entry_fm.height()+tweak)
 
     def _ui_init_table_ctx_menu_actions(self):
