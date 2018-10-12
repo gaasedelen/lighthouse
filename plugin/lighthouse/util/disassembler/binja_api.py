@@ -115,9 +115,8 @@ class BinjaAPI(DisassemblerAPI):
         if "-" in binaryninja.core_version: # dev
             disassembler_version = binaryninja.core_version.split("-", 1)[0]
         else: # commercial, personal
-            binaryninja.core_version.split(" ", 1)[0]
+            disassembler_version = binaryninja.core_version.split(" ", 1)[0]
 
-        disassembler_version = binaryninja.core_version.split("-", 1)[0]
         major, minor, patch = map(int, disassembler_version.split("."))
 
         # save the version number components for later use
