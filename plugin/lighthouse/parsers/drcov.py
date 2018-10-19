@@ -424,7 +424,7 @@ class DrcovModule(object):
         self.end           = int(data[3], 16)
         self.entry         = int(data[4], 16)
         self.offset        = int(data[5], 16)
-        if len(data) == 7: # Windows Only
+        if len(data) == 9: # Windows Only
             self.checksum  = int(data[6], 16)
             self.timestamp = int(data[7], 16)
         self.path          = str(data[-1])
