@@ -440,6 +440,11 @@ class CoverageDirector(object):
                 errors.append((self.ERROR_COVERAGE_SUSPICIOUS, drcov_data.filepath))
                 lmsg("Badly mapped coverage %s" % drcov_data.filepath)
 
+            # warn when loaded coverage (for this module) appears to be empty
+            if not len(coverage.nodes):
+                errors.append((self.ERROR_COVERAGE_ABSENT, drcov_data.filepath))
+                lmsg("No relevant coverage data in %s" % drcov_data.filepath)
+
         #
         # resume the director's aggregation service, triggering an update to
         # recompute the aggregate with the newly loaded coverage
