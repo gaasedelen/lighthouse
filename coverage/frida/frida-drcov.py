@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import sys
+import time
 
 import frida
 
@@ -31,6 +32,13 @@ Python side is responsible for:
 # 2. threads to trace, in the form "[345, 765]" or "['all']"
 js = """
 "use strict";
+
+rpc.exports = {
+    dispose: function() {
+        send({'dispose': 1});
+        recv('dispose-ack', function () {}).wait();
+    }
+};
 
 var whitelist = %s;
 var threadlist = %s;
@@ -172,6 +180,7 @@ Process.enumerateThreads({
 modules = []
 bbs = set([])
 outfile = 'frida-cov.log'
+script = None
 
 # This converts the object frida sends which has string addresses into
 #  a python dict
@@ -235,11 +244,16 @@ def create_coverage(data):
     return bb_header + ''.join(data)
 
 def on_message(msg, data):
+    global script
+
     #print(msg)
     pay = msg['payload']
     if 'map' in pay:
         maps = pay['map']
         populate_modules(maps)
+    elif 'dispose' in pay:
+        time.sleep(0.3)
+        script.post({'type': 'dispose-ack'})
     else:
         populate_bbs(data)
 
@@ -262,6 +276,7 @@ def save_coverage():
 
 def main():
     global outfile
+    global script
 
     parser = argparse.ArgumentParser()
     parser.add_argument('target',
