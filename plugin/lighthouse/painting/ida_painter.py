@@ -410,7 +410,7 @@ class IDAPainter(DatabasePainter):
         """
         Immediately repaint regions of the database visible to the user.
         """
-        cursor_address = idaapi.get_screen_ea()
+        cursor_address = disassembler.execute_read(idaapi.get_screen_ea)
 
         # paint functions around the cursor address
         if not self._priority_paint_functions(cursor_address):
