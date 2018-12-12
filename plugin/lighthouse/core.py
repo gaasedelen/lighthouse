@@ -20,7 +20,7 @@ logger = logging.getLogger("Lighthouse.Core")
 # Plugin Metadata
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.8.2"
+PLUGIN_VERSION = "0.8.3"
 AUTHORS        = "Markus Gaasedelen"
 DATE           = "2018"
 
@@ -476,7 +476,8 @@ def warn_module_missing():
         " Possible reasons:\n"
         " - You selected a coverage file for the wrong binary.\n"
         " - The name of the executable file used to generate this database\n"
-        "    is different than the one you collected coverage against.\n\n"
+        "    is different than the one you collected coverage against.\n"
+        " - Your DBI failed to collect any coverage for this binary.\n\n"
         "Please see the disassembler console for more info..."
     )
 

@@ -22,7 +22,7 @@ from binaryninja.plugin import BackgroundTaskThread
 #
 
 DEPENDENCY_PATH = os.path.join(
-    binaryninja.user_plugin_path,
+    binaryninja.user_plugin_path(),
     "Lib",
     "site-packages"
 )
@@ -110,14 +110,14 @@ class BinjaAPI(DisassemblerAPI):
         self._python = _binja_get_scripting_instance()
 
     def _init_version(self):
+        version_string = binaryninja.core_version()
 
         # retrieve Binja's version #
-        if "-" in binaryninja.core_version: # dev
-            disassembler_version = binaryninja.core_version.split("-", 1)[0]
+        if "-" in version_string: # dev
+            disassembler_version = version_string.split("-", 1)[0]
         else: # commercial, personal
-            binaryninja.core_version.split(" ", 1)[0]
+            disassembler_version = version_string.split(" ", 1)[0]
 
-        disassembler_version = binaryninja.core_version.split("-", 1)[0]
         major, minor, patch = map(int, disassembler_version.split("."))
 
         # save the version number components for later use
@@ -155,7 +155,7 @@ class BinjaAPI(DisassemblerAPI):
 
     @property
     def headless(self):
-        return not binaryninja.core_ui_enabled
+        return not binaryninja.core_ui_enabled()
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
@@ -220,7 +220,7 @@ class BinjaAPI(DisassemblerAPI):
         return os.path.dirname(self.bv.file.filename)
 
     def get_disassembler_user_directory(self):
-        return os.path.split(binaryninja.user_plugin_path)[0]
+        return os.path.split(binaryninja.user_plugin_path())[0]
 
     @not_mainthread
     def get_function_addresses(self):
