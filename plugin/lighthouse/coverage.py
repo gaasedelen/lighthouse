@@ -191,6 +191,8 @@ class DatabaseCoverage(object):
         """
         bad = 0
         total = len(self.nodes)
+        if not total:
+            return 0.0
 
         #
         # count the number of nodes (basic blocks) that allegedly were executed

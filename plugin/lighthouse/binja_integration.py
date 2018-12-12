@@ -32,7 +32,7 @@ class LighthouseBinja(Lighthouse):
 
     def _install_load_file(self):
         PluginCommand.register(
-            "Lighthouse - Load code coverage file...",
+            r"Lighthouse\Load code coverage file...",
             "Load individual code coverage file(s)",
             self.interactive_load_file
         )
@@ -40,7 +40,7 @@ class LighthouseBinja(Lighthouse):
 
     def _install_load_batch(self):
         PluginCommand.register(
-            "Lighthouse - Load code coverage batch...",
+            r"Lighthouse\Load code coverage batch...",
             "Load and aggregate code coverage files",
             self.interactive_load_batch
         )
@@ -48,7 +48,7 @@ class LighthouseBinja(Lighthouse):
 
     def _install_open_coverage_overview(self):
         PluginCommand.register(
-            "Lighthouse - Coverage Overview",
+            r"Lighthouse\Coverage Overview",
             "Open the database code coverage overview",
             self.interactive_load_batch
         )

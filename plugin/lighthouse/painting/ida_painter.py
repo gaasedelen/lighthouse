@@ -410,7 +410,7 @@ class IDAPainter(DatabasePainter):
         """
         Immediately repaint regions of the database visible to the user.
         """
-        cursor_address = idaapi.get_screen_ea()
+        cursor_address = disassembler.execute_read(idaapi.get_screen_ea)()
 
         # paint functions around the cursor address
         if not self._priority_paint_functions(cursor_address):
@@ -446,17 +446,16 @@ class IDAPainter(DatabasePainter):
         # select the range of functions around us that we would like to paint
         func_num = db_metadata.get_function_index(function_metadata.address)
         func_num_start = max(func_num - FUNCTION_BUFFER, 0)
-        func_num_end   = func_num + FUNCTION_BUFFER + 1
+        func_num_end   = min(func_num + FUNCTION_BUFFER + 1, len(db_metadata.functions))
 
         # repaint the specified range of functions
         for current_num in xrange(func_num_start, func_num_end):
 
             # get the next function to paint
-            try:
-                function_metadata = db_metadata.get_function_by_index(current_num)
-                function_address = function_metadata.address
-            except IndexError:
+            function_metadata = db_metadata.get_function_by_index(current_num)
+            if not function_metadata:
                 continue
+            function_address = function_metadata.address
 
             # get the function coverage data for the target address
             function_coverage = db_coverage.functions.get(function_address, None)

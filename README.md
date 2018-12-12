@@ -201,7 +201,7 @@ Example usage:
 pin.exe -t CodeCoverage64.dll -- boombox.exe
 ```
 
-For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases/tag/v0.8.0) page. macOS and Linux users need to compile the pintool themselves following the [instructions](coverage/pin#compilation) included with the pintool for their respective platforms.
+For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases) page. macOS and Linux users need to compile the pintool themselves following the [instructions](coverage/pin#compilation) included with the pintool for their respective platforms.
 
 ## Frida (Experimental)
 
