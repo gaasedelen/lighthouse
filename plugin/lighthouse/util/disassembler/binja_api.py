@@ -22,7 +22,7 @@ from binaryninja.plugin import BackgroundTaskThread
 #
 
 DEPENDENCY_PATH = os.path.join(
-    binaryninja.user_plugin_path(),
+    binaryninja.user_plugin_path,
     "Lib",
     "site-packages"
 )
@@ -110,7 +110,7 @@ class BinjaAPI(DisassemblerAPI):
         self._python = _binja_get_scripting_instance()
 
     def _init_version(self):
-        version_string = binaryninja.core_version()
+        version_string = binaryninja.core_version
 
         # retrieve Binja's version #
         if "-" in version_string: # dev
@@ -155,7 +155,7 @@ class BinjaAPI(DisassemblerAPI):
 
     @property
     def headless(self):
-        return not binaryninja.core_ui_enabled()
+        return not binaryninja.core_ui_enabled
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
