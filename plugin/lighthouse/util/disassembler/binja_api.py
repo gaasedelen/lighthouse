@@ -22,11 +22,10 @@ from binaryninja.plugin import BackgroundTaskThread
 #
 
 binja_user_plugin_path=None
-
+# Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
 try:
     binja_user_plugin_path=binaryninja.user_plugin_path()
 except TypeError:
-    print("[!] Running with stable API")
     binja_user_plugin_path=binaryninja.user_plugin_path
 
 DEPENDENCY_PATH = os.path.join(
@@ -119,6 +118,7 @@ class BinjaAPI(DisassemblerAPI):
 
     def _init_version(self):
         version_string = None
+        # Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
         try:
             version_string = binaryninja.core_version()
         except TypeError:
@@ -168,6 +168,7 @@ class BinjaAPI(DisassemblerAPI):
     @property
     def headless(self):
         ret = None
+        # Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
         try:
             ret = binaryninja.core_ui_enabled()
         except TypeError:
