@@ -129,12 +129,12 @@ class DrcovData(object):
 
         # parse drcov version from log
         #   eg: DRCOV VERSION: 2
-        version_line = f.readline().strip()
+        version_line = f.readline().decode('utf-8').strip()
         self.version = int(version_line.split(":")[1])
 
         # parse drcov flavor from log
         #   eg: DRCOV FLAVOR: drcov
-        flavor_line = f.readline().strip()
+        flavor_line = f.readline().decode('utf-8').strip()
         self.flavor = flavor_line.split(":")[1]
 
         assert self.version == 2, "Only drcov version 2 log files supported"
@@ -163,7 +163,7 @@ class DrcovData(object):
 
         # parse module table 'header'
         #   eg: Module Table: version 2, count 11
-        header_line = f.readline().strip()
+        header_line = f.readline().decode('utf-8').strip()
         field_name, field_data = header_line.split(": ")
         #assert field_name == "Module Table"
 
@@ -235,7 +235,7 @@ class DrcovData(object):
 
         # parse module table 'columns'
         #   eg: Columns: id, base, end, entry, checksum, timestamp, path
-        column_line = f.readline().strip()
+        column_line = f.readline().decode('utf-8').strip()
         field_name, field_data = column_line.split(": ")
         #assert field_name == "Columns"
 
@@ -250,8 +250,8 @@ class DrcovData(object):
         """
 
         # loop through each *expected* line in the module table and parse it
-        for i in xrange(self.module_table_count):
-            module = DrcovModule(f.readline().strip(), self.module_table_version)
+        for i in range(self.module_table_count):
+            module = DrcovModule(f.readline().decode('utf-8').strip(), self.module_table_version)
             self.modules.append(module)
 
     def _parse_bb_table(self, f):
@@ -268,7 +268,7 @@ class DrcovData(object):
 
         # parse basic block table 'header'
         #   eg: BB Table: 2792 bbs
-        header_line = f.readline().strip()
+        header_line = f.readline().decode('utf-8').strip()
         field_name, field_data = header_line.split(": ")
         #assert field_name == "BB Table"
 
@@ -305,14 +305,14 @@ class DrcovData(object):
             f.readinto(self.basic_blocks)
 
         else:  # let's parse the text records
-            text_entry = f.readline().strip()
+            text_entry = f.readline().decode('utf-8').strip()
 
             if text_entry != "module id, start, size:":
                 raise ValueError("Invalid BB header: %r" % text_entry)
 
             pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-f]+)\,\s*(?P<size>[0-9]+)$")
             for basic_block in self.basic_blocks:
-                text_entry = f.readline().strip()
+                text_entry = f.readline().decode('utf-8').strip()
 
                 match = pattern.match(text_entry)
                 if not match:
@@ -468,10 +468,10 @@ if __name__ == "__main__":
 
     # base usage
     if argc < 2:
-        print "usage: %s <coverage filename>" % os.path.basename(sys.argv[0])
+        print("usage: {} <coverage filename>".format(os.path.basename(sys.argv[0])))
         sys.exit()
 
     # attempt file parse
     x = DrcovData(argv[1])
     for bb in x.basic_blocks:
-        print "0x%08x" % bb.start
+        print("0x{:08x}".format(bb.start))
