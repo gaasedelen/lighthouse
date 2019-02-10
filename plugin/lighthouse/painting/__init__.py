@@ -5,5 +5,7 @@ if disassembler.NAME == "IDA":
     from .ida_painter import IDAPainter as CoveragePainter
 elif disassembler.NAME == "BINJA":
     from .binja_painter import BinjaPainter as CoveragePainter
+elif disassembler.NAME == "CUTTER":
+    from .cutter_painter import CutterPainter as CoveragePainter
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

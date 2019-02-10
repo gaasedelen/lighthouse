@@ -33,6 +33,19 @@ if disassembler == None:
         pass
 
 #--------------------------------------------------------------------------
+# Cutter API Shim
+#--------------------------------------------------------------------------
+
+if disassembler == None:
+    try:
+        from .cutter_api import CutterAPI, DockableWindow
+        disassembler = CutterAPI()
+    except ImportError as e:
+        print('ERROR ---- ', e)
+        raise e
+        pass
+
+#--------------------------------------------------------------------------
 # Unknown Disassembler
 #--------------------------------------------------------------------------
 

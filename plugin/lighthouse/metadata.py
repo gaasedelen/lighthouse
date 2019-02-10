@@ -834,6 +834,54 @@ class FunctionMetadata(object):
             for edge in node.outgoing_edges:
                 function_metadata.edges[edge_src].append(edge.target.start)
 
+    def _cutter_refresh_nodes(self):
+        """
+        Refresh function node metadata against an open Binary Ninja database.
+        """
+        function_metadata = self
+        function_metadata.nodes = {}
+
+        # get the function from the Cutter database
+        # TODO Use Cutter cache/API
+        #function = cutter.get_function_at(self.address)
+        function = cutter.cmdj('afbj @ ' + str(self.address))
+
+        #
+        # now we will walk the flowchart for this function, collecting
+        # information on each of its nodes (basic blocks) and populating
+        # the function & node metadata objects.
+        #
+
+        for bb in function:
+
+            # create a new metadata object for this node
+            node_metadata = NodeMetadata(bb['addr'], bb['addr'] + bb['size'], None)
+            #
+            # establish a relationship between this node (basic block) and
+            # this function metadata (its parent)
+            #
+
+            node_metadata.function = function_metadata
+            function_metadata.nodes[bb['addr']] = node_metadata
+
+            #
+            # enumerate the edges produced by this node (basic block) with a
+            # destination that falls within this function.
+            #
+
+            #edge_src = node_metadata.instructions[-1]
+            #for edge in node.outgoing_edges:
+            #    function_metadata.edges[edge_src].append(edge.target.start)
+
+            # TODO Use Cutter cache/API
+            instructions = cutter.cmdj('pdbj @ ' + str(self.address))
+            edge_src = instructions[-1]['offset']
+            if bb.get('jump'):
+                function_metadata.edges[edge_src].append(bb.get('jump'))
+            if bb.get('fail'):
+                function_metadata.edges[edge_src].append(bb.get('fail'))
+
+
     def _compute_complexity(self):
         """
         Walk the function CFG to determine approximate cyclomatic complexity.
@@ -847,6 +895,10 @@ class FunctionMetadata(object):
         complexity calculation. Not doing so will radically throw off the
         cyclomatic complexity score.
         """
+
+        if disassembler.NAME == "CUTTER":
+            return int(cutter.cmd('afCc @ ' + str(self.address)))
+
         confirmed_nodes = set()
         confirmed_edges = {}
 
@@ -1006,6 +1058,27 @@ class NodeMetadata(object):
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
 
+    def _cutter_build_metadata(self):
+        """
+        Collect node metadata from the underlying database.
+        """
+        current_address = self.address
+        node_end = self.address + self.size
+
+        #
+        # Note that we 'iterate over' the instructions using their byte length
+        # because it is far more performant than Binary Ninja's instruction
+        # generators which also produce instruction text, tokens etc...
+        #
+
+        while current_address < node_end:
+            self.instructions.append(current_address)
+            # TODO Use Cutter API and that's dirty AF haha
+            current_address += int(cutter.cmd('?v $l @ ' + str(current_address)), 16)
+
+        ## save the number of instructions in this block
+        self.instruction_count = len(self.instructions)
+
     #--------------------------------------------------------------------------
     # Operator Overloads
     #--------------------------------------------------------------------------
@@ -1090,6 +1163,12 @@ elif disassembler.NAME == "BINJA":
     import binaryninja
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
     NodeMetadata._build_metadata = NodeMetadata._binja_build_metadata
+
+elif disassembler.NAME == "CUTTER":
+    import cutter
+    import CutterBindings
+    FunctionMetadata._refresh_nodes = FunctionMetadata._cutter_refresh_nodes
+    NodeMetadata._build_metadata = NodeMetadata._cutter_build_metadata
 
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

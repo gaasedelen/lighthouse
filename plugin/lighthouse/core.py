@@ -202,6 +202,8 @@ class Lighthouse(object):
 
         # create a new coverage overview if there is not one visible
         self._ui_coverage_overview = CoverageOverview(self)
+        if disassembler.NAME == "CUTTER":
+            self._ui_coverage_overview.setmain(disassembler.main)
         self._ui_coverage_overview.show()
 
     def open_coverage_xref(self, address):
