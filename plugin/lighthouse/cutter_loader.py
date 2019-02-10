@@ -19,7 +19,6 @@ class LighthouseCutterPlugin(CutterBindings.CutterPlugin):
     author = 'xarkes'
 
     def __init__(self):
-        print('Init is complete.')
         super(LighthouseCutterPlugin, self).__init__()
 
     def setupPlugin(self):
@@ -32,10 +31,8 @@ class LighthouseCutterPlugin(CutterBindings.CutterPlugin):
 
 
 def create_cutter_plugin():
-    print('Creating plugin...')
     try:
         plugin = LighthouseCutterPlugin()
-        print('Returning plugin ... ', plugin)
         return plugin
     except Exception as e:
         print('ERROR ---- ', e)

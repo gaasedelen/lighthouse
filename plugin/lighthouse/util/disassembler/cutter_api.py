@@ -8,30 +8,8 @@ import threading
 import cutter
 import CutterBindings
 
-#------------------------------------------------------------------------------
-# External PyQt5 Dependency
-#------------------------------------------------------------------------------
-#
-#    amend the Python import path with a Libs folder for additional pip
-#    packages required by Lighthouse (at least on Windows, and maybe macOS)
-#
-#    TODO/FUTURE: it is kind of dirty that we have to do this here. maybe it
-#    can be moved with a later refactor. in the long run, binary ninja will
-#    ship with PyQt5 bindings in-box.
-#
-
-#DEPENDENCY_PATH = os.path.join(
-#    binaryninja.user_plugin_path(),
-#    "Lib",
-#    "site-packages"
-#)
-#sys.path.append(DEPENDENCY_PATH)
-
-#------------------------------------------------------------------------------
-
 from .api import DisassemblerAPI, DockableShim
 from ..qt import *
-from PySide2.QtWidgets import QAction
 from ..misc import is_mainthread, not_mainthread
 
 logger = logging.getLogger("Lighthouse.API.Cutter")
@@ -267,7 +245,7 @@ class DockableWindow(DockableShim):
         # self._widget.setParent(main)
 
         # dock the widget inside Cutter main dock
-        self._action = QAction('Lighthouse coverage table')
+        self._action = QtWidgets.QAction('Lighthouse coverage table')
         self._action.setCheckable(True)
-        main.addPluginDockWidget(self._widget, self._action)
+        main.addPluginDockWidget(self._dockable, self._action)
 
