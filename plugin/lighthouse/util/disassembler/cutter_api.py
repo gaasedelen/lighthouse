@@ -106,18 +106,20 @@ class CutterAPI(DisassemblerAPI):
                 pass
 
             def hook(self):
+                # TODO Handle me
                 print('hooked')
 
             def unhook(self):
+                # TODO Handle me
                 print('unhooked')
 
         return RenameHooks()
 
     def get_current_address(self):
-        # TODO Use Cutter API
-        return cutter.cmdj('sj')[0]['offset']
+        return self._core.getOffset()
 
     def get_function_at(self, address):
+        # TODO Use Cutter API
         return cutter.cmdj('afij @ ' + str(address))[0]
 
     @execute_read.__func__
@@ -140,7 +142,7 @@ class CutterAPI(DisassemblerAPI):
 
     @execute_read.__func__
     def get_function_raw_name_at(self, address):
-        return self.get_function_name_at(address)
+        return self.get_function_at(address)['name']
 
     @not_mainthread
     def get_imagebase(self):
@@ -157,20 +159,9 @@ class CutterAPI(DisassemblerAPI):
 
     @execute_write.__func__
     def set_function_name_at(self, function_address, new_name):
-        return None
-        #func = self.bv.get_function_at(function_address)
-        #if not func:
-        #    return
-        #if new_name == "":
-        #    new_name = None
-        #func.name = new_name
-
-        #
-        # TODO/V35: As a workaround for no symbol events, we trigger a data
-        # notification for this function instead.
-        #
-
-        #self.bv.write(function_address, self.bv.read(function_address, 1))
+        old_name = self.get_function_raw_name_at(function_address)
+        self._core.renameFunction(old_name, new_name)
+        # TODO Fix refresh :)
 
     #--------------------------------------------------------------------------
     # UI API Shims
@@ -226,14 +217,16 @@ class DockableWindow(DockableShim):
         #   of the coverage overview / dockable widget when it is first shown
         #
 
-        default_width = self._widget.sizeHint().width()
-        self._dockable.setMinimumWidth(default_width)
+        #default_width = self._widget.sizeHint().width()
+        #self._dockable.setMinimumWidth(default_width)
 
         # show the widget
+        print('Calling show on dockable...', self._dockable)
         self._dockable.show()
+        self._dockable.raise_()
 
         # undo the HACK
-        self._dockable.setMinimumWidth(0)
+        #self._dockable.setMinimumWidth(0)
 
     def setmain(self, main):
         #
@@ -248,4 +241,5 @@ class DockableWindow(DockableShim):
         self._action = QtWidgets.QAction('Lighthouse coverage table')
         self._action.setCheckable(True)
         main.addPluginDockWidget(self._dockable, self._action)
+        print('Added dockable to main window', self._dockable)
 

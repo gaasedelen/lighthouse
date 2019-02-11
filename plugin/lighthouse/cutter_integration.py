@@ -18,9 +18,9 @@ class LighthouseCutter(Lighthouse):
     """
 
     def __init__(self, plugin, main):
+        super(LighthouseCutter, self).__init__()
         self.plugin = plugin
         self.main = main
-        super(LighthouseCutter, self).__init__()
         # Small hack to give main window to DockWidget
         disas.main = main
 
