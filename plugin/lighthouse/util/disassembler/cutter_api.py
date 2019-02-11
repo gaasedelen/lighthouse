@@ -102,18 +102,26 @@ class CutterAPI(DisassemblerAPI):
 
     def create_rename_hooks(self):
         class RenameHooks(object):
-            def __init__(self):
-                pass
+            def __init__(self, core):
+                self._core = core
 
             def hook(self):
-                # TODO Handle me
-                print('hooked')
+                print('Hooked rename')
+                QtCore.QObject.connect(self._core,
+                        QtCore.SIGNAL('functionRenamed(const QString, const QString)'),
+                        self.update)
 
             def unhook(self):
-                # TODO Handle me
-                print('unhooked')
+                print('UnHooked rename')
+                QtCore.QObject.disconnect(self._core,
+                        QtCore.SIGNAL('functionRenamed(const QString, const QString)'),
+                        self.update)
 
-        return RenameHooks()
+            def update(self, old_name, new_name):
+                # TODO Wtf this is not triggered?
+                print('Received update event!', old_name, new_name)
+
+        return RenameHooks(self._core)
 
     def get_current_address(self):
         return self._core.getOffset()
@@ -221,7 +229,6 @@ class DockableWindow(DockableShim):
         #self._dockable.setMinimumWidth(default_width)
 
         # show the widget
-        print('Calling show on dockable...', self._dockable)
         self._dockable.show()
         self._dockable.raise_()
 
@@ -241,5 +248,4 @@ class DockableWindow(DockableShim):
         self._action = QtWidgets.QAction('Lighthouse coverage table')
         self._action.setCheckable(True)
         main.addPluginDockWidget(self._dockable, self._action)
-        print('Added dockable to main window', self._dockable)
 
