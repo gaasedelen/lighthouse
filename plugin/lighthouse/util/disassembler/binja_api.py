@@ -21,8 +21,15 @@ from binaryninja.plugin import BackgroundTaskThread
 #    ship with PyQt5 bindings in-box.
 #
 
+binja_user_plugin_path=None
+# Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
+try:
+    binja_user_plugin_path=binaryninja.user_plugin_path()
+except TypeError:
+    binja_user_plugin_path=binaryninja.user_plugin_path
+
 DEPENDENCY_PATH = os.path.join(
-    binaryninja.user_plugin_path(),
+    binja_user_plugin_path,
     "Lib",
     "site-packages"
 )
@@ -110,7 +117,12 @@ class BinjaAPI(DisassemblerAPI):
         self._python = _binja_get_scripting_instance()
 
     def _init_version(self):
-        version_string = binaryninja.core_version()
+        version_string = None
+        # Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
+        try:
+            version_string = binaryninja.core_version()
+        except TypeError:
+            version_string = binaryninja.core_version
 
         # retrieve Binja's version #
         if "-" in version_string: # dev
@@ -155,7 +167,13 @@ class BinjaAPI(DisassemblerAPI):
 
     @property
     def headless(self):
-        return not binaryninja.core_ui_enabled()
+        ret = None
+        # Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
+        try:
+            ret = binaryninja.core_ui_enabled()
+        except TypeError:
+            ret = binaryninja.core_ui_enabled
+        return not ret
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
