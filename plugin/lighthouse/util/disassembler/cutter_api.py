@@ -53,6 +53,7 @@ class CutterAPI(DisassemblerAPI):
 
         # export Cutter Core
         self._core = CutterBindings.CutterCore.instance()
+        self._config = CutterBindings.Configuration.instance()
 
     #--------------------------------------------------------------------------
     # Properties
@@ -171,13 +172,16 @@ class CutterAPI(DisassemblerAPI):
         self._core.renameFunction(old_name, new_name)
         # TODO Fix refresh :)
 
+    @staticmethod
+    def get_color(red, green, blue):
+        return QtGui.QColor(red, green, blue)
+
     #--------------------------------------------------------------------------
     # UI API Shims
     #--------------------------------------------------------------------------
 
     def get_disassembly_background_color(self):
-        palette = QtGui.QPalette()
-        return palette.color(QtGui.QPalette.Button)
+        return self._config.getColor("gui.background")
 
     def is_msg_inited(self):
         return True

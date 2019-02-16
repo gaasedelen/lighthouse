@@ -40,27 +40,19 @@ class CutterPainter(DatabasePainter):
         self._action_complete.set()
 
     def _paint_nodes(self, nodes_coverage):
-        # TODO Paint nodes
-        pass
-        #bv = disassembler.bv
-        #b, g, r = to_rgb(self.palette.coverage_paint)
-        #color = HighlightColor(red=r, green=g, blue=b)
-        #for node_coverage in nodes_coverage:
-        #    node_metadata = node_coverage.database._metadata.nodes[node_coverage.address]
-        #    for node in bv.get_basic_blocks_starting_at(node_metadata.address):
-        #        node.highlight = color
-        #    self._painted_nodes.add(node_metadata.address)
-        #self._action_complete.set()
+        b, g, r = to_rgb(self.palette.coverage_paint)
+        color = disassembler.get_color(r, g, b)
+        for node_coverage in nodes_coverage:
+            node_metadata = node_coverage.database._metadata.nodes[node_coverage.address]
+            disassembler._core.getBBHighlighter().highlight(node_coverage.address, color)
+            self._painted_nodes.add(node_metadata.address)
+        self._action_complete.set()
 
     def _clear_nodes(self, nodes_metadata):
-        # TODO Clear nodes
-        pass
-        #bv = disassembler.bv
-        #for node_metadata in nodes_metadata:
-        #    for node in bv.get_basic_blocks_starting_at(node_metadata.address):
-        #        node.highlight = HighlightStandardColor.NoHighlightColor
-        #    self._painted_nodes.discard(node_metadata.address)
-        #self._action_complete.set()
+        for node_metadata in nodes_metadata:
+            disassembler._core.getBBHighlighter().clear(node_metadata.address)
+            self._painted_nodes.discard(node_metadata.address)
+        self._action_complete.set()
 
     def _refresh_ui(self):
         pass
