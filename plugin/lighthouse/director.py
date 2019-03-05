@@ -4,6 +4,7 @@ import string
 import logging
 import threading
 import collections
+import itertools
 
 from lighthouse.util import lmsg
 from lighthouse.util.misc import *
@@ -25,7 +26,8 @@ AGGREGATE       = "Aggregate"
 SPECIAL_NAMES   = set([HOT_SHELL, AGGREGATE, NEW_COMPOSITION])
 
 AGGREGATE_ALIAS = '*'
-ASCII_SHORTHAND = list(string.ascii_uppercase)
+#ASCII_SHORTHAND = list(string.ascii_uppercase)
+ASCII_SHORTHAND = [''.join(p) for p in itertools.permutations(string.ascii_uppercase, 3)]
 SHORTHAND_ALIASES = set([AGGREGATE_ALIAS]) | set(ASCII_SHORTHAND)
 
 RESERVED_NAMES = SHORTHAND_ALIASES | SPECIAL_NAMES
