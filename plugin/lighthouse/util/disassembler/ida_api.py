@@ -198,7 +198,7 @@ class IDAAPI(DisassemblerAPI):
         """
         Get the background color of the IDA disassembly view. (IDA 7+)
         """
-        names  = ["Enums", "Structures"]
+        names  = ["Enums", "Structures", "Output window"]
         names += ["Hex View-%u" % i for i in range(5)]
         names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
 
@@ -228,7 +228,7 @@ class IDAAPI(DisassemblerAPI):
         """
         Get the background color of the IDA disassembly view. (IDA 6.x)
         """
-        names  = ["Enums", "Structures"]
+        names  = ["Enums", "Structures", "Output window"]
         names += ["Hex View-%u" % i for i in range(5)]
         names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
 
