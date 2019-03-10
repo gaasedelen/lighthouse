@@ -348,7 +348,7 @@ class CoverageDirector(object):
         """
         return self.update_coverage(coverage_name, coverage_data, coverage_filepath)
 
-    def create_coverage_from_drcov_list(self, drcov_list):
+    def create_coverage_from_files(self, drcov_list):
         """
         Create a number of database coverage mappings from a list of DrcovData.
 
@@ -417,7 +417,7 @@ class CoverageDirector(object):
 
             # assign a suffix to the coverage name in the event of a collision
             if coverage and coverage.filepath != drcov_data.filepath:
-                for i in xrange(2,0x100000):
+                for i in xrange(2, 100000):
                     new_name = "%s_%u" % (coverage_name, i)
                     if not self.get_coverage(new_name):
                         break
@@ -456,6 +456,31 @@ class CoverageDirector(object):
         # done
         return (created_coverage, errors)
 
+    def _find_fuzzy_name(self, drcov_data, target_name):
+        """
+        TODO
+        """
+
+        # attempt lookup using case-insensitive filename
+        for module_name in drcov_data.modules:
+            if module_name.lower() in target_name.lower():
+                return module_name
+
+        #
+        # no hits yet... let's cleave the extension from the given module
+        # name (if present) and try again
+        #
+
+        if "." in target_name:
+            target_name = target_name.split(".")[0]
+
+        # attempt lookup using case-insensitive filename without extension
+        for module_name in drcov_data.modules:
+            if module_name.lower() in target_name.lower():
+                return module_name
+
+        return None
+
     def _normalize_drcov_data(self, drcov_data):
         """
         Extract and normalize relevant coverage data from a DrcovData object.
@@ -463,19 +488,40 @@ class CoverageDirector(object):
         Returns a list of executed instruction addresses for this database.
         """
 
+        # TODO all this is real rough draft right now
+
         # extract the coverage relevant to this database (well, the root binary)
         root_filename = self.metadata.filename
-        coverage_blocks = drcov_data.get_blocks_by_module(root_filename)
+        module_name = self._find_fuzzy_name(drcov_data, root_filename) # TODO
 
-        # rebase the coverage log's basic blocks to the database imagebase
-        imagebase = self.metadata.imagebase
-        rebased_blocks = rebase_blocks(imagebase, coverage_blocks)
+        try:
+            coverage_blocks = drcov_data.get_blocks(module_name)
 
-        # coalesce the blocks into larger contiguous blobs
-        condensed_blocks = coalesce_blocks(rebased_blocks)
+            # rebase the coverage log's basic blocks to the database imagebase
+            imagebase = self.metadata.imagebase
+            rebased_blocks = rebase_blocks(imagebase, coverage_blocks)
 
-        # flatten the blobs into individual instruction addresses
-        return self.metadata.flatten_blocks(condensed_blocks)
+            # coalesce the blocks into larger contiguous blobs
+            condensed_blocks = coalesce_blocks(rebased_blocks)
+
+            # flatten the blobs into individual instruction addresses
+            return self.metadata.flatten_blocks(condensed_blocks)
+
+        except NotImplementedError:
+            pass
+
+        try:
+            coverage_offsets = drcov_data.get_offsets(module_name)
+            rebased_offsets = map(lambda x: self.metadata.imagebase+x, coverage_offsets)
+            confidence = self.metadata.measure_block_confidence(rebased_offsets)
+            #print "Block confidence: %f" % confidence
+            if confidence > 0.90:
+                return rebased_offsets # inst trace
+            else:
+                return self.metadata.flatten_offsets() # bb trace
+            return rebased_offsets
+        except NotImplementedError:
+            pass
 
     def aggregate_drcov_batch(self, drcov_list):
         """

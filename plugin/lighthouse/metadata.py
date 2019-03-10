@@ -211,6 +211,30 @@ class DatabaseMetadata(object):
         else:
             return self.functions[before]
 
+    def measure_block_confidence(self, addresses):
+        """
+        TODO
+        """
+        if not addresses:
+            return 0
+        good = 0
+        for address in addresses:
+            if address in self.nodes:
+                good += 1
+        return float(good)/len(addresses)
+
+    def flatten_block_heads(self, addresses):
+        """
+        TODO this will probably get deleted
+        """
+        output = []
+        for address in addresses:
+            block = self.nodes.get(address, None)
+            if not block:
+                continue # lol
+            output.extend(block.instructions)
+        return output
+
     def flatten_blocks(self, basic_blocks):
         """
         Flatten a list of basic blocks (address, size) to instruction addresses.

@@ -7,7 +7,7 @@ from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
-from lighthouse.parsers import DrcovData
+from lighthouse.reader import CoverageReader
 from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
@@ -20,9 +20,9 @@ logger = logging.getLogger("Lighthouse.Core")
 # Plugin Metadata
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.8.3"
+PLUGIN_VERSION = "0.8.4-DEV"
 AUTHORS        = "Markus Gaasedelen"
-DATE           = "2018"
+DATE           = "2019"
 
 #------------------------------------------------------------------------------
 # Lighthouse Plugin Core
@@ -318,7 +318,7 @@ class Lighthouse(object):
         await_future(future)
 
         # insert the loaded drcov data objects into the director
-        created_coverage, errors = self.director.create_coverage_from_drcov_list(drcov_list)
+        created_coverage, errors = self.director.create_coverage_from_files(drcov_list)
 
         #
         # if the director failed to map any coverage, the user probably
@@ -397,6 +397,7 @@ def load_coverage_files(filenames):
     Load multiple code coverage files from disk.
     """
     loaded_coverage = []
+    coverage_reader = CoverageReader()
 
     #
     # loop through each of the given filenames and attempt to load/parse
@@ -408,7 +409,7 @@ def load_coverage_files(filenames):
 
         # attempt to load/parse a single coverage data file from disk
         try:
-            drcov_data = DrcovData(filename)
+            drcov_data = coverage_reader.open(filename)
 
         # catch all for parse errors / bad input / malformed files
         except Exception as e:
