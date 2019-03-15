@@ -730,7 +730,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # register for cues from the director
         self._director.coverage_switched(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
-        self._director.metadata_modified(self._data_changed)
+        self._director.metadata.function_renamed(self._data_changed)
 
     #--------------------------------------------------------------------------
     # QAbstractTableModel Overloads

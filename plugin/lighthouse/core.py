@@ -51,11 +51,14 @@ class Lighthouse(object):
         Initialize the core components of the plugin.
         """
 
-        # the plugin's color palette
+        # the database metadata cache
+        self.metadata = DatabaseMetadata()
+
+        # the plugin color palette
         self.palette = LighthousePalette()
 
         # the coverage engine
-        self.director = CoverageDirector(self.palette)
+        self.director = CoverageDirector(self.metadata, self.palette)
 
         # the coverage painter
         self.painter = CoveragePainter(self.director, self.palette)
@@ -102,6 +105,7 @@ class Lighthouse(object):
         """
         self.painter.terminate()
         self.director.terminate()
+        self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # UI Integration (Internal)
@@ -195,9 +199,7 @@ class Lighthouse(object):
         # background while the user is selecting which coverage files to load
         #
 
-        future = self.director.refresh_metadata(
-            progress_callback=metadata_progress
-        )
+        future = self.metadata.refresh_async(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
@@ -283,9 +285,7 @@ class Lighthouse(object):
         # background while the user is selecting which coverage files to load
         #
 
-        future = self.director.refresh_metadata(
-            progress_callback=metadata_progress
-        )
+        future = self.metadata.refresh_async(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they

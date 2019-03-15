@@ -84,12 +84,16 @@ class DatabaseMetadata(object):
         # placeholder attribute for disassembler event hooks
         self._rename_hooks = None
 
-        # metadata callbacks (see director for more info)
-        self._function_renamed_callbacks = []
-
         # asynchronous metadata collection thread
         self._refresh_worker = None
         self._stop_threads = False
+
+        #----------------------------------------------------------------------
+        # Callbacks
+        #----------------------------------------------------------------------
+
+        self._metadata_modified_callbacks = []
+        self._function_renamed_callbacks = []
 
     def terminate(self):
         """
@@ -259,18 +263,33 @@ class DatabaseMetadata(object):
     # Refresh
     #--------------------------------------------------------------------------
 
-    def refresh(self, function_addresses=None, progress_callback=None):
+    def refresh(self, function_addresses=None):
         """
-        Request an asynchronous refresh of the database metadata.
+        Refresh the database metadata cache.
+        """
+        self._core_refresh(function_addresses)
 
-        TODO/FUTURE: we should make a synchronous refresh available
+    def refresh_async(self, function_addresses=None, progress_callback=None, force=False):
+        """
+        Refresh the database metadata cache asynchronously.
+
+        Returns a future (Queue) that will carry the completion message.
         """
         assert self._refresh_worker == None, 'Refresh already running'
         result_queue = Queue.Queue()
 
         #
-        # reset the async abort/stop flag that can be used used to cancel the
-        # ongoing refresh task
+        # if there is already metadata cached for this disassembler session,
+        # ignore a request to refresh it unless forced
+        #
+
+        if self.cached and not force:
+            result_queue.put(False)
+            return result_queue
+
+        #
+        # reset the async abort/stop flag so that it can be used to cancel our
+        # new refresh task if needed
         #
 
         self._stop_threads = False
@@ -281,7 +300,7 @@ class DatabaseMetadata(object):
 
         self._refresh_worker = threading.Thread(
             target=self._async_refresh,
-            args=(result_queue, function_addresses, progress_callback,)
+            args=(function_addresses, progress_callback, result_queue,)
         )
         self._refresh_worker.start()
 
@@ -366,11 +385,26 @@ class DatabaseMetadata(object):
     #--------------------------------------------------------------------------
 
     @not_mainthread
-    def _async_refresh(self, result_queue, function_addresses, progress_callback):
+    def _async_refresh(self, function_addresses=None, progress_callback=None, result_queue=None):
         """
-        The main routine for the asynchronous metadata refresh worker.
+        Internal thread worker routine to refresh the database metadata asynchronously.
+        """
 
-        TODO/FUTURE: this should be cleaned up / refactored
+        # start an interruptable refresh
+        completed = self._core_refresh(function_addresses, progress_callback, True)
+
+        # clean up our thread's reference as it is basically done/dead
+        self._refresh_worker = None
+
+        # send the refresh result (good/bad) incase anyone is still listening
+        if result_queue:
+            result_queue.put(completed)
+
+        # exit thread...
+
+    def _core_refresh(self, function_addresses=None, progress_callback=None, is_async=False):
+        """
+        Internal routine that will update the database metadata cache.
         """
 
         # pause our rename listening hooks (more performant collection)
@@ -389,14 +423,17 @@ class DatabaseMetadata(object):
             )()
             function_addresses = list(set(function_addresses+self.functions.keys()))
 
-        # refresh database properties that we wish to cache
-        self._async_refresh_properties()
+        # refresh high level database properties that we wish to cache
+        self._sync_refresh_properties()
 
         # refresh the core database metadata asynchronously
-        completed = self._async_collect_metadata(
-            function_addresses,
-            progress_callback
-        )
+        if is_async:
+            completed = self._async_collect_metadata(function_addresses, progress_callback)
+
+        # refresh the core database metadata synchronously
+        else:
+            self._sync_collect_metadata(function_addresses)
+            completed = True
 
         # regenerate the instruction list from collected metadata
         self._refresh_instructions()
@@ -431,31 +468,37 @@ class DatabaseMetadata(object):
         # reinstall the rename listener hooks now that the refresh is done
         self._rename_hooks.hook()
 
-        # send the refresh result (good/bad) incase anyone is still listening
+        # the metadata refresh is effectively done, and the data is now 'cached'
         if completed:
             self.cached = True
-            result_queue.put(True)
-        else:
-            result_queue.put(False)
 
-        # clean up our thread's reference as it is basically done/dead
-        self._refresh_worker = None
-
-        # thread exit...
-        return
+        # return true/false to indicates completion
+        return completed
 
     @disassembler.execute_read
-    def _async_refresh_properties(self):
+    def _sync_refresh_properties(self):
         """
         Refresh a selection of interesting database properties.
         """
         self.filename = disassembler.get_root_filename()
         self.imagebase = disassembler.get_imagebase()
 
+    @disassembler.execute_read
+    def _sync_collect_metadata(self, function_addresses):
+        """
+        Collect metadata from the underlying database.
+        """
+        start = time.time()
+        #----------------------------------------------------------------------
+        self._update_functions({ ea: FunctionMetadata(ea) for ea in function_addresses })
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Synchronous metadata collection took %s seconds" % (end - start))
+
     @not_mainthread
     def _async_collect_metadata(self, function_addresses, progress_callback):
         """
-        Collect metadata from the underlying database (interruptable).
+        Collect metadata from the underlying database asynchronously (interruptable).
         """
         CHUNK_SIZE = 150
         completed = 0
@@ -606,6 +649,18 @@ class DatabaseMetadata(object):
     #--------------------------------------------------------------------------
     # Callbacks
     #--------------------------------------------------------------------------
+
+    def metadata_modified(self, callback):
+        """
+        Subscribe a callback for metadata modification events.
+        """
+        register_callback(self._metadata_modified_callbacks, callback)
+
+    def _notify_metadata_modified(self):
+        """
+        Notify listeners of a metadata modification event.
+        """
+        notify_callback(self._metadata_modified_callbacks)
 
     def function_renamed(self, callback):
         """

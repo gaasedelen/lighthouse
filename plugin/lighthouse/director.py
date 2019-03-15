@@ -49,13 +49,13 @@ class CoverageDirector(object):
     ERROR_COVERAGE_ABSENT = 1
     ERROR_COVERAGE_SUSPICIOUS = 2
 
-    def __init__(self, palette):
+    def __init__(self, metadata, palette):
+
+        # the database metadata cache
+        self.metadata = metadata
 
         # the plugin color palette
         self._palette = palette
-
-        # the central database metadata cache
-        self.metadata = DatabaseMetadata()
 
         #----------------------------------------------------------------------
         # Coverage
@@ -194,20 +194,12 @@ class CoverageDirector(object):
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
 
-        # metadata callbacks
-        self._metadata_modified_callbacks = []
-
     def terminate(self):
         """
         Cleanup & terminate the director.
         """
-
-        # stop the composition worker
         self._ast_queue.put(None)
         self._composition_worker.join()
-
-        # spin down the live metadata object
-        self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # Properties
@@ -303,18 +295,6 @@ class CoverageDirector(object):
         TODO/FUTURE: send list of names deleted?
         """
         notify_callback(self._coverage_deleted_callbacks)
-
-    def metadata_modified(self, callback):
-        """
-        Subscribe a callback for metadata modification events.
-        """
-        register_callback(self._metadata_modified_callbacks, callback)
-
-    def _notify_metadata_modified(self):
-        """
-        Notify listeners of a metadata modification event.
-        """
-        notify_callback(self._metadata_modified_callbacks)
 
     #----------------------------------------------------------------------
     # Batch Loading
@@ -1174,46 +1154,10 @@ class CoverageDirector(object):
         logger.debug("Refreshing the CoverageDirector")
 
         # (re)build our metadata cache of the underlying database
-        future = self.refresh_metadata(metadata_progress, True)
-        await_future(future)
+        self.metadata.refresh()
 
         # (re)map each set of loaded coverage data to the database
         self._refresh_database_coverage()
-
-    def refresh_metadata(self, progress_callback=None, force=False):
-        """
-        Refresh the database metadata cache utilized by the director.
-
-        Returns a future (Queue) that will carry the completion message.
-        """
-
-        #
-        # if this is the first time the director is going to use / populate
-        # the database metadata, register the director for notifications of
-        # metadata modification (this should only happen once)
-        #
-        # TODO/FUTURE: this is a little dirty, but it will suffice.
-        #
-
-        if not self.metadata.cached:
-            self.metadata.function_renamed(self._notify_metadata_modified)
-
-        #
-        # if the lighthouse has collected metadata previously for this
-        # disassembler session (eg, it is cached), ignore a request to refresh
-        # it unless explicitly told to refresh via force=True
-        #
-
-        if self.metadata.cached and not force:
-            fake_queue = Queue.Queue()
-            fake_queue.put(False)
-            return fake_queue
-
-        # start the asynchronous metadata refresh
-        result_queue = self.metadata.refresh(progress_callback=progress_callback)
-
-        # return the queue that can be used to block for the async result
-        return result_queue
 
     def _refresh_database_coverage(self):
         """
