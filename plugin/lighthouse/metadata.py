@@ -387,6 +387,7 @@ class DatabaseMetadata(object):
             function_addresses = disassembler.execute_read(
                 disassembler.get_function_addresses
             )()
+            function_addresses = list(set(function_addresses+self.functions.keys()))
 
         # refresh database properties that we wish to cache
         self._async_refresh_properties()
@@ -812,7 +813,7 @@ class FunctionMetadata(object):
         # current node (node_address) to walk the function graph
         #
 
-        to_walk = set([self.address])
+        to_walk = set([self.address]) if self.nodes else set()
         while to_walk:
 
             # this is the address of the node we will 'walk' from
