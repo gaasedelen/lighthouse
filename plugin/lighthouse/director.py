@@ -512,14 +512,15 @@ class CoverageDirector(object):
 
         try:
             coverage_offsets = drcov_data.get_offsets(module_name)
-            rebased_offsets = map(lambda x: self.metadata.imagebase+x, coverage_offsets)
-            confidence = self.metadata.measure_block_confidence(rebased_offsets)
+            coverage_addresses = map(lambda x: self.metadata.imagebase+x, coverage_offsets)
+            confidence = self.metadata.measure_block_confidence(coverage_addresses)
+
             #print "Block confidence: %f" % confidence
             if confidence > 0.90:
-                return rebased_offsets # inst trace
+                return self.metadata.flatten_block_heads(coverage_addresses) # bb trace
             else:
-                return self.metadata.flatten_offsets() # bb trace
-            return rebased_offsets
+                return coverage_addresses # inst trace
+
         except NotImplementedError:
             pass
 
