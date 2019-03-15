@@ -584,11 +584,11 @@ class DatabaseMetadata(object):
         #
 
         if address != function.address:
-            return
+            return 0
 
         # if the name isn't actually changing (misfire?) nothing to do
         if new_name == function.name:
-            return
+            return 0
 
         logger.debug("Name changing @ 0x%X" % address)
         logger.debug("  Old name: %s" % function.name)
