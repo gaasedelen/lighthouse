@@ -3,6 +3,9 @@ import weakref
 import threading
 import collections
 
+# Python2 and Python3 compatibility
+from past.builtins import xrange
+
 #------------------------------------------------------------------------------
 # Plugin Util
 #------------------------------------------------------------------------------
@@ -214,7 +217,7 @@ def rebase_blocks(base, basic_blocks):
     """
     Rebase a list of basic block offsets (offset, size) to the given imagebase.
     """
-    return map(lambda x: (base + x[0], x[1]), basic_blocks)
+    return list(map(lambda x: (base + x[0], x[1]), basic_blocks))
 
 def build_hitmap(data):
     """

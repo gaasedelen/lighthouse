@@ -10,6 +10,9 @@ try:
     from ..coverage_file import CoverageFile
 except ImportError as e:
     CoverageFile = object
+# Useful for python2 and python3 compatibility
+from builtins import bytes
+from past.builtins import xrange
 
 #------------------------------------------------------------------------------
 # DynamoRIO Drcov Log Parser
@@ -264,11 +267,11 @@ class DrcovData(CoverageFile):
 
         # peek at the next few bytes to determine if this is a binary bb table.
         # An ascii bb table will have the line: 'module id, start, size:'
-        token = "module id"
+        token = b"module id"
         saved_position = f.tell()
 
         # is this an ascii table?
-        if f.read(len(token)) == token:
+        if bytes(f.read(len(token))) == token:
             self.bb_table_is_binary = False
 
         # nope! binary table
@@ -462,3 +465,4 @@ if __name__ == "__main__":
     x = DrcovData(argv[1])
     for bb in x.bbs:
         print("0x{:08x}".format(bb.start))
+

@@ -1,13 +1,19 @@
 import time
-import Queue
 import bisect
 import logging
 import weakref
 import threading
 import collections
-
 from lighthouse.util.misc import *
 from lighthouse.util.disassembler import disassembler
+
+# Python2 and Python3 compatibility
+try:
+    import Queue as queue
+except:
+    import queue
+from six import itervalues, iteritems, viewkeys
+
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
@@ -276,7 +282,7 @@ class DatabaseMetadata(object):
         Returns a future (Queue) that will carry the completion message.
         """
         assert self._refresh_worker == None, 'Refresh already running'
-        result_queue = Queue.Queue()
+        result_queue = queue.Queue()
 
         #
         # if there is already metadata cached for this disassembler session,
@@ -352,7 +358,7 @@ class DatabaseMetadata(object):
         Refresh the list of database instructions (from function metadata).
         """
         instructions = []
-        for function_metadata in self.functions.itervalues():
+        for function_metadata in itervalues(self.functions):
             instructions.extend(function_metadata.instructions)
         instructions = list(set(instructions))
         instructions.sort()
@@ -375,7 +381,7 @@ class DatabaseMetadata(object):
 
         """
         self._last_node = []
-        self._name2func = { f.name: f.address for f in self.functions.itervalues() }
+        self._name2func = { f.name: f.address for f in itervalues(self.functions) }
         self._node_addresses = sorted(self.nodes.keys())
         self._function_addresses = sorted(self.functions.keys())
         self._stale_lookup = False
@@ -552,7 +558,7 @@ class DatabaseMetadata(object):
         # from any existing metadata we hold.
         #
 
-        for function_address, new_metadata in fresh_metadata.iteritems():
+        for function_address, new_metadata in iteritems(fresh_metadata):
 
             # extract the 'old' metadata from the database metadata cache
             old_metadata = self.functions.get(function_address, blank_function)
@@ -567,7 +573,7 @@ class DatabaseMetadata(object):
                 continue
 
             # delete nodes that explicitly no longer exist
-            old = old_metadata.nodes.viewkeys() - new_metadata.nodes.viewkeys()
+            old = viewkeys(old_metadata.nodes) - viewkeys(new_metadata.nodes)
             for node_address in old:
                 del self.nodes[node_address]
 
@@ -713,7 +719,7 @@ class FunctionMetadata(object):
         """
         Return the instruction addresses in this function.
         """
-        return set([ea for node in self.nodes.itervalues() for ea in node.instructions])
+        return set([ea for node in itervalues(self.nodes) for ea in node.instructions])
 
     @property
     def empty(self):
@@ -802,7 +808,7 @@ class FunctionMetadata(object):
             function_metadata.nodes[node_start] = node_metadata
 
         # compute all of the edges between nodes in the current function
-        for node_metadata in function_metadata.nodes.itervalues():
+        for node_metadata in itervalues(function_metadata.nodes):
             edge_src = node_metadata.instructions[-1]
             for edge_dst in idautils.CodeRefsFrom(edge_src, True):
                 if edge_dst in function_metadata.nodes:
@@ -895,7 +901,7 @@ class FunctionMetadata(object):
             confirmed_edges[current_src] = self.edges.pop(current_src)
 
         # compute the final cyclomatic complexity for the function
-        num_edges = sum(len(x) for x in confirmed_edges.itervalues())
+        num_edges = sum(len(x) for x in itervalues(confirmed_edges))
         num_nodes = len(confirmed_nodes)
         return num_edges - num_nodes + 2
 
@@ -903,10 +909,10 @@ class FunctionMetadata(object):
         """
         Finalize function metadata for use.
         """
-        self.size = sum(node.size for node in self.nodes.itervalues())
+        self.size = sum(node.size for node in itervalues(self.nodes))
         self.node_count = len(self.nodes)
         self.edge_count = len(self.edges)
-        self.instruction_count = sum(node.instruction_count for node in self.nodes.itervalues())
+        self.instruction_count = sum(node.instruction_count for node in itervalues(self.nodes))
         self.cyclomatic_complexity = self._compute_complexity()
 
     #--------------------------------------------------------------------------
@@ -923,7 +929,7 @@ class FunctionMetadata(object):
         result &= self.address == other.address
         result &= self.node_count == other.node_count
         result &= self.instruction_count == other.instruction_count
-        result &= self.nodes.viewkeys() == other.nodes.viewkeys()
+        result &= viewkeys(self.nodes) == viewkeys(other.nodes)
         return result
 
 #------------------------------------------------------------------------------

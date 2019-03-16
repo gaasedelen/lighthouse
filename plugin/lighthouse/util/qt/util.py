@@ -1,7 +1,10 @@
 import sys
 import time
-import Queue
 import logging
+try:
+    import queue
+except:
+    import Queue as queue
 
 from .shim import *
 from ..misc import is_mainthread
@@ -216,7 +219,7 @@ def await_future(future):
         # to the mainthread. flush the requests now and try again
         #
 
-        except Queue.Empty as e:
+        except queue.Empty as e:
             pass
 
         logger.debug("Awaiting future...")
