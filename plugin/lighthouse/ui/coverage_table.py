@@ -6,13 +6,10 @@ from operator import itemgetter, attrgetter
 
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
+from lighthouse.util.python import *
 from lighthouse.util.misc import mainthread
 from lighthouse.util.disassembler import disassembler
 from lighthouse.coverage import FunctionCoverage, BADADDR
-
-# Python2 and Python3 compatibility
-from past.builtins import xrange
-from six import iteritems, itervalues
 
 logger = logging.getLogger("Lighthouse.UI.Table")
 

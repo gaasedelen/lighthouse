@@ -5,15 +5,8 @@ import weakref
 import threading
 import collections
 from lighthouse.util.misc import *
+from lighthouse.util.python import *
 from lighthouse.util.disassembler import disassembler
-
-# Python2 and Python3 compatibility
-try:
-    import Queue as queue
-except:
-    import queue
-from six import itervalues, iteritems, viewkeys
-
 
 logger = logging.getLogger("Lighthouse.Metadata")
 

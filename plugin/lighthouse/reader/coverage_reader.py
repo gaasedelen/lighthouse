@@ -4,6 +4,7 @@ import inspect
 import logging
 import traceback
 
+from lighthouse.util.python import iteritems
 from .coverage_file import CoverageFile
 
 logger = logging.getLogger("Lighthouse.Reader")
@@ -24,7 +25,7 @@ class CoverageReader(object):
         TODO
         """
 
-        for name, parser in self._installed_parsers.iteritems():
+        for name, parser in iteritems(self._installed_parsers):
             try:
                 return parser(filepath)
             except Exception as e:

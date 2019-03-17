@@ -1,13 +1,10 @@
 import sys
 import time
 import logging
-try:
-    import queue
-except:
-    import Queue as queue
 
 from .shim import *
 from ..misc import is_mainthread
+from ..python import *
 from ..disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Qt.Util")

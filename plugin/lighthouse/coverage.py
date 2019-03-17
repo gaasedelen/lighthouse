@@ -6,8 +6,6 @@ from lighthouse.util import *
 from lighthouse.palette import compute_color_on_gradiant
 from lighthouse.metadata import DatabaseMetadata
 
-from six import itervalues, iteritems, viewkeys
-
 logger = logging.getLogger("Lighthouse.Coverage")
 
 #------------------------------------------------------------------------------

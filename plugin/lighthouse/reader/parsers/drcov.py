@@ -10,6 +10,7 @@ try:
     from ..coverage_file import CoverageFile
 except ImportError as e:
     CoverageFile = object
+
 # Useful for python2 and python3 compatibility
 from builtins import bytes
 from past.builtins import xrange

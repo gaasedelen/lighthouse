@@ -6,18 +6,12 @@ import collections
 
 from lighthouse.util import lmsg
 from lighthouse.util.misc import *
+from lighthouse.util.python import *
 from lighthouse.util.qt import await_future, await_lock, color_text
 from lighthouse.util.disassembler import disassembler
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.composer.parser import *
-
-# Python2 and Python3 compatibility
-try:
-    import Queue as queue
-except:
-    import queue
-from past.builtins import xrange
 
 logger = logging.getLogger("Lighthouse.Director")
 

@@ -3,8 +3,7 @@ import weakref
 import threading
 import collections
 
-# Python2 and Python3 compatibility
-from past.builtins import xrange
+from .python import *
 
 #------------------------------------------------------------------------------
 # Plugin Util
