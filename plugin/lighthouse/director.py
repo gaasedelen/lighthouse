@@ -1,5 +1,4 @@
 import time
-import Queue
 import string
 import logging
 import threading
@@ -7,6 +6,7 @@ import collections
 
 from lighthouse.util import lmsg
 from lighthouse.util.misc import *
+from lighthouse.util.python import *
 from lighthouse.util.qt import await_future, await_lock, color_text
 from lighthouse.util.disassembler import disassembler
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
@@ -164,7 +164,7 @@ class CoverageDirector(object):
         # to handle these computation requests.
         #
 
-        self._ast_queue = Queue.Queue()
+        self._ast_queue = queue.Queue()
         self._composition_lock = threading.Lock()
         self._composition_cache = CompositionCache()
 
@@ -224,14 +224,14 @@ class CoverageDirector(object):
         """
         Return the list or loaded / composed database coverage names.
         """
-        return self._database_coverage.keys()
+        return list(self._database_coverage)
 
     @property
     def special_names(self):
         """
         Return the list of special (director maintained) coverage names.
         """
-        return self._special_coverage.keys()
+        return list(self._special_coverage)
 
     @property
     def all_names(self):

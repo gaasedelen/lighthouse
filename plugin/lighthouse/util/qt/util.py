@@ -1,10 +1,10 @@
 import sys
 import time
-import Queue
 import logging
 
 from .shim import *
 from ..misc import is_mainthread
+from ..python import *
 from ..disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Qt.Util")
@@ -216,7 +216,7 @@ def await_future(future):
         # to the mainthread. flush the requests now and try again
         #
 
-        except Queue.Empty as e:
+        except queue.Empty as e:
             pass
 
         logger.debug("Awaiting future...")

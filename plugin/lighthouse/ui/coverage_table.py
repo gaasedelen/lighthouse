@@ -6,6 +6,7 @@ from operator import itemgetter, attrgetter
 
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
+from lighthouse.util.python import *
 from lighthouse.util.misc import mainthread
 from lighthouse.util.disassembler import disassembler
 from lighthouse.coverage import FunctionCoverage, BADADDR
@@ -905,7 +906,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # sort the table entries by a function metadata attribute
         if column in self.METADATA_ATTRIBUTES:
             sorted_functions = sorted(
-                self._visible_metadata.itervalues(),
+                itervalues(self._visible_metadata),
                 key=attrgetter(sort_field),
                 reverse=sort_order
             )
@@ -913,7 +914,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # sort the table entries by a function coverage attribute
         elif column in self.COVERAGE_ATTRIBUTES:
             sorted_functions = sorted(
-                self._visible_coverage.itervalues(),
+                itervalues(self._visible_coverage),
                 key=attrgetter(sort_field),
                 reverse=sort_order
             )
@@ -949,7 +950,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # finally, rebuild the row2func mapping and notify views of this change
         self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_addresses))
-        self.func2row = {v: k for k, v in self.row2func.iteritems()}
+        self.func2row = {v: k for k, v in iteritems(self.row2func)}
         self.layoutChanged.emit()
 
         # save the details of this sort event as they may be needed later
@@ -976,12 +977,12 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # sum the # of instructions in all the visible functions
         instruction_count = sum(
-            meta.instruction_count for meta in self._visible_metadata.itervalues()
+            meta.instruction_count for meta in itervalues(self._visible_metadata)
         )
 
         # sum the # of instructions executed in all the visible functions
         instructions_executed = sum(
-            cov.instructions_executed for cov in self._visible_coverage.itervalues()
+            cov.instructions_executed for cov in itervalues(self._visible_coverage)
         )
 
         # compute coverage percentage of the visible functions
@@ -1205,7 +1206,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         normalize = lambda x: x
         if not (set(self._search_string) & set(string.ascii_uppercase)):
-            normalize = lambda x: string.lower(x)
+            normalize = lambda x: x.lower()
 
         #
         # it's time to rebuild the list of coverage items to make visible in
@@ -1214,7 +1215,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         #
 
         # loop through *all* the functions as defined in the active metadata
-        for function_address in metadata.functions.iterkeys():
+        for function_address in metadata.functions:
 
             #------------------------------------------------------------------
             # Filters - START
@@ -1248,7 +1249,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             row += 1
 
         # build the inverse func --> row mapping
-        self.func2row = {v: k for k, v in self.row2func.iteritems()}
+        self.func2row = {v: k for k, v in iteritems(self.row2func)}
 
         # bake the final number of rows into the model
         self._row_count = len(self.row2func)

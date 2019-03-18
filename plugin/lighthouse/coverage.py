@@ -182,7 +182,7 @@ class DatabaseCoverage(object):
         """
         Return the instruction-level coverage bitmap/mask.
         """
-        return self._hitmap.viewkeys()
+        return viewkeys(self._hitmap)
 
     @property
     def suspicious(self):
@@ -203,7 +203,7 @@ class DatabaseCoverage(object):
         # provided coverage data is malformed, or for a different binary
         #
 
-        for adddress, node_coverage in self.nodes.iteritems():
+        for adddress, node_coverage in iteritems(self.nodes):
             if adddress in node_coverage.executed_instructions:
                 continue
             bad += 1
@@ -263,14 +263,14 @@ class DatabaseCoverage(object):
         """
         Finalize the NodeCoverage objects statistics / data for use.
         """
-        for node_coverage in dirty_nodes.itervalues():
+        for node_coverage in itervalues(dirty_nodes):
             node_coverage.finalize()
 
     def _finalize_functions(self, dirty_functions):
         """
         Finalize the FunctionCoverage objects statistics / data for use.
         """
-        for function_coverage in dirty_functions.itervalues():
+        for function_coverage in itervalues(dirty_functions):
             function_coverage.finalize()
 
     def _finalize_instruction_percent(self):
@@ -279,13 +279,13 @@ class DatabaseCoverage(object):
         """
 
         # sum all the instructions in the database metadata
-        total = sum(f.instruction_count for f in self._metadata.functions.itervalues())
+        total = sum(f.instruction_count for f in itervalues(self._metadata.functions))
         if not total:
             self.instruction_percent = 0.0
             return
 
         # sum the unique instructions executed across all functions
-        executed = sum(f.instructions_executed for f in self.functions.itervalues())
+        executed = sum(f.instructions_executed for f in itervalues(self.functions))
 
         # save the computed percentage of database instructions executed (0 to 1.0)
         self.instruction_percent = float(executed) / total
@@ -300,7 +300,7 @@ class DatabaseCoverage(object):
         """
 
         # add the given runtime data to our data source
-        for address, hit_count in data.iteritems():
+        for address, hit_count in iteritems(data):
             self._hitmap[address] += hit_count
 
         # do not update other internal structures if requested
@@ -311,7 +311,7 @@ class DatabaseCoverage(object):
         self._update_coverage_hash()
 
         # mark these touched addresses as dirty
-        self._unmapped_data |= data.viewkeys()
+        self._unmapped_data |= viewkeys(data)
 
     def add_addresses(self, addresses, update=True):
         """
@@ -338,7 +338,7 @@ class DatabaseCoverage(object):
         """
 
         # subtract the given hitmap from our existing hitmap
-        for address, hit_count in data.iteritems():
+        for address, hit_count in iteritems(data):
             self._hitmap[address] -= hit_count
 
             #
@@ -381,7 +381,7 @@ class DatabaseCoverage(object):
         Update the hash of the coverage mask.
         """
         if self._hitmap:
-            self.coverage_hash = hash(frozenset(self._hitmap.viewkeys()))
+            self.coverage_hash = hash(frozenset(viewkeys(self._hitmap)))
         else:
             self.coverage_hash = 0
 
@@ -529,7 +529,7 @@ class DatabaseCoverage(object):
         # build or update the function level coverage metadata
         #
 
-        for node_coverage in dirty_nodes.itervalues():
+        for node_coverage in itervalues(dirty_nodes):
 
             #
             # using a given NodeCoverage object, we retrieve its underlying
@@ -617,7 +617,7 @@ class FunctionCoverage(object):
         """
         Return the number of instruction executions in this function.
         """
-        return sum(x.hits for x in self.nodes.itervalues())
+        return sum(x.hits for x in itervalues(self.nodes))
 
     @property
     def nodes_executed(self):
@@ -631,14 +631,14 @@ class FunctionCoverage(object):
         """
         Return the number of unique instructions executed in this function.
         """
-        return sum(x.instructions_executed for x in self.nodes.itervalues())
+        return sum(x.instructions_executed for x in itervalues(self.nodes))
 
     @property
     def instructions(self):
         """
         Return the executed instruction addresses in this function.
         """
-        return set([ea for node in self.nodes.itervalues() for ea in node.executed_instructions.keys()])
+        return set([ea for node in itervalues(self.nodes) for ea in node.executed_instructions.keys()])
 
     #--------------------------------------------------------------------------
     # Controls
@@ -664,7 +664,7 @@ class FunctionCoverage(object):
             float(self.instructions_executed) / function_metadata.instruction_count
 
         # the sum of node executions in this function
-        node_sum = sum(x.executions for x in self.nodes.itervalues())
+        node_sum = sum(x.executions for x in itervalues(self.nodes))
 
         # the estimated number of executions this function has experienced
         self.executions = float(node_sum) / function_metadata.node_count
@@ -699,7 +699,7 @@ class NodeCoverage(object):
         """
         Return the number of instruction executions in this node.
         """
-        return sum(self.executed_instructions.itervalues())
+        return sum(itervalues(self.executed_instructions))
 
     @property
     def instructions_executed(self):
