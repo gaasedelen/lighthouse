@@ -12,7 +12,8 @@ PY3 = sys.version_info[0] == 3
 # xrange shim
 #
 
-from past.builtins import xrange
+if PY3:
+    xrange = range # is this bad lol
 
 #
 # Queue --> queue shim

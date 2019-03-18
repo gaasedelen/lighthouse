@@ -82,7 +82,7 @@ class CoverageReader(object):
 
         # attempt to import the given filepath as a python module
         try:
-            module = __import__("parsers." + module_file, globals(), locals(), ['object'], -1)
+            module = __import__("lighthouse.reader.parsers." + module_file, globals(), locals(), ['object'])
         except Exception as e:
             logger.exception("| - Parser import failed")
             return None

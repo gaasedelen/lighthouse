@@ -420,7 +420,7 @@ class DatabaseMetadata(object):
             function_addresses = disassembler.execute_read(
                 disassembler.get_function_addresses
             )()
-            function_addresses = list(set(function_addresses+self.functions.keys()))
+            function_addresses = list(set(function_addresses+list(self.functions)))
 
         # refresh high level database properties that we wish to cache
         self._sync_refresh_properties()

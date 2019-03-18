@@ -13,7 +13,6 @@ except ImportError as e:
 
 # Useful for python2 and python3 compatibility
 from builtins import bytes
-from past.builtins import xrange
 
 #------------------------------------------------------------------------------
 # DynamoRIO Drcov Log Parser
