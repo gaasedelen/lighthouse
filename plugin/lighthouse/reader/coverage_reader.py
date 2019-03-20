@@ -24,15 +24,21 @@ class CoverageReader(object):
         """
         TODO
         """
+        coverage_file = None
 
         for name, parser in iteritems(self._installed_parsers):
+            logger.debug("Attempting parse with '%s'" % name)
             try:
-                return parser(filepath)
+                coverage_file = parser(filepath)
+                break
             except Exception as e:
-                #print traceback.format_exc()
-                pass
+                logger.debug("Parse failed...\n" + traceback.format_exc(e))
 
-        raise ValueError("No compatible coverage parser for %s" % filepath)
+        if not coverage_file:
+            raise ValueError("No compatible coverage parser for %s" % filepath)
+
+        logger.debug("Parsed OKAY!")
+        return coverage_file
 
     def _import_parsers(self):
         """

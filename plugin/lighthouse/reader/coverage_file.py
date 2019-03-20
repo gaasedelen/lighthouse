@@ -22,17 +22,17 @@ class CoverageFile(object):
         """
         raise NotImplementedError("Absolute addresses not supported by this log format")
 
-    def get_offsets(self, module_name=None):
+    def get_offsets(self, module_name):
         """
         Return coverage data for the named module as relative offets.
         """
         raise NotImplementedError("Relative addresses not supported by this log format")
 
-    def get_blocks(self, module_name=None):
+    def get_blocks(self, module_name):
         """
         Return coverage data for the named module in block form (offset, size).
         """
-        raise NotImplementedError("Block+Size not supported by this log format")
+        raise NotImplementedError("Block form not supported by this log format")
 
     #--------------------------------------------------------------------------
     # Parsing Routines - Top Level
