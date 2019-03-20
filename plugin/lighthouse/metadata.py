@@ -114,6 +114,33 @@ class DatabaseMetadata(object):
         index_end   = bisect.bisect_left(self.instructions, end_address)
         return self.instructions[index_start:index_end]
 
+    def get_instruction_size(self, address):
+        """
+        Get the size of an instruction at a given address.
+
+        Returns:
+          -1 if undefined address (not within a basic block)
+           0 if within defined instruction
+           n if it is a defined instruction
+        """
+        node_metadata = self.get_node(address)
+
+        #
+        # if the given address does not fall within a node, we have no idea how
+        # big it really is. return -1
+        #
+
+        if not node_metadata:
+            return -1
+
+        #
+        # if the address falls within a node, attempt to return the size of the
+        # instruction at its address. if the address is misaligned / in the
+        # middle of an instruction, simply return 0
+        #
+
+        return node_metadata.instructions.get(address, 0)
+
     def get_node(self, address):
         """
         Get the node (basic block) metadata for a given address.
@@ -802,7 +829,7 @@ class FunctionMetadata(object):
 
         # compute all of the edges between nodes in the current function
         for node_metadata in itervalues(function_metadata.nodes):
-            edge_src = node_metadata.instructions[-1]
+            edge_src = node_metadata.edge_out
             for edge_dst in idautils.CodeRefsFrom(edge_src, True):
                 if edge_dst in function_metadata.nodes:
                     function_metadata.edges[edge_src].append(edge_dst)
@@ -841,7 +868,7 @@ class FunctionMetadata(object):
             # destination that falls within this function.
             #
 
-            edge_src = node_metadata.instructions[-1]
+            edge_src = node_metadata.edge_out
             for edge in node.outgoing_edges:
                 function_metadata.edges[edge_src].append(edge.target.start)
 
@@ -875,7 +902,7 @@ class FunctionMetadata(object):
             confirmed_nodes.add(node_address)
 
             # now we loop through all edges that originate from this block
-            current_src = self.nodes[node_address].instructions[-1]
+            current_src = self.nodes[node_address].edge_out
             for current_dest in self.edges[current_src]:
 
                 # ignore nodes we have already visited
@@ -940,6 +967,7 @@ class NodeMetadata(object):
         self.size = end_ea - start_ea
         self.address = start_ea
         self.instruction_count = 0
+        self.edge_out = -1
 
         # flowchart node_id
         self.id = node_id
@@ -948,7 +976,7 @@ class NodeMetadata(object):
         self.function = None
 
         # instruction addresses
-        self.instructions = []
+        self.instructions = {}
 
         #----------------------------------------------------------------------
 
@@ -982,8 +1010,11 @@ class NodeMetadata(object):
 
         while current_address < node_end:
             instruction_size = idaapi.get_item_end(current_address) - current_address
-            self.instructions.append(current_address)
+            self.instructions[current_address] = instruction_size
             current_address += instruction_size
+
+        # the source of the outward edge
+        self.edge_out = current_address - instruction_size
 
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
@@ -1003,8 +1034,12 @@ class NodeMetadata(object):
         #
 
         while current_address < node_end:
-            self.instructions.append(current_address)
-            current_address += bv.get_instruction_length(current_address)
+            instruction_size = bv.get_instruction_length(current_address)
+            self.instructions[current_address] = instruction_size
+            current_address += instruction_size
+
+        # the source of the outward edge
+        self.edge_out = current_address - instruction_size
 
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
