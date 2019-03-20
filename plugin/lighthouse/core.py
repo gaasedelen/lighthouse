@@ -7,7 +7,6 @@ from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
-from lighthouse.reader import CoverageReader
 from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
@@ -293,16 +292,7 @@ class Lighthouse(object):
         #
 
         filenames = self._select_coverage_files()
-
-        #
-        # load the selected coverage files from disk (if any), returning a list
-        # of loaded DrcovData objects (which contain coverage data)
-        #
-
-        disassembler.show_wait_box("Loading coverage from disk...")
-        drcov_list = load_coverage_files(filenames)
-        if not drcov_list:
-            disassembler.hide_wait_box()
+        if not filenames:
             self.director.metadata.abort_refresh()
             return
 
@@ -317,8 +307,12 @@ class Lighthouse(object):
         disassembler.replace_wait_box("Building database metadata...")
         await_future(future)
 
+        #
         # insert the loaded drcov data objects into the director
-        created_coverage, errors = self.director.create_coverage_from_files(drcov_list)
+        # TODO
+
+        disassembler.show_wait_box("Loading coverage from disk...")
+        created_coverage, errors = self.director.load_coverage_files(filenames)
 
         #
         # if the director failed to map any coverage, the user probably
@@ -337,7 +331,7 @@ class Lighthouse(object):
         #
 
         disassembler.replace_wait_box("Selecting coverage...")
-        self.director.select_coverage(created_coverage[0])
+        self.director.select_coverage(created_coverage[0].name)
 
         # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()

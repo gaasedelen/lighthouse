@@ -158,66 +158,6 @@ def notify_callback(callback_list, *args):
 # Coverage Util
 #------------------------------------------------------------------------------
 
-def coalesce_blocks(blocks):
-    """
-    Coalesce a list of (address, size) blocks.
-
-    eg:
-        blocks = [
-            (4100, 10),
-            (4200, 100),
-            (4300, 10),
-            (4310, 20),
-            (4400, 10),
-        ]
-
-    returns:
-        coalesced = [(4100, 10), (4200, 130), (4400, 10)]
-
-    """
-
-    # nothing to do
-    if not blocks:
-        return []
-    elif len(blocks) == 1:
-        return blocks
-
-    # before we can operate on the blocks, we must ensure they are sorted
-    blocks = sorted(blocks)
-
-    #
-    # coalesce the list of given blocks
-    #
-
-    coalesced = [blocks.pop(0)]
-    while blocks:
-
-        block_start, block_size = blocks.pop(0)
-
-        #
-        # compute the end address of the current coalescing block. if the
-        # blocks do not overlap, create a new block to start coalescing from
-        #
-
-        if sum(coalesced[-1]) < block_start:
-            coalesced.append((block_start, block_size))
-            continue
-
-        #
-        # the blocks overlap, so update the current coalescing block
-        #
-
-        coalesced[-1] = (coalesced[-1][0], (block_start+block_size) - coalesced[-1][0])
-
-    # return the list of coalesced blocks
-    return coalesced
-
-def rebase_blocks(base, basic_blocks):
-    """
-    Rebase a list of basic block offsets (offset, size) to the given imagebase.
-    """
-    return list(map(lambda x: (base + x[0], x[1]), basic_blocks))
-
 def build_hitmap(data):
     """
     Build a hitmap from the given list of address.
