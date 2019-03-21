@@ -6,6 +6,7 @@ import traceback
 
 from lighthouse.util.python import iteritems
 from .coverage_file import CoverageFile
+from lighthouse.exceptions import CoverageParseError
 
 logger = logging.getLogger("Lighthouse.Reader")
 
@@ -22,22 +23,37 @@ class CoverageReader(object):
 
     def open(self, filepath):
         """
-        TODO
+        Open and parse a coverage file from disk.
+
+        Returns a CoverageFile on success, or raises CoverageParseError on failure.
         """
         coverage_file = None
+        parse_failures = {}
 
+        # attempt to parse the given coverage file with each available parser
         for name, parser in iteritems(self._installed_parsers):
             logger.debug("Attempting parse with '%s'" % name)
+
+            # attempt to open/parse the coverage file with the given parser
             try:
                 coverage_file = parser(filepath)
                 break
+
+            # log the exceptions for each parse failure
             except Exception as e:
-                logger.debug("Parse failed...\n" + traceback.format_exc(e))
+                parse_failures[name] = traceback.format_exc(e)
+                logger.debug("| Parse FAILED")
+
+        #
+        # if *all* the coverage file parsers failed, raise an exception with
+        # information for each failure (for debugging)
+        #
 
         if not coverage_file:
-            raise ValueError("No compatible coverage parser for %s" % filepath)
+            raise CoverageParseError(filepath, parse_failures)
 
-        logger.debug("Parsed OKAY!")
+        # successful parse
+        logger.debug("| Parse OKAY")
         return coverage_file
 
     def _import_parsers(self):

@@ -205,21 +205,14 @@ class Lighthouse(object):
         # can select the coverage files they would like to load from disk
         #
 
-        filenames = self._select_coverage_files()
-
-        #
-        # load the selected coverage files from disk (if any), returning a list
-        # of loaded DrcovData objects (which contain coverage data)
-        #
-
-        drcov_list = load_coverage_files(filenames)
-        if not drcov_list:
+        filepaths = self._select_coverage_files()
+        if not filepaths:
             self.director.metadata.abort_refresh()
             return
 
         # prompt the user to name the new coverage aggregate
         default_name = "BATCH_%s" % self.director.peek_shorthand()
-        ok, coverage_name = prompt_string(
+        ok, batch_name = prompt_string(
             "Batch Name:",
             "Please enter a name for this coverage",
             default_name
@@ -230,8 +223,8 @@ class Lighthouse(object):
         # abort the loading process...
         #
 
-        if not (ok and coverage_name):
-            lmsg("User failed to enter a name for the loaded batch...")
+        if not (ok and batch_name):
+            lmsg("User failed to enter a name for the batch coverage...")
             self.director.metadata.abort_refresh()
             return
 
@@ -251,23 +244,20 @@ class Lighthouse(object):
         # to normalize and condense (aggregate) all the coverage data
         #
 
-        new_coverage, errors = self.director.aggregate_drcov_batch(drcov_list)
-
-        #
-        # finally, we can inject the aggregated coverage data into the
-        # director under the user specified batch name
-        #
-
-        disassembler.replace_wait_box("Mapping coverage...")
-        self.director.create_coverage(coverage_name, new_coverage.data)
+        disassembler.replace_wait_box("Loading coverage from disk...")
+        batch_coverage, errors = self.director.load_coverage_batch(
+            filepaths,
+            batch_name,
+            disassembler.replace_wait_box
+        )
 
         # select the newly created batch coverage
         disassembler.replace_wait_box("Selecting coverage...")
-        self.director.select_coverage(coverage_name)
+        self.director.select_coverage(batch_name)
 
         # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()
-        lmsg("Successfully loaded batch %s..." % coverage_name)
+        lmsg("Successfully loaded batch %s..." % batch_name)
         self.open_coverage_overview()
 
         # finally, emit any notable issues that occurred during load
@@ -304,15 +294,16 @@ class Lighthouse(object):
         # a progress dialog depicts the work remaining in the refresh
         #
 
-        disassembler.replace_wait_box("Building database metadata...")
+        disassembler.show_wait_box("Building database metadata...")
         await_future(future)
 
         #
         # insert the loaded drcov data objects into the director
-        # TODO
+        # TODO/COMMENT
+        #
 
-        disassembler.show_wait_box("Loading coverage from disk...")
-        created_coverage, errors = self.director.load_coverage_files(filenames)
+        disassembler.replace_wait_box("Loading coverage from disk...")
+        created_coverage, errors = self.director.load_coverage_files(filenames, disassembler.replace_wait_box)
 
         #
         # if the director failed to map any coverage, the user probably
