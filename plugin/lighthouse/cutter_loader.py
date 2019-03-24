@@ -29,6 +29,9 @@ class LighthouseCutterPlugin(CutterBindings.CutterPlugin):
         self.ui = LighthouseCutter(self, main)
         self.ui.load()
 
+    def terminate(self):
+        self.ui.unload()
+
 
 def create_cutter_plugin():
     try:
