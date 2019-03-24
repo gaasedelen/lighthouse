@@ -137,14 +137,17 @@ class CutterAPI(DisassemblerAPI):
         return cutter.cmdj('ij')['core']['file']
 
     def get_disassembler_user_directory(self):
-        return os.path.split(binaryninja.user_plugin_path())[0]
+        # TODO Not implemented
+        return None
 
-    @not_mainthread
+    #@not_mainthread
+    # TODO Reenable not_mainthread
     def get_function_addresses(self):
         # TODO Use Cutter cache/API
         return [x['offset'] for x in cutter.cmdj('aflj')]
 
-    @not_mainthread
+    #@not_mainthread
+    # TODO Reenable not_mainthread
     def get_function_name_at(self, address):
         # TODO User Cutter API
         return self.get_function_at(address)['name']
@@ -153,12 +156,14 @@ class CutterAPI(DisassemblerAPI):
     def get_function_raw_name_at(self, address):
         return self.get_function_at(address)['name']
 
-    @not_mainthread
+    #@not_mainthread
+    # TODO Reenable not_mainthread
     def get_imagebase(self):
         # TODO Use Cutter API
         return cutter.cmdj('ij')['bin']['baddr']
 
-    @not_mainthread
+    #@not_mainthread
+    # TODO Reenable not_mainthread
     def get_root_filename(self):
         # TODO Use Cutter API
         return os.path.basename(cutter.cmdj('ij')['core']['file'])
@@ -223,21 +228,9 @@ class DockableWindow(DockableShim):
         )
 
     def show(self):
-        #
-        # NOTE/HACK:
-        #   this is a little dirty, but is used to set the default width
-        #   of the coverage overview / dockable widget when it is first shown
-        #
-
-        #default_width = self._widget.sizeHint().width()
-        #self._dockable.setMinimumWidth(default_width)
-
         # show the widget
         self._dockable.show()
         self._dockable.raise_()
-
-        # undo the HACK
-        #self._dockable.setMinimumWidth(0)
 
     def setmain(self, main):
         #

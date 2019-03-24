@@ -2,6 +2,12 @@ import abc
 import time
 import logging
 import threading
+try:
+    import Queue as queue
+except:
+    import queue
+
+from six import itervalues, viewkeys, viewvalues
 
 from lighthouse.util import *
 
@@ -334,7 +340,7 @@ class DatabasePainter(object):
         """
         db_metadata = self._director.metadata
         instructions = db_metadata.instructions
-        nodes = db_metadata.nodes.viewvalues()
+        nodes = viewvalues(db_metadata.nodes)
 
         # clear all instructions
         if not self._async_action(self._clear_instructions, instructions):

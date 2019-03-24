@@ -27,7 +27,7 @@ class CutterPainter(DatabasePainter):
 
     #
     # NOTE:
-    #   due to the manner in which Binary Ninja implements basic block
+    #   due to the manner in which Cutter implements basic block
     #   (node) highlighting, I am not sure it is worth it to paint individual
     #   instructions. for now we, will simply make the instruction
     #   painting functions no-op's
@@ -50,6 +50,8 @@ class CutterPainter(DatabasePainter):
 
     def _clear_nodes(self, nodes_metadata):
         for node_metadata in nodes_metadata:
+            # TODO Connect BBHighlighter::clear to GraphView refresh
+            # Or trigger graph refresh from here
             disassembler._core.getBBHighlighter().clear(node_metadata.address)
             self._painted_nodes.discard(node_metadata.address)
         self._action_complete.set()

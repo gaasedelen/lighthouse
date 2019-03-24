@@ -20,6 +20,7 @@ class LighthouseCutterPlugin(CutterBindings.CutterPlugin):
 
     def __init__(self):
         super(LighthouseCutterPlugin, self).__init__()
+        self.ui = None
 
     def setupPlugin(self):
         pass
@@ -30,13 +31,13 @@ class LighthouseCutterPlugin(CutterBindings.CutterPlugin):
         self.ui.load()
 
     def terminate(self):
-        self.ui.unload()
+        if self.ui:
+            self.ui.unload()
 
 
 def create_cutter_plugin():
     try:
-        plugin = LighthouseCutterPlugin()
-        return plugin
+        return LighthouseCutterPlugin()
     except Exception as e:
         print('ERROR ---- ', e)
         import sys, traceback

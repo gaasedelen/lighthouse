@@ -429,20 +429,6 @@ class DatabaseMetadata(object):
         # refresh the internal function/node fast lookup lists
         self._refresh_lookup()
 
-        #
-        # NOTE:
-        #
-        #   creating the hooks inline like this is less than ideal, but they
-        #   they have been moved here (from the metadata constructor) to
-        #   accomodate shortcomings of the Binary Ninja API.
-        #
-        # TODO/FUTURE/V35:
-        #
-        #   it would be nice to move these back to the constructor once the
-        #   Binary Ninja API allows us to detect BV / sessions as they are
-        #   created, and able to load plugins on such events.
-        #
-
         #----------------------------------------------------------------------
 
         # create the disassembler hooks to listen for rename events
@@ -566,7 +552,10 @@ class DatabaseMetadata(object):
             #
 
             if new_metadata.empty:
-                del self.functions[function_address]
+                try:
+                    del self.functions[function_address]
+                except KeyError:
+                    logger.error('Error: Excepted a function at {}'.format(hex(function_address)))
                 continue
 
             # add or overwrite the new/updated basic blocks
@@ -836,7 +825,7 @@ class FunctionMetadata(object):
 
     def _cutter_refresh_nodes(self):
         """
-        Refresh function node metadata against an open Binary Ninja database.
+        Refresh function node metadata using Cutter/radare2 API
         """
         function_metadata = self
         function_metadata.nodes = {}
@@ -896,8 +885,12 @@ class FunctionMetadata(object):
         cyclomatic complexity score.
         """
 
+        # Cutter already provides this information, so just fetch it
         if disassembler.NAME == "CUTTER":
-            return int(cutter.cmd('afCc @ ' + str(self.address)))
+            try:
+                return int(cutter.cmd('afCc @ ' + str(self.address)))
+            except ValueError:
+                pass
 
         confirmed_nodes = set()
         confirmed_edges = {}
@@ -1065,15 +1058,9 @@ class NodeMetadata(object):
         current_address = self.address
         node_end = self.address + self.size
 
-        #
-        # Note that we 'iterate over' the instructions using their byte length
-        # because it is far more performant than Binary Ninja's instruction
-        # generators which also produce instruction text, tokens etc...
-        #
-
         while current_address < node_end:
             self.instructions.append(current_address)
-            # TODO Use Cutter API and that's dirty AF haha
+            # TODO Use/implement Cutter API (that's very dirty)
             current_address += int(cutter.cmd('?v $l @ ' + str(current_address)), 16)
 
         ## save the number of instructions in this block
