@@ -117,6 +117,7 @@ class Lighthouse(object):
         """
         self._install_load_file()
         self._install_load_batch()
+        self._install_open_coverage_xref()
         self._install_open_coverage_overview()
 
     def _uninstall_ui(self):
@@ -124,6 +125,7 @@ class Lighthouse(object):
         Cleanup & remove all plugin UI integrations.
         """
         self._uninstall_open_coverage_overview()
+        self._uninstall_open_coverage_xref()
         self._uninstall_load_batch()
         self._uninstall_load_file()
 
@@ -187,6 +189,16 @@ class Lighthouse(object):
         # create a new coverage overview if there is not one visible
         self._ui_coverage_overview = CoverageOverview(self)
         self._ui_coverage_overview.show()
+
+    def open_coverage_xref(self, address):
+        """
+        TODO
+        """
+        xrefs = self.director.xref_coverage(address)
+
+        lmsg("Printing coverage xrefs for 0x%08X..." % address)
+        for coverage in xrefs:
+            lmsg(" - " + self.director.get_coverage_string(coverage.name))
 
     def interactive_load_batch(self):
         """

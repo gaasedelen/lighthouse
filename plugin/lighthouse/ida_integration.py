@@ -19,9 +19,13 @@ class LighthouseIDA(Lighthouse):
     def __init__(self):
 
         # menu entry icons
+        self._icon_id_xref = idaapi.BADADDR
         self._icon_id_file = idaapi.BADADDR
         self._icon_id_batch = idaapi.BADADDR
         self._icon_id_overview = idaapi.BADADDR
+
+        # IDA ui hooks
+        self._ui_hooks = UIHooks(self)
 
         # run initialization
         super(LighthouseIDA, self).__init__()
@@ -32,6 +36,7 @@ class LighthouseIDA(Lighthouse):
 
     ACTION_LOAD_FILE         = "lighthouse:load_file"
     ACTION_LOAD_BATCH        = "lighthouse:load_batch"
+    ACTION_COVERAGE_XREF     = "lighthouse:coverage_xref"
     ACTION_COVERAGE_OVERVIEW = "lighthouse:coverage_overview"
 
     def _install_load_file(self):
@@ -105,6 +110,54 @@ class LighthouseIDA(Lighthouse):
             RuntimeError("Failed action attach load_batch")
 
         logger.info("Installed the 'Code coverage batch' menu entry")
+
+    def _install_open_coverage_xref(self):
+        """
+        TODO
+        """
+
+        # create a custom IDA icon
+        icon_path = plugin_resource(os.path.join("icons", "batch.png"))
+        icon_data = str(open(icon_path, "rb").read())
+        self._icon_id_xref = idaapi.load_custom_icon(data=icon_data)
+
+        # describe a custom IDA UI action
+        action_desc = idaapi.action_desc_t(
+            self.ACTION_COVERAGE_XREF,                # The action name
+            "Xrefs coverage sets...",                 # The action text
+            IDACtxEntry(self._pre_open_coverage_xref),# The action handler
+            None,                                     # Optional: action shortcut
+            "List coverage sets containing this address", # Optional: tooltip
+            self._icon_id_xref                        # Optional: the action icon
+        )
+
+        # register the action with IDA
+        result = idaapi.register_action(action_desc)
+        if not result:
+            RuntimeError("Failed to register coverage_xref action with IDA")
+
+        self._ui_hooks.hook()
+        logger.info("Installed the 'Code coverage batch' menu entry")
+
+    def _inject_ctx_actions(self, view, popup, view_type):
+        """
+        TODO
+        """
+
+        if view_type == idaapi.BWN_DISASMS:
+            idaapi.attach_action_to_popup(
+                view,
+                popup,
+                self.ACTION_COVERAGE_XREF,  # The action ID (see above)
+                "Xrefs graph from...",      # Relative path of where to add the action
+                idaapi.SETMENU_APP          # We want to append the action after ^
+            )
+
+    def _pre_open_coverage_xref(self):
+        """
+        TODO
+        """
+        self.open_coverage_xref(idaapi.get_screen_ea())
 
     def _install_open_coverage_overview(self):
         """
@@ -190,6 +243,23 @@ class LighthouseIDA(Lighthouse):
 
         logger.info("Uninstalled the 'Code coverage batch' menu entry")
 
+    def _uninstall_open_coverage_xref(self):
+        """
+        TODO
+        """
+        self._ui_hooks.unhook()
+
+        # unregister the action
+        result = idaapi.unregister_action(self.ACTION_COVERAGE_XREF)
+        if not result:
+            return False
+
+        # delete the entry's icon
+        idaapi.free_custom_icon(self._icon_id_xref)
+        self._icon_id_xref = idaapi.BADADDR
+
+        logger.info("Uninstalled the 'Coverage Xref' menu entry")
+
     def _uninstall_open_coverage_overview(self):
         """
         Remove the 'View->Open subviews->Coverage Overview' menu entry.
@@ -215,7 +285,7 @@ class LighthouseIDA(Lighthouse):
         logger.info("Uninstalled the 'Coverage Overview' menu entry")
 
 #------------------------------------------------------------------------------
-# IDA Action Handler Stub
+# IDA UI Helpers
 #------------------------------------------------------------------------------
 
 class IDACtxEntry(idaapi.action_handler_t):
@@ -239,3 +309,24 @@ class IDACtxEntry(idaapi.action_handler_t):
         Ensure the context menu is always available in IDA.
         """
         return idaapi.AST_ENABLE_ALWAYS
+
+class UIHooks(idaapi.UI_Hooks):
+
+    def __init__(self, integration):
+        self.integration = integration
+        super(UIHooks, self).__init__()
+
+    def finish_populating_widget_popup(self, widget, popup):
+        """
+        A right click menu is about to be shown. (IDA 7)
+        """
+        self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
+        return 0
+
+    def finish_populating_tform_popup(self, form, popup):
+        """
+        A right click menu is about to be shown. (IDA 6.x)
+        """
+        self.integration._inject_ctx_actions(form, popup, idaapi.get_tform_type(form))
+        return 0
+
