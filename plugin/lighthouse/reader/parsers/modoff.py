@@ -16,7 +16,7 @@ class ModOffData(CoverageFile):
     #--------------------------------------------------------------------------
 
     def get_offsets(self, module_name):
-        return self.modules.get(module_name, {})
+        return self.modules.get(module_name, {}).keys()
 
     #--------------------------------------------------------------------------
     # Parsing Routines - Top Level

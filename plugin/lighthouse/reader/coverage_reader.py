@@ -6,7 +6,7 @@ import traceback
 
 from lighthouse.util.python import iteritems
 from .coverage_file import CoverageFile
-from lighthouse.exceptions import CoverageParseError
+from lighthouse.exceptions import CoverageParsingError
 
 logger = logging.getLogger("Lighthouse.Reader")
 
@@ -25,7 +25,7 @@ class CoverageReader(object):
         """
         Open and parse a coverage file from disk.
 
-        Returns a CoverageFile on success, or raises CoverageParseError on failure.
+        Returns a CoverageFile on success, or raises CoverageParsingError on failure.
         """
         coverage_file = None
         parse_failures = {}
@@ -50,7 +50,7 @@ class CoverageReader(object):
         #
 
         if not coverage_file:
-            raise CoverageParseError(filepath, parse_failures)
+            raise CoverageParsingError(filepath, parse_failures)
 
         # successful parse
         logger.debug("| Parse OKAY")

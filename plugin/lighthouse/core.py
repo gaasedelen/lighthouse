@@ -12,6 +12,7 @@ from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
+from lighthouse.exceptions import *
 
 logger = logging.getLogger("Lighthouse.Core")
 
@@ -251,6 +252,13 @@ class Lighthouse(object):
             disassembler.replace_wait_box
         )
 
+        # if batch creation fails...
+        if not batch_coverage:
+            lmsg("Creation of batch '%s' failed..." % batch_name)
+            disassembler.hide_wait_box()
+            warn_errors(errors)
+            return
+
         # select the newly created batch coverage
         disassembler.replace_wait_box("Selecting coverage...")
         self.director.select_coverage(batch_name)
@@ -332,10 +340,6 @@ class Lighthouse(object):
         # finally, emit any notable issues that occurred during load
         warn_errors(errors)
 
-    #--------------------------------------------------------------------------
-    # Internal
-    #--------------------------------------------------------------------------
-
     def _select_coverage_files(self):
         """
         Prompt a file selection dialog, returning file selections.
@@ -372,113 +376,3 @@ class Lighthouse(object):
 
         # return the captured filenames
         return filenames
-
-#------------------------------------------------------------------------------
-# Util
-#------------------------------------------------------------------------------
-
-def load_coverage_files(filenames):
-    """
-    Load multiple code coverage files from disk.
-    """
-    loaded_coverage = []
-    coverage_reader = CoverageReader()
-
-    #
-    # loop through each of the given filenames and attempt to load/parse
-    # their coverage data from disk
-    #
-
-    load_failure = False
-    for filename in filenames:
-
-        # attempt to load/parse a single coverage data file from disk
-        try:
-            drcov_data = coverage_reader.open(filename)
-
-        # catch all for parse errors / bad input / malformed files
-        except Exception as e:
-            lmsg("Failed to load coverage %s" % filename)
-            lmsg(" - Error: %s" % str(e))
-            logger.exception(" - Traceback:")
-            load_failure = True
-            continue
-
-        # save the loaded coverage data to the output list
-        loaded_coverage.append(drcov_data)
-
-    # warn if we encountered malformed files...
-    if load_failure:
-        warn_drcov_malformed()
-
-    # return all the successfully loaded coverage files
-    return loaded_coverage
-
-#------------------------------------------------------------------------------
-# Warnings
-#------------------------------------------------------------------------------
-
-def warn_errors(errors):
-    """
-    Warn the user of any encountered errors with a messagebox.
-    """
-    seen = []
-
-    for error in errors:
-        error_type = error[0]
-
-        # only emit an error once
-        if error_type in seen:
-            continue
-
-        # emit relevant error messages
-        if error_type == CoverageDirector.ERROR_COVERAGE_ABSENT:
-            warn_module_missing()
-        elif error_type == CoverageDirector.ERROR_COVERAGE_SUSPICIOUS:
-            warn_bad_mapping()
-        else:
-            raise NotImplementedError("UNKNOWN ERROR OCCURRED")
-
-        seen.append(error_type)
-
-def warn_drcov_malformed():
-    """
-    Display a warning for malformed/unreadable coverage files.
-    """
-    disassembler.warning(
-        "Failed to parse one or more of the selected coverage files!\n\n"
-        " Possible reasons:\n"
-        " - You selected a file that was *not* a coverage file.\n"
-        " - The selected coverage file is malformed or unreadable.\n\n"
-        "Please see the disassembler console for more info..."
-    )
-
-def warn_module_missing():
-    """
-    Display a warning for missing coverage data.
-    """
-    disassembler.warning(
-        "No coverage data was extracted from one of the selected files.\n\n"
-        " Possible reasons:\n"
-        " - You selected a coverage file for the wrong binary.\n"
-        " - The name of the executable file used to generate this database\n"
-        "    is different than the one you collected coverage against.\n"
-        " - Your DBI failed to collect any coverage for this binary.\n\n"
-        "Please see the disassembler console for more info..."
-    )
-
-def warn_bad_mapping():
-    """
-    Display a warning for badly mapped coverage data.
-    """
-    disassembler.warning(
-        "One or more of the loaded coverage files appears to be badly mapped.\n\n"
-        " Possible reasons:\n"
-        " - You selected a coverage file that was collected against a\n"
-        "    slightly different version of the binary.\n"
-        " - You recorded an application with very abnormal control flow.\n"
-        " - The coverage file might be malformed.\n\n"
-        "This means that any coverage displayed by Lighthouse is probably\n"
-        "wrong, and should be used at your own discretion."
-    )
-

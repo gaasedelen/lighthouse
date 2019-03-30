@@ -15,8 +15,6 @@ class TraceData(CoverageFile):
     #--------------------------------------------------------------------------
 
     def get_addresses(self, module_name=None):
-        if module_name:
-            raise ValueError("No module mapping in this log format")
         return self._hitmap.keys()
 
     #--------------------------------------------------------------------------

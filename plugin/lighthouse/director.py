@@ -13,7 +13,7 @@ from lighthouse.util.disassembler import disassembler
 from lighthouse.reader import CoverageReader
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
-from lighthouse.exceptions import CoverageParseError
+from lighthouse.exceptions import *
 from lighthouse.composer.parser import *
 
 logger = logging.getLogger("Lighthouse.Director")
@@ -48,10 +48,6 @@ class CoverageDirector(object):
     This provides a platform for researchers to explore the relationship
     between any number of coverage files.
     """
-
-    ERROR_COVERAGE_MALFORMED = 1
-    ERROR_COVERAGE_ABSENT = 2
-    ERROR_COVERAGE_SUSPICIOUS = 3
 
     def __init__(self, metadata, palette):
 
@@ -326,16 +322,6 @@ class CoverageDirector(object):
         self._aggregation_suspended = True
 
     #----------------------------------------------------------------------
-    # Coverage Creation
-    #----------------------------------------------------------------------
-
-    def create_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
-        """
-        Create a new database coverage mapping from the given data.
-        """
-        return self.update_coverage(coverage_name, coverage_data, coverage_filepath)
-
-    #----------------------------------------------------------------------
     # Coverage Loading
     #----------------------------------------------------------------------
 
@@ -358,27 +344,33 @@ class CoverageDirector(object):
                 coverage_addresses = self._extract_coverage_data(coverage_file)
 
             # save and suppress warnings generated from loading coverage files
-            except (CoverageParseError, CoverageExtractionError) as e:
+            except CoverageParsingError as e:
                 errors.append(e)
+                continue
+
+            # ensure some data was actually extracted from the log
+            if not coverage_addresses:
+                errors.append(CoverageMissingError(filepath))
                 continue
 
             # aggregate all coverage data into a single set of addresses
             aggregate_addresses.update(coverage_addresses)
 
+        if not aggregate_addresses:
+            return (None, errors)
+
         # optimize the aggregated data (once) and save it to the director
         coverage_data = self._optimize_coverage_data(aggregate_addresses)
         coverage = self.create_coverage(batch_name, coverage_data)
 
+        # evaluate coverage
+        if not coverage.nodes:
+            errors.append(CoverageMappingAbsent(coverage))
+        elif coverage.suspicious:
+            errors.append(CoverageMappingSuspicious(coverage))
+
         # return the created coverage name
         return (coverage, errors)
-
-    def load_coverage_file(self, filepath):
-        """
-        Create a new database coverage mapping from a coverage file.
-
-        Returns the created coverage object.
-        """
-        raise NotImplementedError("TODO/HEADLESS")
 
     def load_coverage_files(self, filepaths, progress_callback=logger.debug):
         """
@@ -415,8 +407,13 @@ class CoverageDirector(object):
                 coverage_data = self._optimize_coverage_data(coverage_addresses)
 
             # save and suppress warnings generated from loading coverage files
-            except (CoverageParseError, CoverageExtractionError) as e:
+            except CoverageParsingError as e:
                 errors.append(e)
+                continue
+
+            # ensure some data was actually extracted from the log
+            if not coverage_addresses:
+                errors.append(CoverageMissingError(filepath))
                 continue
 
             #
@@ -426,6 +423,12 @@ class CoverageDirector(object):
 
             coverage_name = self._suggest_coverage_name(filepath)
             coverage = self.create_coverage(coverage_name, coverage_data, filepath)
+
+            # evaluate coverage
+            if not coverage.nodes:
+                errors.append(CoverageMappingAbsent(coverage))
+            elif coverage.suspicious:
+                errors.append(CoverageMappingSuspicious(coverage))
 
             # add the newly created coverage to the list of coverage to be returned
             all_coverage.append(coverage)
@@ -445,9 +448,6 @@ class CoverageDirector(object):
         """
         Internal routine to extract relevant coverage data from a CoverageFile.
         """
-
-        # more code-friendly, readable aliases
-        target_name = self.metadata.filename
         imagebase = self.metadata.imagebase
 
         #
@@ -455,14 +455,22 @@ class CoverageDirector(object):
         # to match the executable loaded by the disassembler (fuzzy lookup)
         #
 
-        module_name = self._find_fuzzy_name(coverage_file, target_name)
+        module_name = self._find_fuzzy_name(coverage_file, self.metadata.filename)
+
+        #
+        # TODO/BAILOUT
+        #
+
+        if not module_name and coverage_file.modules:
+            logger.debug("TODO/BAILOUT DIALOG")
+            return []
 
         #
         # (module, offset, size) style logs (eg, drcov)
         #
 
         try:
-            coverage_blocks = coverage_file.get_blocks(module_name)
+            coverage_blocks = coverage_file.get_offset_blocks(module_name)
             coverage_addresses = [imagebase+offset for s, n in coverage_blocks for offset in xrange(s, s+n)]
             return coverage_addresses
         except NotImplementedError:
@@ -480,9 +488,7 @@ class CoverageDirector(object):
             pass
 
         #
-        # (absolute address) style log (eg, instruction or bb trace)
-        #
-        # TODO: identify and remove irrelevant data from absolute traces
+        # (absolute address) style log (eg, instruction/bb trace)
         #
 
         try:
@@ -491,9 +497,8 @@ class CoverageDirector(object):
         except NotImplementedError:
             pass
 
-        # well, this one is probably your fault
+        # well, this one is probably the fault of the CoverageFile author...
         raise NotImplementedError("Incomplete CoverageFile implementation")
-
 
     def _optimize_coverage_data(self, coverage_addresses):
         """
@@ -627,6 +632,12 @@ class CoverageDirector(object):
     #----------------------------------------------------------------------
     # Coverage Management
     #----------------------------------------------------------------------
+
+    def create_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
+        """
+        Create a new database coverage mapping from the given data.
+        """
+        return self.update_coverage(coverage_name, coverage_data, coverage_filepath)
 
     def select_coverage(self, coverage_name):
         """

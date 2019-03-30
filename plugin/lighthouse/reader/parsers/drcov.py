@@ -7,7 +7,8 @@ import struct
 from ctypes import *
 
 try:
-    from ..coverage_file import CoverageFile
+    from lighthouse.exceptions import CoverageMissingError
+    from lighthouse.reader.coverage_file import CoverageFile
 except ImportError as e:
     CoverageFile = object
 
@@ -54,7 +55,7 @@ class DrcovData(CoverageFile):
         try:
             module = self.modules[module_name]
         except KeyError:
-            raise ValueError("No coverage for module '%s' in log" % module_name)
+            return []
 
         # extract module id for speed
         mod_id = module.id
@@ -65,14 +66,14 @@ class DrcovData(CoverageFile):
         # return the filtered coverage blocks
         return coverage_blocks
 
-    def get_blocks(self, module_name):
+    def get_offset_blocks(self, module_name):
         """
         Return coverage data as basic blocks (offset, size) for the named module.
         """
         try:
             module = self.modules[module_name]
         except KeyError:
-            raise ValueError("No coverage for module '%s' in log" % module_name)
+            return []
 
         # extract module id for speed
         mod_id = module.id

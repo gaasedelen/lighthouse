@@ -28,7 +28,7 @@ class CoverageFile(object):
         """
         raise NotImplementedError("Relative addresses not supported by this log format")
 
-    def get_blocks(self, module_name):
+    def get_offset_blocks(self, module_name):
         """
         Return coverage data for the named module in block form (offset, size).
         """
