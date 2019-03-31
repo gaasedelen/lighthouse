@@ -144,6 +144,13 @@ class Lighthouse(object):
         pass
 
     @abc.abstractmethod
+    def _install_open_coverage_xref(self):
+        """
+        Install the right click 'Coverage Xref' context menu entry.
+        """
+        pass
+
+    @abc.abstractmethod
     def _install_open_coverage_overview(self):
         """
         Install the 'View->Open subviews->Coverage Overview' menu entry.
@@ -161,6 +168,13 @@ class Lighthouse(object):
     def _uninstall_load_batch(self):
         """
         Remove the 'File->Load file->Code coverage batch...' menu entry.
+        """
+        pass
+
+    @abc.abstractmethod
+    def _uninstall_open_coverage_xref(self):
+        """
+        Remove the right click 'Coverage Xref' context menu entry.
         """
         pass
 
@@ -192,11 +206,15 @@ class Lighthouse(object):
 
     def open_coverage_xref(self, address):
         """
-        TODO
+        Open the 'Coverage Xref' dialog for a given address.
         """
+
+        # show the coverage xref dialog
         dialog = CoverageXref(self.director, address)
         if not dialog.exec_():
             return
+
+        # activate the user selected xref (if one was double clicked)
         self.director.select_coverage(dialog.selected_name)
 
     def interactive_load_batch(self):
@@ -317,8 +335,8 @@ class Lighthouse(object):
         await_future(future)
 
         #
-        # insert the loaded drcov data objects into the director
-        # TODO/COMMENT
+        # now that the database metadata is available, we can use the director
+        # to load and normalize the selected coverage files
         #
 
         disassembler.replace_wait_box("Loading coverage from disk...")

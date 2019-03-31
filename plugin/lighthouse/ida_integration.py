@@ -113,7 +113,7 @@ class LighthouseIDA(Lighthouse):
 
     def _install_open_coverage_xref(self):
         """
-        TODO
+        Install the right click 'Coverage Xref' context menu entry.
         """
 
         # create a custom IDA icon
@@ -138,26 +138,6 @@ class LighthouseIDA(Lighthouse):
 
         self._ui_hooks.hook()
         logger.info("Installed the 'Code coverage batch' menu entry")
-
-    def _inject_ctx_actions(self, view, popup, view_type):
-        """
-        TODO
-        """
-
-        if view_type == idaapi.BWN_DISASMS:
-            idaapi.attach_action_to_popup(
-                view,
-                popup,
-                self.ACTION_COVERAGE_XREF,  # The action ID (see above)
-                "Xrefs graph from...",      # Relative path of where to add the action
-                idaapi.SETMENU_APP          # We want to append the action after ^
-            )
-
-    def _pre_open_coverage_xref(self):
-        """
-        TODO
-        """
-        self.open_coverage_xref(idaapi.get_screen_ea())
 
     def _install_open_coverage_overview(self):
         """
@@ -245,7 +225,7 @@ class LighthouseIDA(Lighthouse):
 
     def _uninstall_open_coverage_xref(self):
         """
-        TODO
+        Remove the right click 'Coverage Xref' context menu entry.
         """
         self._ui_hooks.unhook()
 
@@ -284,6 +264,35 @@ class LighthouseIDA(Lighthouse):
 
         logger.info("Uninstalled the 'Coverage Overview' menu entry")
 
+    #--------------------------------------------------------------------------
+    # Helpers
+    #--------------------------------------------------------------------------
+
+    def _inject_ctx_actions(self, view, popup, view_type):
+        """
+        Inject context menu entries into IDA's right click menus.
+
+        NOTE: This is only being used for coverage xref at this time, but
+        may host additional actions in the future.
+
+        """
+
+        if view_type == idaapi.BWN_DISASMS:
+
+            idaapi.attach_action_to_popup(
+                view,
+                popup,
+                self.ACTION_COVERAGE_XREF,  # The action ID (see above)
+                "Xrefs graph from...",      # Relative path of where to add the action
+                idaapi.SETMENU_APP          # We want to append the action after ^
+            )
+
+    def _pre_open_coverage_xref(self):
+        """
+        Grab a contextual address before opening the coverage xref dialog.
+        """
+        self.open_coverage_xref(idaapi.get_screen_ea())
+
 #------------------------------------------------------------------------------
 # IDA UI Helpers
 #------------------------------------------------------------------------------
@@ -311,6 +320,12 @@ class IDACtxEntry(idaapi.action_handler_t):
         return idaapi.AST_ENABLE_ALWAYS
 
 class UIHooks(idaapi.UI_Hooks):
+    """
+    Hooks for IDA's UI subsystem.
+
+    At the moment, we are only using these to inject into IDA's right click
+    context menus (eg, coverage xrefs)
+    """
 
     def __init__(self, integration):
         self.integration = integration
@@ -325,8 +340,7 @@ class UIHooks(idaapi.UI_Hooks):
 
     def finish_populating_tform_popup(self, form, popup):
         """
-        A right click menu is about to be shown. (IDA 6.x)
+        A right click menu is about to be shown. (IDA 6.x) / COMPAT
         """
         self.integration._inject_ctx_actions(form, popup, idaapi.get_tform_type(form))
         return 0
-

@@ -12,9 +12,6 @@ try:
 except ImportError as e:
     CoverageFile = object
 
-# Useful for python2 and python3 compatibility
-from builtins import bytes
-
 #------------------------------------------------------------------------------
 # DynamoRIO Drcov Log Parser
 #------------------------------------------------------------------------------
@@ -272,7 +269,7 @@ class DrcovData(CoverageFile):
         saved_position = f.tell()
 
         # is this an ascii table?
-        if bytes(f.read(len(token))) == token:
+        if f.read(len(token)) == token:
             self.bb_table_is_binary = False
 
         # nope! binary table
