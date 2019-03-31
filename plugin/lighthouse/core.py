@@ -2,7 +2,7 @@ import os
 import abc
 import logging
 
-from lighthouse.ui import CoverageOverview
+from lighthouse.ui import CoverageOverview, CoverageXref
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
@@ -194,11 +194,10 @@ class Lighthouse(object):
         """
         TODO
         """
-        xrefs = self.director.xref_coverage(address)
-
-        lmsg("Printing coverage xrefs for 0x%08X..." % address)
-        for coverage in xrefs:
-            lmsg(" - " + self.director.get_coverage_string(coverage.name))
+        dialog = CoverageXref(self.director, address)
+        if not dialog.exec_():
+            return
+        self.director.select_coverage(dialog.selected_name)
 
     def interactive_load_batch(self):
         """
