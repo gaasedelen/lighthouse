@@ -633,6 +633,18 @@ class CoverageDirector(object):
     # Coverage Management
     #----------------------------------------------------------------------
 
+    def xref_coverage(self, address):
+        """
+        Return a list of coverage object containing the given address.
+        """
+        found = []
+
+        for name, db_coverage in iteritems(self._database_coverage):
+            if address in db_coverage.coverage:
+                found.append(db_coverage)
+
+        return found
+
     def create_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
         """
         Create a new database coverage mapping from the given data.
@@ -977,6 +989,7 @@ class CoverageDirector(object):
 
         # evaluate the last AST into a coverage set
         composite_coverage = self._evaluate_composition(ast)
+        composite_coverage.name = composite_name
 
         # save the evaluated coverage under the given name
         self._commit_coverage(composite_name, composite_coverage)

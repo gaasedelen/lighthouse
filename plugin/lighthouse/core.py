@@ -2,7 +2,7 @@ import os
 import abc
 import logging
 
-from lighthouse.ui import CoverageOverview
+from lighthouse.ui import CoverageOverview, CoverageXref
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
@@ -117,6 +117,7 @@ class Lighthouse(object):
         """
         self._install_load_file()
         self._install_load_batch()
+        self._install_open_coverage_xref()
         self._install_open_coverage_overview()
 
     def _uninstall_ui(self):
@@ -124,6 +125,7 @@ class Lighthouse(object):
         Cleanup & remove all plugin UI integrations.
         """
         self._uninstall_open_coverage_overview()
+        self._uninstall_open_coverage_xref()
         self._uninstall_load_batch()
         self._uninstall_load_file()
 
@@ -138,6 +140,13 @@ class Lighthouse(object):
     def _install_load_batch(self):
         """
         Install the 'File->Load->Code coverage batch...' menu entry.
+        """
+        pass
+
+    @abc.abstractmethod
+    def _install_open_coverage_xref(self):
+        """
+        Install the right click 'Coverage Xref' context menu entry.
         """
         pass
 
@@ -159,6 +168,13 @@ class Lighthouse(object):
     def _uninstall_load_batch(self):
         """
         Remove the 'File->Load file->Code coverage batch...' menu entry.
+        """
+        pass
+
+    @abc.abstractmethod
+    def _uninstall_open_coverage_xref(self):
+        """
+        Remove the right click 'Coverage Xref' context menu entry.
         """
         pass
 
@@ -187,6 +203,19 @@ class Lighthouse(object):
         # create a new coverage overview if there is not one visible
         self._ui_coverage_overview = CoverageOverview(self)
         self._ui_coverage_overview.show()
+
+    def open_coverage_xref(self, address):
+        """
+        Open the 'Coverage Xref' dialog for a given address.
+        """
+
+        # show the coverage xref dialog
+        dialog = CoverageXref(self.director, address)
+        if not dialog.exec_():
+            return
+
+        # activate the user selected xref (if one was double clicked)
+        self.director.select_coverage(dialog.selected_name)
 
     def interactive_load_batch(self):
         """
@@ -306,8 +335,8 @@ class Lighthouse(object):
         await_future(future)
 
         #
-        # insert the loaded drcov data objects into the director
-        # TODO/COMMENT
+        # now that the database metadata is available, we can use the director
+        # to load and normalize the selected coverage files
         #
 
         disassembler.replace_wait_box("Loading coverage from disk...")
