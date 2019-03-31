@@ -82,7 +82,7 @@ class CoverageXref(QtWidgets.QDialog):
             self._table.setItem(i, 0, QtWidgets.QTableWidgetItem(self.director.get_shorthand(coverage.name)))
             self._table.setItem(i, 1, QtWidgets.QTableWidgetItem("%5.2f" % (coverage.instruction_percent*100)))
             self._table.setItem(i, 2, QtWidgets.QTableWidgetItem(coverage.name))
-            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem("TODO"))
+            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem("%u (%s)" % (coverage.timestamp, coverage.human_timestamp)))
         self._table.setSortingEnabled(True)
 
         # signals

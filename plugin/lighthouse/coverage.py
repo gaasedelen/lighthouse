@@ -1,5 +1,8 @@
+import os
+import time
 import logging
 import weakref
+import datetime
 import collections
 
 from lighthouse.util import *
@@ -50,6 +53,12 @@ class DatabaseCoverage(object):
 
         # the filepath this coverage data was sourced from
         self.filepath = filepath
+
+        # the timestamp of the coverage file on disk
+        try:
+            self.timestamp = os.path.getmtime(filepath)
+        except (OSError, TypeError):
+            self.timestamp = time.time()
 
         #
         # this is the coverage mapping's reference to the underlying database
@@ -176,6 +185,14 @@ class DatabaseCoverage(object):
         Return the backing coverage data (a hitmap).
         """
         return self._hitmap
+
+    @property
+    def human_timestamp(self):
+        """
+        Return the backing coverage data (a hitmap).
+        """
+        dt = datetime.datetime.fromtimestamp(self.timestamp)
+        return dt.strftime("%b %d %Y %H:%M:%S")
 
     @property
     def coverage(self):
