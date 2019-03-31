@@ -989,6 +989,7 @@ class CoverageDirector(object):
 
         # evaluate the last AST into a coverage set
         composite_coverage = self._evaluate_composition(ast)
+        composite_coverage.name = composite_name
 
         # save the evaluated coverage under the given name
         self._commit_coverage(composite_name, composite_coverage)
