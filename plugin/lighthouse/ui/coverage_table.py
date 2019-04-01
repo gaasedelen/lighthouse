@@ -86,6 +86,7 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         palette = self._model._director._palette
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
+        self.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
 
         # widget style
         self.setStyleSheet(
