@@ -58,6 +58,7 @@ class CoverageXref(QtWidgets.QDialog):
         """
         self._table = QtWidgets.QTableWidget()
         self._table.verticalHeader().setVisible(False)
+        self._table.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
 
         # symbol, cov %, name, time
         self._table.setColumnCount(4)
