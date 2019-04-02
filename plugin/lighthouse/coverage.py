@@ -187,14 +187,6 @@ class DatabaseCoverage(object):
         return self._hitmap
 
     @property
-    def human_timestamp(self):
-        """
-        Return the backing coverage data (a hitmap).
-        """
-        dt = datetime.datetime.fromtimestamp(self.timestamp)
-        return dt.strftime("%b %d %Y %H:%M:%S")
-
-    @property
     def coverage(self):
         """
         Return the instruction-level coverage bitmap/mask.

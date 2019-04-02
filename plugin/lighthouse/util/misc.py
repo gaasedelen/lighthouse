@@ -1,5 +1,6 @@
 import os
 import weakref
+import datetime
 import threading
 import collections
 
@@ -70,6 +71,13 @@ def hex_list(items):
     [0, 5420, 1942512] --> '[0x0, 0x152C, 0x1DA30]'
     """
     return '[{}]'.format(', '.join('0x%X' % x for x in items))
+
+def human_timestamp(timestamp):
+    """
+    Return a human readable timestamp for a given epoch.
+    """
+    dt = datetime.datetime.fromtimestamp(timestamp)
+    return dt.strftime("%b %d %Y %H:%M:%S")
 
 #------------------------------------------------------------------------------
 # Python Callback / Signals

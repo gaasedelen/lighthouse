@@ -1,7 +1,9 @@
+import os
 import logging
 
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
+from lighthouse.util.misc import human_timestamp
 from lighthouse.util.python import *
 
 logger = logging.getLogger("Lighthouse.UI.Xref")
@@ -25,7 +27,8 @@ class CoverageXref(QtWidgets.QDialog):
 
         # dialog attributes
         self.address = address
-        self.selected_name = None
+        self.selected_coverage = None
+        self.selected_filepath = None
 
         # configure the widget for use
         self._ui_init()
@@ -85,16 +88,41 @@ class CoverageXref(QtWidgets.QDialog):
         """
         Populate the xref table with data from the coverage director.
         """
-        xrefs = self._director.xref_coverage(self.address)
+        cov_xrefs = self._director.get_address_coverage(self.address)
+        file_xrefs = self._director.get_address_file(self.address)
+
+        # dedupe
+        for coverage in cov_xrefs:
+            if coverage.filepath in file_xrefs:
+                file_xrefs.remove(coverage.filepath)
 
         # populate table with coverage details
         self._table.setSortingEnabled(False)
-        self._table.setRowCount(len(xrefs))
-        for i, coverage in enumerate(xrefs, 0):
+        self._table.setRowCount(len(cov_xrefs) + len(file_xrefs))
+
+        # coverage objects
+        for i, coverage in enumerate(cov_xrefs, 0):
             self._table.setItem(i, 0, QtWidgets.QTableWidgetItem(self._director.get_shorthand(coverage.name)))
             self._table.setItem(i, 1, QtWidgets.QTableWidgetItem("%5.2f" % (coverage.instruction_percent*100)))
             self._table.setItem(i, 2, QtWidgets.QTableWidgetItem(coverage.name))
-            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem("%u (%s)" % (coverage.timestamp, coverage.human_timestamp)))
+            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem("%u (%s)" % (coverage.timestamp, human_timestamp(coverage.timestamp))))
+
+        # filepaths
+        for i, filepath in enumerate(file_xrefs, len(cov_xrefs)):
+
+            # try to read timestamp of the file on disk (if it exists)
+            try:
+                timestamp = os.path.getmtime(filepath)
+                timestamp = "%u (%s)" % (timestamp, human_timestamp(timestamp))
+            except (OSError, TypeError):
+                timestamp = "(unknown)"
+
+            # populate table entry
+            self._table.setItem(i, 0, QtWidgets.QTableWidgetItem("-"))
+            self._table.setItem(i, 1, QtWidgets.QTableWidgetItem("-"))
+            self._table.setItem(i, 2, QtWidgets.QTableWidgetItem(filepath))
+            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem(timestamp))
+
         self._table.setSortingEnabled(True)
 
     def _ui_layout(self):
@@ -124,5 +152,8 @@ class CoverageXref(QtWidgets.QDialog):
         """
         A cell/row has been double clicked in the xref table.
         """
-        self.selected_name = self._table.item(row, 2).text()
+        if self._table.item(row, 0).text() == "-":
+            self.selected_filepath = self._table.item(row, 2).text()
+        else:
+            self.selected_coverage = self._table.item(row, 2).text()
         self.accept()

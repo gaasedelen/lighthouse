@@ -70,6 +70,9 @@ class CoverageDirector(object):
         # a map of loaded or composed database coverages
         self._database_coverage = collections.OrderedDict()
 
+        # TODO
+        self.owners = collections.defaultdict(set)
+
         #
         # the director automatically maintains / generates a few coverage sets
         # of its own. these are not directly modifiable by the user, but may
@@ -333,6 +336,10 @@ class CoverageDirector(object):
         """
         errors = []
         aggregate_addresses = set()
+        aggregate_owners = collections.defaultdict(list)
+
+        start = time.time()
+        #----------------------------------------------------------------------
 
         for i, filepath in enumerate(filepaths, 1):
             logger.debug("-"*50)
@@ -353,6 +360,10 @@ class CoverageDirector(object):
                 errors.append(CoverageMissingError(filepath))
                 continue
 
+            # save the attribution data for this coverage data
+            for address in coverage_addresses:
+                aggregate_owners[address].append(filepath)
+
             # aggregate all coverage data into a single set of addresses
             aggregate_addresses.update(coverage_addresses)
 
@@ -363,11 +374,23 @@ class CoverageDirector(object):
         coverage_data = self._optimize_coverage_data(aggregate_addresses)
         coverage = self.create_coverage(batch_name, coverage_data)
 
+        #
+        # transfer the aggregated coverage owners lists to the global owners
+        # map one address at a time.
+        #
+
+        for address in coverage_data:
+            self.owners[address].update(aggregate_owners[address])
+
         # evaluate coverage
         if not coverage.nodes:
             errors.append(CoverageMappingAbsent(coverage))
         elif coverage.suspicious:
             errors.append(CoverageMappingSuspicious(coverage))
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Batch loading took %f seconds" % (end-start))
 
         # return the created coverage name
         return (coverage, errors)
@@ -380,6 +403,9 @@ class CoverageDirector(object):
         """
         errors = []
         all_coverage = []
+
+        start = time.time()
+        #----------------------------------------------------------------------
 
         #
         # stop the director's aggregate set from recomputing after each new
@@ -416,6 +442,10 @@ class CoverageDirector(object):
                 errors.append(CoverageMissingError(filepath))
                 continue
 
+            # save the attribution data for this coverage data
+            for address in coverage_data:
+                self.owners[address].add(filepath)
+
             #
             # request a name for the new coverage mapping that the director will
             # generate from the loaded coverage data
@@ -440,6 +470,10 @@ class CoverageDirector(object):
 
         progress_callback("Recomputing coverage aggregate...")
         self.resume_aggregation()
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("File loading took %f seconds" % (end-start))
 
         # all done
         return (all_coverage, errors)
@@ -633,7 +667,7 @@ class CoverageDirector(object):
     # Coverage Management
     #----------------------------------------------------------------------
 
-    def xref_coverage(self, address):
+    def get_address_coverage(self, address):
         """
         Return a list of coverage object containing the given address.
         """
@@ -644,6 +678,12 @@ class CoverageDirector(object):
                 found.append(db_coverage)
 
         return found
+
+    def get_address_file(self, address):
+        """
+        Return a list of coverage filepaths containing the given address.
+        """
+        return list(self.owners.get(address, []))
 
     def create_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
         """

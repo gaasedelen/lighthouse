@@ -215,7 +215,27 @@ class Lighthouse(object):
             return
 
         # activate the user selected xref (if one was double clicked)
-        self.director.select_coverage(dialog.selected_name)
+        if dialog.selected_coverage:
+            self.director.select_coverage(dialog.selected_coverage)
+            return
+
+        # load a coverage file from disk
+        disassembler.show_wait_box("Loading coverage from disk...")
+        created_coverage, errors = self.director.load_coverage_files(
+            [dialog.selected_filepath],
+            disassembler.replace_wait_box
+        )
+
+        # TODO rough...
+        if not created_coverage:
+            lmsg("No coverage files could be loaded...")
+            disassembler.hide_wait_box()
+            warn_errors(errors)
+            return
+
+        disassembler.replace_wait_box("Selecting coverage...")
+        self.director.select_coverage(created_coverage[0].name)
+        disassembler.hide_wait_box()
 
     def interactive_load_batch(self):
         """
