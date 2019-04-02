@@ -336,7 +336,6 @@ class CoverageDirector(object):
         """
         errors = []
         aggregate_addresses = set()
-        aggregate_owners = collections.defaultdict(list)
 
         start = time.time()
         #----------------------------------------------------------------------
@@ -362,7 +361,8 @@ class CoverageDirector(object):
 
             # save the attribution data for this coverage data
             for address in coverage_addresses:
-                aggregate_owners[address].append(filepath)
+                if address in self.metadata.nodes:
+                    self.owners[address].add(filepath)
 
             # aggregate all coverage data into a single set of addresses
             aggregate_addresses.update(coverage_addresses)
@@ -373,14 +373,6 @@ class CoverageDirector(object):
         # optimize the aggregated data (once) and save it to the director
         coverage_data = self._optimize_coverage_data(aggregate_addresses)
         coverage = self.create_coverage(batch_name, coverage_data)
-
-        #
-        # transfer the aggregated coverage owners lists to the global owners
-        # map one address at a time.
-        #
-
-        for address in coverage_data:
-            self.owners[address].update(aggregate_owners[address])
 
         # evaluate coverage
         if not coverage.nodes:
@@ -444,7 +436,8 @@ class CoverageDirector(object):
 
             # save the attribution data for this coverage data
             for address in coverage_data:
-                self.owners[address].add(filepath)
+                if address in self.metadata.nodes:
+                    self.owners[address].add(filepath)
 
             #
             # request a name for the new coverage mapping that the director will
@@ -683,7 +676,10 @@ class CoverageDirector(object):
         """
         Return a list of coverage filepaths containing the given address.
         """
-        return list(self.owners.get(address, []))
+        node = self.metadata.get_node(address)
+        if not node:
+            return []
+        return list(self.owners.get(node.address, []))
 
     def create_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
         """
