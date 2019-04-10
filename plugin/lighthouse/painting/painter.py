@@ -3,8 +3,6 @@ import time
 import logging
 import threading
 
-from six import itervalues, viewkeys, viewvalues
-
 from lighthouse.util import *
 
 logger = logging.getLogger("Lighthouse.Painting")

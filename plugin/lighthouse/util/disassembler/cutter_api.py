@@ -149,7 +149,7 @@ class CutterAPI(DisassemblerAPI):
     #@not_mainthread
     # TODO Reenable not_mainthread
     def get_function_name_at(self, address):
-        # TODO User Cutter API
+        # TODO Use Cutter API
         return self.get_function_at(address)['name']
 
     @execute_read.__func__
