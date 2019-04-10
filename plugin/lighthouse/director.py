@@ -536,7 +536,7 @@ class CoverageDirector(object):
 
         # bucketize coverage addresses
         instructions = addresses & set(self.metadata.instructions)
-        basic_blocks = instructions & self.metadata.nodes.viewkeys()
+        basic_blocks = instructions & viewkeys(self.metadata.nodes)
         unknown = addresses - instructions
 
         # bucketize the uncategorized addresses
@@ -637,8 +637,9 @@ class CoverageDirector(object):
         """
 
         # attempt lookup using case-insensitive filename
+        target_module_name = os.path.split(target_name)[-1]
         for module_name in coverage_file.modules:
-            if module_name.lower() in target_name.lower():
+            if target_module_name.lower() in module_name.lower():
                 return module_name
 
         #

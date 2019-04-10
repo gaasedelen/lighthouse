@@ -2,10 +2,6 @@ import abc
 import time
 import logging
 import threading
-try:
-    import Queue as queue
-except:
-    import queue
 
 from six import itervalues, viewkeys, viewvalues
 

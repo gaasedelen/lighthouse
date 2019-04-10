@@ -11,6 +11,7 @@ class LighthouseError(Exception):
     """
     def __init__(self, *args, **kwargs):
         super(LighthouseError, self).__init__(*args, **kwargs)
+        self.message = ""
 
 class CoverageParsingError(LighthouseError):
     """

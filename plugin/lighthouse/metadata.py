@@ -429,6 +429,21 @@ class DatabaseMetadata(object):
         # refresh the internal function/node fast lookup lists
         self._refresh_lookup()
 
+        #
+        # NOTE:
+        #
+        #   creating the hooks inline like this is less than ideal, but they
+        #   they have been moved here (from the metadata constructor) to
+        #   accomodate shortcomings of the Binary Ninja API.
+        #
+        # TODO/FUTURE/V35:
+        #
+        #   it would be nice to move these back to the constructor once the
+        #   Binary Ninja API allows us to detect BV / sessions as they are
+        #   created, and able to load plugins on such events.
+        #
+
+
         #----------------------------------------------------------------------
 
         # create the disassembler hooks to listen for rename events
@@ -1059,8 +1074,9 @@ class NodeMetadata(object):
         node_end = self.address + self.size
 
         while current_address < node_end:
-            self.instructions.append(current_address)
-            # TODO Use/implement Cutter API (that's very dirty)
+            # TODO Use/implement Cutter API for both commands (that's very dirty)
+            instruction_size = cutter.cmdj('aoj')[0]['size']
+            self.instructions[current_address] = instruction_size
             current_address += int(cutter.cmd('?v $l @ ' + str(current_address)), 16)
 
         ## save the number of instructions in this block
