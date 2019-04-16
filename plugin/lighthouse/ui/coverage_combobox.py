@@ -46,35 +46,77 @@ class CoverageComboBox(QtWidgets.QComboBox):
     # QComboBox Overloads
     #--------------------------------------------------------------------------
 
+    def showPopup(self):
+        """
+        Show the QComboBox dropdown/popup.
+        """
+        super(CoverageComboBox, self).showPopup()
+
+        #
+        # the next line of code will prevent the combobox 'head' from getting
+        # any mouse actions now that the popup/dropdown is visible.
+        #
+        # this is pretty aggressive, but it will allow the user to 'collapse'
+        # the combobox dropdown while it is in an expanded state by simply
+        # clicking the combobox head as one can do to expand it.
+        #
+        # the reason this dirty trick is able to simulate a 'collapsing click'
+        # is because the user clicks 'outside' the popup/dropdown which
+        # automatically closes it. if the click was on the combobox head, it
+        # is simply ignored because we set this attribute!
+        #
+        # when the popup is closing, we undo this action in hidePopup()
+        #
+        # we have to use this workaround because we are using an 'editable' Qt
+        # combobox which behaves differently to clicks than a normal combobox.
+        #
+
+        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+
+    def hidePopup(self):
+        """
+        Hide the QComboBox dropdown/popup.
+        """
+        super(CoverageComboBox, self).hidePopup()
+
+        #
+        # the combobox popup is now hidden / collapsed. the combobox head needs
+        # to be re-enlightened to direct mouse clicks (eg, to expand it). this
+        # undos the setAttribute action in showPopup() above.
+        #
+        # we use a short timer of 100ms to ensure the 'hiding' of the dropdown
+        # and its associated click are processed first. aftwards, it is safe to
+        # begin accepting clicks again.
+        #
+
+        QtCore.QTimer.singleShot(100, lambda: self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False))
+
     def mousePressEvent(self, e):
         """
         Capture mouse click events to the QComboBox.
         """
 
-        # get the widget currently beneath the given mouse event
+        # get the widget currently beneath the mouse event being handled
         hovering = self.childAt(e.pos())
 
         #
-        # if the hovered widget is the 'head' of the QComboBox, we want to
-        # move any mouse clicks to appear like it was on the dropdown arrow
-        # box on the right side.
+        # if the hovered widget is the 'head' of the QComboBox, we assume
+        # the user has clicked it and should show the dropwdown 'popup'
         #
-        # this is to satisfy some internal QComboBox Qt logic, allowing us
-        # to collapse and expand an 'editable' QComboBox by clicking anywhere
-        # on the 'head' (the read-only QLineEdit)
+        # we must showPopup() ourselves because internal Qt logic for
+        # 'editable' comboboxes try to enter an editing mode for the field
+        # rather than expanding the dropdown.
         #
-        # this is basically dirty-hax
+        # if you don't remember, our combobox is marked 'editable' to satisfy
+        # some internal Qt logic so that our 'Windows' draw style is used
         #
 
         if hovering == self.lineEdit():
-            new_pos = QtCore.QPoint(
-                self.rect().right() - 10,
-                self.rect().height()/2
-            )
-            logger.debug("Moved click %s --> %s" % (e.pos(), new_pos))
-            e = move_mouse_event(e, new_pos)
+            self.showPopup()
+            e.accept()
+            return
 
-        # handle the event (possibly moved) as it normally would be
+        # handle any other events as they normally should be
         super(CoverageComboBox, self).mousePressEvent(e)
 
     #--------------------------------------------------------------------------
