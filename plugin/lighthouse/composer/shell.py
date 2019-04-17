@@ -94,11 +94,21 @@ class ComposingShell(QtWidgets.QWidget):
         self._line = ComposingLine()
 
         # configure the shell background & default text color
-        palette = self._line.palette()
-        palette.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
-        palette.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
-        palette.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
-        self._line.setPalette(palette)
+        qpal = self._line.palette()
+        #qpal.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
+        qpal.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
+        qpal.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
+        self._line.setPalette(qpal)
+
+        self._line.setStyleSheet(
+            "QPlainTextEdit {"
+            "    background-color: %s;" % self._palette.overview_bg.name() +
+            "    border: 1px solid %s;" % self._palette.border.name() +
+            "} "
+            "QPlainTextEdit:hover, QPlainTextEdit:focus {"
+            "    border: 1px solid %s;" % self._palette.focus.name() +
+            "}"
+        )
 
     def _ui_init_completer(self):
         """

@@ -127,6 +127,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         """
         Initialize UI elements.
         """
+        palette = self._director._palette
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
@@ -154,6 +155,21 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.setMaximumHeight(self._font_metrics.height()*1.75)
 
         #
+        # the purpose of the padding in this stylesheet is to pad the visible
+        # selection text in the combobox 'head' on first show. The reason being
+        # is that without this, the text for the selected coverage will lapse
+        # behind the combobox dropdown arrow (which is Qt by design???)
+        #
+
+        self.lineEdit().setStyleSheet(
+            "QLineEdit { "
+            "   color: %s;" % palette.combobox_fg.name() +
+            "   padding: 0 2ex 0 2ex;"
+            "   background-color: %s;" % palette.overview_bg.name() +
+            "}"
+        )
+
+        #
         # the combobox will pick a size based on its contents when it is first
         # made visible, but we also make it is arbitrarily resizable for the
         # user to change and play with at their own leisure
@@ -162,20 +178,16 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
 
-        #
-        # the purpose of this stylesheet is to pad the visible selection text
-        # in the combobox 'head' on first show. The reason being is that
-        # without this, the text for the selected coverage will lapse behind
-        # the combobox dropdown arrow (which is Qt by design???)
-        #
-        # I don't like the tail of the text disappearing behind this silly
-        # dropdown arrow, therefore we pad the right side of the combobox.
-        #
-
-        self.setStyleSheet("QComboBox { padding: 0 2ex 0 2ex; }")
-
         # draw the QComboBox with a 'Windows'-esque style
         self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
+        self.setStyleSheet(
+            "QComboBox {"
+            "   border: 1px solid %s;" % palette.border.name() +
+            "} "
+            "QComboBox:hover, QComboBox:focus {"
+            "   border: 1px solid %s;" % palette.focus.name() +
+            "}"
+        )
 
         # connect relevant signals
         self._ui_init_signals()

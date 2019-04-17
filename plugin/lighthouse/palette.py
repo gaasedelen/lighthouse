@@ -71,6 +71,9 @@ class LighthousePalette(object):
         self._combobox_selection_bg = [QtGui.QColor(51, 153, 255), QtGui.QColor(51, 153, 255)]
         self._combobox_selection_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
 
+        self._border = [QtGui.QColor(100, 100, 100), QtGui.QColor(100, 100, 100)]
+        self._focus = [QtGui.QColor(160, 160, 160), QtGui.QColor(160, 160, 160)]
+
         #
         # Composition Grammar
         #
@@ -278,6 +281,14 @@ class LighthousePalette(object):
     @property
     def combobox_selection_fg(self):
         return self._combobox_selection_fg[self.qt_theme]
+
+    @property
+    def border(self):
+        return self._border[self.qt_theme]
+
+    @property
+    def focus(self):
+        return self._focus[self.qt_theme]
 
     #--------------------------------------------------------------------------
     # Composition Grammar
