@@ -698,6 +698,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             self._default_alignment for x in self.COLUMN_HEADERS
         ]
 
+        # make the function name column left aligned by default
+        self.set_column_alignment(self.FUNC_NAME, QtCore.Qt.AlignVCenter)
+
         # initialize a monospace font to use for table row / cell text
         self._entry_font = MonospaceFont()
         self._entry_font.setStyleStrategy(QtGui.QFont.ForceIntegerMetrics)
