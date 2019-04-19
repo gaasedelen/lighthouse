@@ -542,7 +542,7 @@ class CoverageTableController(object):
 
         # toggle the column alignment between center (default) and left
         if alignment == QtCore.Qt.AlignCenter:
-            new_alignment = QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter
+            new_alignment = QtCore.Qt.AlignVCenter
         else:
             new_alignment = QtCore.Qt.AlignCenter
 

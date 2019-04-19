@@ -152,19 +152,13 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.lineEdit().setFont(self._font)
         self.lineEdit().setReadOnly(True)    # text can't be edited
         self.lineEdit().setEnabled(False)    # text can't be selected
-        self.setMaximumHeight(self._font_metrics.height()*1.75)
 
-        #
-        # the purpose of the padding in this stylesheet is to pad the visible
-        # selection text in the combobox 'head' on first show. The reason being
-        # is that without this, the text for the selected coverage will lapse
-        # behind the combobox dropdown arrow (which is Qt by design???)
-        #
-
+        # configure the combobox style
         self.lineEdit().setStyleSheet(
             "QLineEdit { "
-            "   color: %s;" % palette.combobox_fg.name() +
-            "   padding: 0 2ex 0 2ex;"
+            "   border: none;"
+            "   padding: 0 0 0 2ex;"
+            "   margin: 0;"
             "   background-color: %s;" % palette.overview_bg.name() +
             "}"
         )
@@ -177,12 +171,15 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         self.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        self.setMaximumHeight(self._font_metrics.height()*1.75)
 
         # draw the QComboBox with a 'Windows'-esque style
         self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
         self.setStyleSheet(
             "QComboBox {"
+            "   color: %s;" % palette.combobox_fg.name() +
             "   border: 1px solid %s;" % palette.border.name() +
+            "   padding: 0;"
             "} "
             "QComboBox:hover, QComboBox:focus {"
             "   border: 1px solid %s;" % palette.focus.name() +
@@ -430,6 +427,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
             hh.setResizeMode(1, QtWidgets.QHeaderView.Fixed)
             vh.setResizeMode(QtWidgets.QHeaderView.ResizeToContents)
 
+        hh.setMinimumSectionSize(0)
         vh.setMinimumSectionSize(0)
 
         # get the column width hint from the model for the 'X' delete column
@@ -598,8 +596,13 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         elif role == QtCore.Qt.TextAlignmentRole:
             return QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft
 
+        # combobox header, padded with "   " to account for dropdown arrow overlap
+        elif role == QtCore.Qt.EditRole:
+            if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
+                return self._director.get_coverage_string(self._entries[index.row()]) + "   "
+
         # data display request
-        elif role in [QtCore.Qt.DisplayRole, QtCore.Qt.EditRole]:
+        elif role == QtCore.Qt.DisplayRole:
             if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
                 return self._director.get_coverage_string(self._entries[index.row()])
 

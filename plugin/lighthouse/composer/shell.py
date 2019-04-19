@@ -86,7 +86,7 @@ class ComposingShell(QtWidgets.QWidget):
         # the composer label at the head of the shell
         self._line_label = QtWidgets.QLabel("Composer")
         self._line_label.setStyleSheet("QLabel { margin: 0 1ex 0 1ex }")
-        self._line_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter)
+        self._line_label.setAlignment(QtCore.Qt.AlignCenter)
         self._line_label.setFont(self._font)
         self._line_label.setFixedWidth(self._line_label.sizeHint().width())
 
