@@ -298,7 +298,7 @@ class DrcovData(CoverageFile):
             if text_entry != "module id, start, size:":
                 raise ValueError("Invalid BB header: %r" % text_entry)
 
-            pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-f]+)\,\s*(?P<size>[0-9]+)$")
+            pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-fA-F]+)\,\s*(?P<size>[0-9]+)$")
             for bb in self.bbs:
                 text_entry = f.readline().decode('utf-8').strip()
 
