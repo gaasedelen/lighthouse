@@ -2,6 +2,7 @@ import logging
 
 import cutter
 
+from lighthouse.util.qt import QtGui
 from lighthouse.palette import to_rgb
 from lighthouse.painting import DatabasePainter
 from lighthouse.util.disassembler import disassembler
@@ -41,7 +42,7 @@ class CutterPainter(DatabasePainter):
 
     def _paint_nodes(self, nodes_coverage):
         b, g, r = to_rgb(self.palette.coverage_paint)
-        color = disassembler.get_color(r, g, b)
+        color = QtGui.QColor(r, g, b)
         for node_coverage in nodes_coverage:
             node_metadata = node_coverage.database._metadata.nodes[node_coverage.address]
             disassembler._core.getBBHighlighter().highlight(node_coverage.address, color)

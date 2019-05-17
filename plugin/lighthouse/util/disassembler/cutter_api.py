@@ -20,7 +20,7 @@ logger = logging.getLogger("Lighthouse.API.Cutter")
 
 def execute_sync(function):
     """
-    Synchronize with the disassembler for safe database access.
+    TODO/CUTTER: Synchronize with the disassembler for safe database access.
     """
 
     @functools.wraps(function)
@@ -60,18 +60,6 @@ class CutterAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
 
     @property
-    def version_major(self):
-        return self._version_major
-
-    @property
-    def version_minor(self):
-        return self._version_minor
-
-    @property
-    def version_patch(self):
-        return self._version_patch
-
-    @property
     def headless(self):
         return False
 
@@ -89,12 +77,10 @@ class CutterAPI(DisassemblerAPI):
 
     @staticmethod
     def execute_ui(function):
-
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
             ff = functools.partial(function, *args, **kwargs)
-            ff()
-
+            qt_mainthread.execute_fast(ff)
         return wrapper
 
     #--------------------------------------------------------------------------
@@ -107,19 +93,14 @@ class CutterAPI(DisassemblerAPI):
                 self._core = core
 
             def hook(self):
-                print('Hooked rename')
-                QtCore.QObject.connect(self._core,
-                        QtCore.SIGNAL('functionRenamed(const QString, const QString)'),
-                        self.update)
+                #self._core.functionRenamed.connect(self.update)
+                print("TODO/CUTTER: Hook rename")
 
             def unhook(self):
-                print('UnHooked rename')
-                QtCore.QObject.disconnect(self._core,
-                        QtCore.SIGNAL('functionRenamed(const QString, const QString)'),
-                        self.update)
+                #self._core.functionRenamed.disconnect(self.update)
+                print("TODO/CUTTER: Unhook rename")
 
             def update(self, old_name, new_name):
-                # TODO Wtf this is not triggered?
                 print('Received update event!', old_name, new_name)
 
         return RenameHooks(self._core)
@@ -128,58 +109,47 @@ class CutterAPI(DisassemblerAPI):
         return self._core.getOffset()
 
     def get_function_at(self, address):
-        # TODO Use Cutter API
+        # TODO/CUTTER: Use Cutter API
         return cutter.cmdj('afij @ ' + str(address))[0]
 
-    @execute_read.__func__
     def get_database_directory(self):
-        # TODO Use Cutter API
+        # TODO/CUTTER: Use Cutter API
         return cutter.cmdj('ij')['core']['file']
 
     def get_disassembler_user_directory(self):
-        # TODO Not implemented
-        return None
+        if sys.platform == "linux" or sys.platform == "linux2":
+            return os.path.expanduser("~/.local/share/RadareOrg/Cutter")
+        elif sys.platform == "darwin":
+            raise RuntimeError("TODO OSX")
+        elif sys.platform == "win32":
+            return os.path.join(os.getenv("APPDATA"), "RadareOrg", "Cutter")
+        raise RuntimeError("Unknown operating system")
 
-    #@not_mainthread
-    # TODO Reenable not_mainthread
     def get_function_addresses(self):
-        # TODO Use Cutter cache/API
+        # TODO/CUTTER: Use Cutter API
         return [x['offset'] for x in cutter.cmdj('aflj')]
 
-    #@not_mainthread
-    # TODO Reenable not_mainthread
     def get_function_name_at(self, address):
-        # TODO Use Cutter API
+        # TODO/CUTTER: Use Cutter API
         return self.get_function_at(address)['name']
 
-    @execute_read.__func__
     def get_function_raw_name_at(self, address):
         return self.get_function_at(address)['name']
 
-    #@not_mainthread
-    # TODO Reenable not_mainthread
     def get_imagebase(self):
-        # TODO Use Cutter API
+        # TODO/CUTTER: Use Cutter API
         return cutter.cmdj('ij')['bin']['baddr']
 
-    #@not_mainthread
-    # TODO Reenable not_mainthread
     def get_root_filename(self):
-        # TODO Use Cutter API
+        # TODO/CUTTER: Use Cutter API
         return os.path.basename(cutter.cmdj('ij')['core']['file'])
 
     def navigate(self, address):
         return self._core.seek(address)
 
-    @execute_write.__func__
     def set_function_name_at(self, function_address, new_name):
         old_name = self.get_function_raw_name_at(function_address)
         self._core.renameFunction(old_name, new_name)
-        # TODO Fix refresh :)
-
-    @staticmethod
-    def get_color(red, green, blue):
-        return QtGui.QColor(red, green, blue)
 
     #--------------------------------------------------------------------------
     # UI API Shims
@@ -228,16 +198,17 @@ class DockableWindow(DockableShim):
         )
 
     def show(self):
-        # show the widget
         self._dockable.show()
         self._dockable.raise_()
 
     def setmain(self, main):
+
         #
         # NOTE HACK:
         #   this is a little dirty, but it's needed because it's not as
         #   easy as get_qt_main_window() to get the main dock in Cutter
         #
+
         self._main = main
         # self._widget.setParent(main)
 
