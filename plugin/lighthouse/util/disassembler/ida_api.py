@@ -87,18 +87,6 @@ class IDAAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
 
     @property
-    def version_major(self):
-        return self._version_major
-
-    @property
-    def version_minor(self):
-        return self._version_minor
-
-    @property
-    def version_patch(self):
-        return self._version_patch
-
-    @property
     def headless(self):
         return False
 
