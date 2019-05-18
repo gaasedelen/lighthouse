@@ -151,6 +151,9 @@ class CutterAPI(DisassemblerAPI):
         old_name = self.get_function_raw_name_at(function_address)
         self._core.renameFunction(old_name, new_name)
 
+    def message(self, message):
+        cutter.message(message)
+
     #--------------------------------------------------------------------------
     # UI API Shims
     #--------------------------------------------------------------------------
