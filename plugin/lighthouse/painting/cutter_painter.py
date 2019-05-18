@@ -51,14 +51,12 @@ class CutterPainter(DatabasePainter):
 
     def _clear_nodes(self, nodes_metadata):
         for node_metadata in nodes_metadata:
-            # TODO Connect BBHighlighter::clear to GraphView refresh
-            # Or trigger graph refresh from here
             disassembler._core.getBBHighlighter().clear(node_metadata.address)
             self._painted_nodes.discard(node_metadata.address)
         self._action_complete.set()
 
     def _refresh_ui(self):
-        pass
+        cutter.refresh() # TODO/CUTTER: Need a graph specific refresh...
 
     def _cancel_action(self, job):
         pass
