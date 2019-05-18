@@ -899,14 +899,6 @@ class FunctionMetadata(object):
         complexity calculation. Not doing so will radically throw off the
         cyclomatic complexity score.
         """
-
-        # Cutter already provides this information, so just fetch it
-        if disassembler.NAME == "CUTTER":
-            try:
-                return int(cutter.cmd('afCc @ ' + str(self.address)))
-            except ValueError:
-                pass
-
         confirmed_nodes = set()
         confirmed_edges = {}
 
