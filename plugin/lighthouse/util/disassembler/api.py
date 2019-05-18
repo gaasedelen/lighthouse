@@ -174,6 +174,13 @@ class DisassemblerAPI(object):
         """
         pass
 
+    @abc.abstractmethod
+    def message(self, function_address, new_name):
+        """
+        Print a message to the disassembler console.
+        """
+        pass
+
     #--------------------------------------------------------------------------
     # UI API Shims
     #--------------------------------------------------------------------------

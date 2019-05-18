@@ -273,6 +273,9 @@ class BinjaAPI(DisassemblerAPI):
 
         self.bv.write(function_address, self.bv.read(function_address, 1))
 
+    def message(self, message):
+        print(message)
+
     #--------------------------------------------------------------------------
     # UI API Shims
     #--------------------------------------------------------------------------

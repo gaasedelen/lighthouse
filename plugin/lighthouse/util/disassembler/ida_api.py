@@ -148,6 +148,9 @@ class IDAAPI(DisassemblerAPI):
     def set_function_name_at(self, function_address, new_name):
         idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
 
+    def message(self, message):
+        print(message)
+
     #--------------------------------------------------------------------------
     # UI API Shims
     #--------------------------------------------------------------------------
