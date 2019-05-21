@@ -582,9 +582,9 @@ class CoverageDirector(object):
         # presumably executed instructions
         #
 
-        block_instructions = []
+        block_instructions = set([])
         for address in basic_blocks:
-            block_instructions.extend(list(self.metadata.nodes[address].instructions))
+            block_instructions |= set(self.metadata.nodes[address].instructions)
 
         # DONE
         logger.debug("Optimized as basic block trace...")
