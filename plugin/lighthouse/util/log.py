@@ -2,11 +2,7 @@ import os
 import sys
 import logging
 
-import idaapi
-
-#
-# shamelessly ripped from Solidarity
-#
+from .disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # Log / Print helpers
@@ -14,15 +10,15 @@ import idaapi
 
 def lmsg(message):
     """
-    Print a message to the IDA output window, prefixed with [Lighthouse]
+    Print a message to the disassembler output window, prefixed with [Lighthouse]
     """
 
     # prefix the message
     prefix_message = "[Lighthouse] %s" % message
 
-    # only print to IDA if the output window is alive
-    if idaapi.is_msg_inited():
-        print prefix_message
+    # only print to disassembler if its output window is alive
+    if disassembler.is_msg_inited():
+        disassembler.message(prefix_message)
     else:
         logger.info(message)
 
@@ -30,7 +26,11 @@ def get_log_dir():
     """
     Return the Lighthouse log directory.
     """
-    return os.path.join(idaapi.get_user_idadir(), "lighthouse_logs")
+    log_directory = os.path.join(
+        disassembler.get_disassembler_user_directory(),
+        "lighthouse_logs"
+    )
+    return log_directory
 
 def logging_started():
     """
@@ -54,7 +54,8 @@ class LoggerProxy(object):
     def write(self, buf):
         for line in buf.rstrip().splitlines():
             self._logger.log(self._log_level, line.rstrip())
-        self._stream.write(buf)
+        if self._stream:
+            self._stream.write(buf)
 
     def flush(self):
         pass
@@ -79,8 +80,8 @@ def cleanup_log_directory(log_directory):
         if os.path.isfile(filepath):
             filetimes[os.path.getmtime(filepath)] = filepath
 
-    # get the filetimes and check if there's enough enough to warrant cleanup
-    times = filetimes.keys()
+    # get the filetimes and check if there's enough to warrant cleanup
+    times = list(filetimes.keys())
     if len(times) < MAX_LOGS:
         return
 
@@ -101,6 +102,18 @@ def cleanup_log_directory(log_directory):
 def start_logging():
     global logger
 
+    # create the Lighthouse logger
+    logger = logging.getLogger("Lighthouse")
+
+    #
+    # only enable logging if the LIGHTHOUSE_LOGGING environment variable is
+    # present. we simply return a stub logger to sinkhole messages.
+    #
+
+    if os.getenv("LIGHTHOUSE_LOGGING") == None:
+        logger.disabled = True
+        return logger
+
     # create a directory for lighthouse logs if it does not exist
     log_dir = get_log_dir()
     if not os.path.exists(log_dir):
@@ -112,13 +125,10 @@ def start_logging():
     # config the logger
     logging.basicConfig(
         filename=log_path,
-        format='%(asctime)s | %(name)20s | %(levelname)7s: %(message)s',
+        format='%(asctime)s | %(name)28s | %(levelname)7s: %(message)s',
         datefmt='%m-%d-%Y %H:%M:%S',
         level=logging.DEBUG
     )
-
-    # create the Lighthouse logger
-    logger = logging.getLogger("Lighthouse")
 
     # proxy STDOUT/STDERR to the log files too
     stdout_logger = logging.getLogger('Lighthouse.STDOUT')

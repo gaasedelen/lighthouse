@@ -4,9 +4,9 @@ import cProfile
 # Debug
 #------------------------------------------------------------------------------
 #
-#    This file contains random snippets of code used while developing and
-#    debugging parts of lighthouse. I don't expect any of this code to be
-#    active or in use for major releases.
+#    This file contains random snippets of code that I frequently use while
+#    developing and debugging parts of lighthouse. I don't expect any of this
+#    code to be active or in use for major releases.
 #
 
 #------------------------------------------------------------------------------
@@ -29,12 +29,8 @@ def profile(func):
     return wrap
 
 #------------------------------------------------------------------------------
-# Line Profiler
+# Function Line Profiling
 #------------------------------------------------------------------------------
-
-#
-# Function Profiling
-#
 
 # from: https://gist.github.com/sibelius/3920b3eb5adab482b105
 try:
@@ -56,20 +52,20 @@ except ImportError:
             return func(*args, **kwargs)
         return nothing
 
-#
-# Module Profiling
-#
+#------------------------------------------------------------------------------
+# Module Line Profiling
+#------------------------------------------------------------------------------
 
 if False:
     from line_profiler import LineProfiler
     lpr = LineProfiler()
 
     # change this to the target file / module to profile
-    import lighthouse.metadata as metadata_module
-    lpr.add_module(metadata_module)
+    import lighthouse.metadata as metadata
+    lpr.add_module(metadata)
 
     # put this code somewhere to dump results:
     #global lpr
     #lpr.enable_by_count()
     #lpr.disable_by_count()
-    #lpr.print_stats()
+    #lpr.print_stats(stripzeros=True)

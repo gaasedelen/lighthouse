@@ -313,7 +313,7 @@ class CompositionParser(object):
         COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[%s])' % ''.join(coverage_tokens)
 
         #
-        # if there were any coverage tokens defined, then we definitily need
+        # if there were any coverage tokens defined, then we definitely need
         # the constructed COVERAGE_TOKEN regex in our grammar list.
         #
 

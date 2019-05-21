@@ -1,14 +1,19 @@
-from lighthouse.util import *
+
+from lighthouse.util.qt import *
+from lighthouse.util.disassembler import disassembler
+
+#
+# TODO/FUTURE: this file is a huge mess, and will probably be refactored
+# whenever I add external theme customization/controls (v0.9?)
+#
 
 #------------------------------------------------------------------------------
-# IDA Plugin Palette
+# Plugin Color Palette
 #------------------------------------------------------------------------------
 
 class LighthousePalette(object):
     """
     Color Palette for the Lighthouse plugin.
-
-    TODO: external theme customization, controls
     """
 
     def __init__(self):
@@ -20,8 +25,8 @@ class LighthousePalette(object):
         self._initialized = False
 
         # the active theme name
-        self._qt_theme  = "Light"
-        self._ida_theme = "Light"
+        self._qt_theme  = "Dark"
+        self._disassembly_theme = "Dark"
 
         # the list of available themes
         self._themes = \
@@ -35,44 +40,59 @@ class LighthousePalette(object):
         #
 
         self._selection     = [QtGui.QColor(100, 0, 130),  QtGui.QColor(226, 143, 0)]
+        self._coverage_none = [QtGui.QColor(30, 30, 30),   QtGui.QColor(30, 30, 30)]
         self._coverage_bad  = [QtGui.QColor(221, 0, 0),    QtGui.QColor(207, 31, 0)]
+        self._coverage_okay = [QtGui.QColor("#bf7ae7"),    QtGui.QColor(207, 31, 0)]
         self._coverage_good = [QtGui.QColor(51, 153, 255), QtGui.QColor(75, 209, 42)]
 
         #
         # IDA Views / HexRays
         #
 
-        self._ida_coverage = [0x990000, 0xC8E696] # NOTE: IDA uses BBGGRR
+        self._coverage_paint = [0x990000, 0xFFE2A8] # NOTE: IDA uses BBGGRR
 
         #
         # Composing Shell
         #
 
-        self._composer_bg       = [QtGui.QColor(30, 30, 30),    QtGui.QColor(30, 30, 30)]
-        self._composer_fg       = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+        self._overview_bg = [QtGui.QColor(20, 20, 20),    QtGui.QColor(20, 20, 20)]
+        self._composer_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
         self._valid_text        = [0x80F0FF, 0x0000FF]
         self._invalid_text      = [0xF02070, 0xFF0000]
         self._invalid_highlight = [0x990000, 0xFF0000]
+
+        self._shell_hint_bg = [QtGui.QColor(45, 45, 45), QtGui.QColor(45, 45, 45)]
+        self._shell_hint_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
+        self._combobox_bg = [QtGui.QColor(45, 45, 45), QtGui.QColor(45, 45, 45)]
+        self._combobox_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
+        self._combobox_selection_bg = [QtGui.QColor(51, 153, 255), QtGui.QColor(51, 153, 255)]
+        self._combobox_selection_fg = [QtGui.QColor(255, 255, 255), QtGui.QColor(255, 255, 255)]
+
+        self._border = [QtGui.QColor(100, 100, 100), QtGui.QColor(100, 100, 100)]
+        self._focus = [QtGui.QColor(160, 160, 160), QtGui.QColor(160, 160, 160)]
 
         #
         # Composition Grammar
         #
 
-        self._logic_token    = [0xF02070, 0xFF0000]
-        self._comma_token    = [0x00FF00, 0x0000FF]
-        self._paren_token    = [0x40FF40, 0x0000FF]
-        self._coverage_token = [0x80F0FF, 0x000000]
+        self._logic_token    = [QtGui.QColor("#F02070"), QtGui.QColor("#FF0000")]
+        self._comma_token    = [QtGui.QColor("#00FF00"), QtGui.QColor("#0000FF")]
+        self._paren_token    = [QtGui.QColor("#40FF40"), QtGui.QColor("#0000FF")]
+        self._coverage_token = [QtGui.QColor("#80F0FF"), QtGui.QColor("#000000")]
 
     #--------------------------------------------------------------------------
     # Theme Management
     #--------------------------------------------------------------------------
 
     @property
-    def ida_theme(self):
+    def disassembly_theme(self):
         """
         Return the active IDA theme number.
         """
-        return self._themes[self._ida_theme]
+        return self._themes[self._disassembly_theme]
 
     @property
     def qt_theme(self):
@@ -89,12 +109,12 @@ class LighthousePalette(object):
         to select colors that will hopefully keep things most readable.
         """
 
-        # TODO: temporary until I have a better mechanism to do one-time init
+        # TODO/FUTURE: temporary until I have a cleaner way to do one-time init
         if self._initialized:
             return
 
         #
-        # NOTE/TODO:
+        # TODO/THEME:
         #
         #   the dark table (Qt) theme is way better than the light theme
         #   right now, so we're just going to force that on for everyone
@@ -102,12 +122,12 @@ class LighthousePalette(object):
         #
 
         self._qt_theme  = "Dark" # self._qt_theme_hint()
-        self._ida_theme = self._ida_theme_hint()
+        self._disassembly_theme = self._disassembly_theme_hint()
 
         # mark the palette as initialized
         self._initialized = True
 
-    def _ida_theme_hint(self):
+    def _disassembly_theme_hint(self):
         """
         Binary hint of the IDA color theme.
 
@@ -122,7 +142,7 @@ class LighthousePalette(object):
         # background color of the user's IDA text based windows
         #
 
-        bg_color = get_ida_bg_color()
+        bg_color = disassembler.get_disassembly_background_color()
 
         # return 'Dark' or 'Light'
         return test_color_brightness(bg_color)
@@ -160,7 +180,7 @@ class LighthousePalette(object):
         #   lmao, don't ask me why they forgot about this attribute from 5.0 - 5.6
         #
 
-        if using_pyqt5:
+        if USING_PYQT5:
             test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
         else:
             test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)
@@ -187,8 +207,16 @@ class LighthousePalette(object):
         return self._selection[self.qt_theme]
 
     @property
+    def coverage_none(self):
+        return self._coverage_none[self.qt_theme]
+
+    @property
     def coverage_bad(self):
         return self._coverage_bad[self.qt_theme]
+
+    @property
+    def coverage_okay(self):
+        return self._coverage_okay[self.qt_theme]
 
     @property
     def coverage_good(self):
@@ -199,16 +227,16 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
 
     @property
-    def ida_coverage(self):
-        return self._ida_coverage[self.ida_theme]
+    def coverage_paint(self):
+        return self._coverage_paint[self.disassembly_theme]
 
     #--------------------------------------------------------------------------
     # Composing Shell
     #--------------------------------------------------------------------------
 
     @property
-    def composer_bg(self):
-        return self._composer_bg[self.qt_theme]
+    def overview_bg(self):
+        return self._overview_bg[self.qt_theme]
 
     @property
     def composer_fg(self):
@@ -225,6 +253,42 @@ class LighthousePalette(object):
     @property
     def invalid_highlight(self):
         return self._invalid_highlight[self.qt_theme]
+
+    @property
+    def shell_hint_bg(self):
+        return self._shell_hint_bg[self.qt_theme]
+
+    @property
+    def shell_hint_fg(self):
+        return self._shell_hint_fg[self.qt_theme]
+
+    #--------------------------------------------------------------------------
+    # Coverage Combobox
+    #--------------------------------------------------------------------------
+
+    @property
+    def combobox_bg(self):
+        return self._combobox_bg[self.qt_theme]
+
+    @property
+    def combobox_fg(self):
+        return self._combobox_fg[self.qt_theme]
+
+    @property
+    def combobox_selection_bg(self):
+        return self._combobox_selection_bg[self.qt_theme]
+
+    @property
+    def combobox_selection_fg(self):
+        return self._combobox_selection_fg[self.qt_theme]
+
+    @property
+    def border(self):
+        return self._border[self.qt_theme]
+
+    @property
+    def focus(self):
+        return self._focus[self.qt_theme]
 
     #--------------------------------------------------------------------------
     # Composition Grammar
@@ -276,6 +340,9 @@ class LighthousePalette(object):
 # Palette Util
 #------------------------------------------------------------------------------
 
+def to_rgb(color):
+    return ((color >> 16 & 0xFF), (color >> 8 & 0xFF), (color & 0xFF))
+
 def test_color_brightness(color):
     """
     Test the brightness of a color.
@@ -289,7 +356,7 @@ def compute_color_on_gradiant(percent, color1, color2):
     """
     Compute the color specified by a percent between two colors.
 
-    TODO: This is silly, heavy, and can be refactored.
+    TODO/PERF: This is silly, heavy, and can be refactored.
     """
 
     # dump the rgb values from QColor objects
