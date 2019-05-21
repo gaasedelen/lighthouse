@@ -29,6 +29,14 @@ class ModOffData(CoverageFile):
         modules = collections.defaultdict(lambda: collections.defaultdict(int))
         with open(self.filepath) as f:
             for line in f:
+                trimmed = line.trim()
+
+                # skip empty lines
+                if not len(trimmed): continue
+
+                # comments can start with ';' or '#'
+                if trimmed[0] in [';', '#']: continue
+
                 module_name, bb_offset = line.rsplit("+", 1)
                 modules[module_name][int(bb_offset, 16)] += 1
         self.modules = modules
