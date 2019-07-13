@@ -29,7 +29,7 @@ class ModOffData(CoverageFile):
         modules = collections.defaultdict(lambda: collections.defaultdict(int))
         with open(self.filepath) as f:
             for line in f:
-                trimmed = line.trim()
+                trimmed = line.strip()
 
                 # skip empty lines
                 if not len(trimmed): continue
