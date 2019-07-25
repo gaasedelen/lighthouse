@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <unordered_map>
 
-#include "pin.H"
+#include "pin.h"
 #include "TraceFile.h"
 #include "ImageManager.h"
 
@@ -25,22 +25,22 @@ using unordered_map = std::tr1::unordered_map<K, V>;
 }
 
 // Tool's arguments.
-static KNOB<string> KnobModuleWhitelist(KNOB_MODE_APPEND, "pintool", "w", "",
+static KNOB<std::string> KnobModuleWhitelist(KNOB_MODE_APPEND, "pintool", "w", "",
     "Add a module to the white list. If none is specified, everymodule is white-listed. Example: libTIFF.dylib");
 
-static KNOB<string> KnobLogFile(KNOB_MODE_WRITEONCE, "pintool", "l", "trace.log",
+static KNOB<std::string> KnobLogFile(KNOB_MODE_WRITEONCE, "pintool", "l", "trace.log",
     "Name of the output file. If none is specified, trace.log is used.");
 
 // Return the file/directory name of a path.
-static string base_name(const string& path)
+static std::string base_name(const std::string& path)
 {
 #if defined(TARGET_WINDOWS)
 #define PATH_SEPARATOR "\\"
 #else
 #define PATH_SEPARATOR "/"
 #endif
-    string::size_type idx = path.rfind(PATH_SEPARATOR);
-    string name = (idx == string::npos) ? path : path.substr(idx + 1);
+    std::string::size_type idx = path.rfind(PATH_SEPARATOR);
+    std::string name = (idx == std::string::npos) ? path : path.substr(idx + 1);
     return name;
 }
 
@@ -129,7 +129,7 @@ static VOID OnThreadFini(THREADID tid, const CONTEXT* ctxt, INT32 c, VOID* v)
 static VOID OnImageLoad(IMG img, VOID* v)
 {
     auto& context = *reinterpret_cast<ToolContext*>(v);
-    string img_name = base_name(IMG_Name(img));
+    std::string img_name = base_name(IMG_Name(img));
 
     ADDRINT low = IMG_LowAddress(img);
     ADDRINT high = IMG_HighAddress(img);
@@ -251,14 +251,14 @@ static VOID OnFini(INT32 code, VOID* v)
 
 int main(int argc, char* argv[])
 {
-    cout << "CodeCoverage tool by Agustin Gianni (agustingianni@gmail.com)" << endl;
+    std::cout << "CodeCoverage tool by Agustin Gianni (agustingianni@gmail.com)" << std::endl;
 
     // Initialize symbol processing
     PIN_InitSymbols();
 
     // Initialize PIN.
     if (PIN_Init(argc, argv)) {
-        cerr << "Error initializing PIN, PIN_Init failed!" << endl;
+        std::cerr << "Error initializing PIN, PIN_Init failed!" << std::endl;
         return -1;
     }
 
@@ -268,7 +268,7 @@ int main(int argc, char* argv[])
     // Create a an image manager that keeps track of the loaded/unloaded images.
     context->m_images = new ImageManager();
     for (unsigned i = 0; i < KnobModuleWhitelist.NumberOfValues(); ++i) {
-        cout << "White-listing image: " << KnobModuleWhitelist.Value(i) << endl;
+        std::cout << "White-listing image: " << KnobModuleWhitelist.Value(i) << std::endl;
         context->m_images->addWhiteListedImage(KnobModuleWhitelist.Value(i));
 
         // We will only enable tracing when any of the whitelisted images gets loaded.
@@ -276,7 +276,7 @@ int main(int argc, char* argv[])
     }
 
     // Create a trace file.
-    cout << "Logging code coverage information to: " << KnobLogFile.ValueString() << endl;
+    std::cout << "Logging code coverage information to: " << KnobLogFile.ValueString() << std::endl;
     context->m_trace = new TraceFile(KnobLogFile.ValueString());
 
     // Handlers for thread creation and destruction.
