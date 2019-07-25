@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <unordered_map>
 
-#include "pin.h"
+#include "pin.H"
 #include "TraceFile.h"
 #include "ImageManager.h"
 
