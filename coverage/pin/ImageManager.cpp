@@ -1,5 +1,5 @@
 #include "ImageManager.h"
-#include "pin.h"
+#include "pin.H"
 
 ImageManager::ImageManager()
 {
