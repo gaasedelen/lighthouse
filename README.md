@@ -31,6 +31,8 @@ Lighthouse is a cross-platform (Windows, macOS, Linux) python plugin, supporting
     - On macOS, the folder is at `/Applications/IDA\ Pro\ 6.8/idaq.app/Contents/MacOS/plugins`
     - On Linux, the folder may be at `/opt/IDA/plugins/`
 
+(If you need to locate the plugin directory for your setup, just type `idaapi.idadir(idaapi.PLG_SUBDIR)` in IDAPython console)
+
 It has been primarily developed and tested on Windows, so that is where we expect the best experience.
 
 # Binary Ninja Installation (Experimental)
