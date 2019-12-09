@@ -232,7 +232,7 @@ def create_header(mods):
 # take the recv'd basic blocks, finish the header, and append the coverage
 def create_coverage(data):
     bb_header = 'BB Table: %d bbs\n' % len(data)
-    return bb_header + ''.join(data)
+    return bb_header.encode() + b''.join(data)
 
 def on_message(msg, data):
     #print(msg)
@@ -257,7 +257,7 @@ def save_coverage():
     body = create_coverage(bbs)
 
     with open(outfile, 'wb') as h:
-        h.write(header)
+        h.write(header.encode())
         h.write(body)
 
 def main():
