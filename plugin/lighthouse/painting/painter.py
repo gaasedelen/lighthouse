@@ -1,6 +1,5 @@
 import abc
 import time
-import Queue
 import logging
 import threading
 
@@ -53,7 +52,7 @@ class DatabasePainter(object):
         #
 
         self._action_complete = threading.Event()
-        self._msg_queue = Queue.Queue()
+        self._msg_queue = queue.Queue()
         self._end_threads = False
 
         #
@@ -227,15 +226,15 @@ class DatabasePainter(object):
         stale_instructions = painted - function_coverage.instructions
 
         # compute the painted nodes within this function
-        painted = self._painted_nodes & function_metadata.nodes.viewkeys()
+        painted = self._painted_nodes & viewkeys(function_metadata.nodes)
 
         # compute the painted nodes that will not get painted over
-        stale_nodes_ea = painted - function_coverage.nodes.viewkeys()
+        stale_nodes_ea = painted - viewkeys(function_coverage.nodes)
         stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
 
         # active instructions
         instructions = function_coverage.instructions
-        nodes = function_coverage.nodes.itervalues()
+        nodes = itervalues(function_coverage.nodes)
 
         #
         # ~ painting ~
@@ -266,7 +265,7 @@ class DatabasePainter(object):
         """
         function_metadata = self._director.metadata.functions[address]
         instructions = function_metadata.instructions
-        nodes = function_metadata.nodes.itervalues()
+        nodes = itervalues(function_metadata.nodes)
 
         # clear instructions
         if not self._async_action(self._clear_instructions, instructions):
@@ -299,7 +298,7 @@ class DatabasePainter(object):
         stale_inst = self._painted_instructions - db_coverage.coverage
 
         # compute the painted nodes that will not get painted over
-        stale_nodes_ea = self._painted_nodes - db_coverage.nodes.viewkeys()
+        stale_nodes_ea = self._painted_nodes - viewkeys(db_coverage.nodes)
         stale_nodes = [db_metadata.nodes[ea] for ea in stale_nodes_ea]
 
         # clear old instruction paint
@@ -315,7 +314,7 @@ class DatabasePainter(object):
             return False # a repaint was requested
 
         # paint new nodes
-        if not self._async_action(self._paint_nodes, db_coverage.nodes.itervalues()):
+        if not self._async_action(self._paint_nodes, itervalues(db_coverage.nodes)):
             return False # a repaint was requested
 
         #------------------------------------------------------------------

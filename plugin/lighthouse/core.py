@@ -2,17 +2,17 @@ import os
 import abc
 import logging
 
-from lighthouse.ui import CoverageOverview
+from lighthouse.ui import CoverageOverview, CoverageXref
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
-from lighthouse.parsers import DrcovData
 from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
 from lighthouse.coverage import DatabaseCoverage
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
+from lighthouse.exceptions import *
 
 logger = logging.getLogger("Lighthouse.Core")
 
@@ -20,9 +20,9 @@ logger = logging.getLogger("Lighthouse.Core")
 # Plugin Metadata
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.8.3"
+PLUGIN_VERSION = "0.8.4-DEV"
 AUTHORS        = "Markus Gaasedelen"
-DATE           = "2018"
+DATE           = "2019"
 
 #------------------------------------------------------------------------------
 # Lighthouse Plugin Core
@@ -51,11 +51,14 @@ class Lighthouse(object):
         Initialize the core components of the plugin.
         """
 
-        # the plugin's color palette
+        # the database metadata cache
+        self.metadata = DatabaseMetadata()
+
+        # the plugin color palette
         self.palette = LighthousePalette()
 
         # the coverage engine
-        self.director = CoverageDirector(self.palette)
+        self.director = CoverageDirector(self.metadata, self.palette)
 
         # the coverage painter
         self.painter = CoveragePainter(self.director, self.palette)
@@ -102,6 +105,7 @@ class Lighthouse(object):
         """
         self.painter.terminate()
         self.director.terminate()
+        self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # UI Integration (Internal)
@@ -113,6 +117,7 @@ class Lighthouse(object):
         """
         self._install_load_file()
         self._install_load_batch()
+        self._install_open_coverage_xref()
         self._install_open_coverage_overview()
 
     def _uninstall_ui(self):
@@ -120,6 +125,7 @@ class Lighthouse(object):
         Cleanup & remove all plugin UI integrations.
         """
         self._uninstall_open_coverage_overview()
+        self._uninstall_open_coverage_xref()
         self._uninstall_load_batch()
         self._uninstall_load_file()
 
@@ -134,6 +140,13 @@ class Lighthouse(object):
     def _install_load_batch(self):
         """
         Install the 'File->Load->Code coverage batch...' menu entry.
+        """
+        pass
+
+    @abc.abstractmethod
+    def _install_open_coverage_xref(self):
+        """
+        Install the right click 'Coverage Xref' context menu entry.
         """
         pass
 
@@ -155,6 +168,13 @@ class Lighthouse(object):
     def _uninstall_load_batch(self):
         """
         Remove the 'File->Load file->Code coverage batch...' menu entry.
+        """
+        pass
+
+    @abc.abstractmethod
+    def _uninstall_open_coverage_xref(self):
+        """
+        Remove the right click 'Coverage Xref' context menu entry.
         """
         pass
 
@@ -184,6 +204,39 @@ class Lighthouse(object):
         self._ui_coverage_overview = CoverageOverview(self)
         self._ui_coverage_overview.show()
 
+    def open_coverage_xref(self, address):
+        """
+        Open the 'Coverage Xref' dialog for a given address.
+        """
+
+        # show the coverage xref dialog
+        dialog = CoverageXref(self.director, address)
+        if not dialog.exec_():
+            return
+
+        # activate the user selected xref (if one was double clicked)
+        if dialog.selected_coverage:
+            self.director.select_coverage(dialog.selected_coverage)
+            return
+
+        # load a coverage file from disk
+        disassembler.show_wait_box("Loading coverage from disk...")
+        created_coverage, errors = self.director.load_coverage_files(
+            [dialog.selected_filepath],
+            disassembler.replace_wait_box
+        )
+
+        # TODO rough...
+        if not created_coverage:
+            lmsg("No coverage files could be loaded...")
+            disassembler.hide_wait_box()
+            warn_errors(errors)
+            return
+
+        disassembler.replace_wait_box("Selecting coverage...")
+        self.director.select_coverage(created_coverage[0].name)
+        disassembler.hide_wait_box()
+
     def interactive_load_batch(self):
         """
         Perform the user-interactive loading of a coverage batch.
@@ -195,30 +248,21 @@ class Lighthouse(object):
         # background while the user is selecting which coverage files to load
         #
 
-        future = self.director.refresh_metadata(
-            progress_callback=metadata_progress
-        )
+        future = self.metadata.refresh_async(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
         # can select the coverage files they would like to load from disk
         #
 
-        filenames = self._select_coverage_files()
-
-        #
-        # load the selected coverage files from disk (if any), returning a list
-        # of loaded DrcovData objects (which contain coverage data)
-        #
-
-        drcov_list = load_coverage_files(filenames)
-        if not drcov_list:
+        filepaths = self._select_coverage_files()
+        if not filepaths:
             self.director.metadata.abort_refresh()
             return
 
         # prompt the user to name the new coverage aggregate
         default_name = "BATCH_%s" % self.director.peek_shorthand()
-        ok, coverage_name = prompt_string(
+        ok, batch_name = prompt_string(
             "Batch Name:",
             "Please enter a name for this coverage",
             default_name
@@ -229,8 +273,8 @@ class Lighthouse(object):
         # abort the loading process...
         #
 
-        if not (ok and coverage_name):
-            lmsg("User failed to enter a name for the loaded batch...")
+        if not (ok and batch_name):
+            lmsg("User failed to enter a name for the batch coverage...")
             self.director.metadata.abort_refresh()
             return
 
@@ -250,23 +294,27 @@ class Lighthouse(object):
         # to normalize and condense (aggregate) all the coverage data
         #
 
-        new_coverage, errors = self.director.aggregate_drcov_batch(drcov_list)
+        disassembler.replace_wait_box("Loading coverage from disk...")
+        batch_coverage, errors = self.director.load_coverage_batch(
+            filepaths,
+            batch_name,
+            disassembler.replace_wait_box
+        )
 
-        #
-        # finally, we can inject the aggregated coverage data into the
-        # director under the user specified batch name
-        #
-
-        disassembler.replace_wait_box("Mapping coverage...")
-        self.director.create_coverage(coverage_name, new_coverage.data)
+        # if batch creation fails...
+        if not batch_coverage:
+            lmsg("Creation of batch '%s' failed..." % batch_name)
+            disassembler.hide_wait_box()
+            warn_errors(errors)
+            return
 
         # select the newly created batch coverage
         disassembler.replace_wait_box("Selecting coverage...")
-        self.director.select_coverage(coverage_name)
+        self.director.select_coverage(batch_name)
 
         # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()
-        lmsg("Successfully loaded batch %s..." % coverage_name)
+        lmsg("Successfully loaded batch %s..." % batch_name)
         self.open_coverage_overview()
 
         # finally, emit any notable issues that occurred during load
@@ -283,9 +331,7 @@ class Lighthouse(object):
         # background while the user is selecting which coverage files to load
         #
 
-        future = self.director.refresh_metadata(
-            progress_callback=metadata_progress
-        )
+        future = self.metadata.refresh_async(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
@@ -293,16 +339,7 @@ class Lighthouse(object):
         #
 
         filenames = self._select_coverage_files()
-
-        #
-        # load the selected coverage files from disk (if any), returning a list
-        # of loaded DrcovData objects (which contain coverage data)
-        #
-
-        disassembler.show_wait_box("Loading coverage from disk...")
-        drcov_list = load_coverage_files(filenames)
-        if not drcov_list:
-            disassembler.hide_wait_box()
+        if not filenames:
             self.director.metadata.abort_refresh()
             return
 
@@ -314,11 +351,16 @@ class Lighthouse(object):
         # a progress dialog depicts the work remaining in the refresh
         #
 
-        disassembler.replace_wait_box("Building database metadata...")
+        disassembler.show_wait_box("Building database metadata...")
         await_future(future)
 
-        # insert the loaded drcov data objects into the director
-        created_coverage, errors = self.director.create_coverage_from_drcov_list(drcov_list)
+        #
+        # now that the database metadata is available, we can use the director
+        # to load and normalize the selected coverage files
+        #
+
+        disassembler.replace_wait_box("Loading coverage from disk...")
+        created_coverage, errors = self.director.load_coverage_files(filenames, disassembler.replace_wait_box)
 
         #
         # if the director failed to map any coverage, the user probably
@@ -337,7 +379,7 @@ class Lighthouse(object):
         #
 
         disassembler.replace_wait_box("Selecting coverage...")
-        self.director.select_coverage(created_coverage[0])
+        self.director.select_coverage(created_coverage[0].name)
 
         # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()
@@ -346,10 +388,6 @@ class Lighthouse(object):
 
         # finally, emit any notable issues that occurred during load
         warn_errors(errors)
-
-    #--------------------------------------------------------------------------
-    # Internal
-    #--------------------------------------------------------------------------
 
     def _select_coverage_files(self):
         """
@@ -387,112 +425,3 @@ class Lighthouse(object):
 
         # return the captured filenames
         return filenames
-
-#------------------------------------------------------------------------------
-# Util
-#------------------------------------------------------------------------------
-
-def load_coverage_files(filenames):
-    """
-    Load multiple code coverage files from disk.
-    """
-    loaded_coverage = []
-
-    #
-    # loop through each of the given filenames and attempt to load/parse
-    # their coverage data from disk
-    #
-
-    load_failure = False
-    for filename in filenames:
-
-        # attempt to load/parse a single coverage data file from disk
-        try:
-            drcov_data = DrcovData(filename)
-
-        # catch all for parse errors / bad input / malformed files
-        except Exception as e:
-            lmsg("Failed to load coverage %s" % filename)
-            lmsg(" - Error: %s" % str(e))
-            logger.exception(" - Traceback:")
-            load_failure = True
-            continue
-
-        # save the loaded coverage data to the output list
-        loaded_coverage.append(drcov_data)
-
-    # warn if we encountered malformed files...
-    if load_failure:
-        warn_drcov_malformed()
-
-    # return all the successfully loaded coverage files
-    return loaded_coverage
-
-#------------------------------------------------------------------------------
-# Warnings
-#------------------------------------------------------------------------------
-
-def warn_errors(errors):
-    """
-    Warn the user of any encountered errors with a messagebox.
-    """
-    seen = []
-
-    for error in errors:
-        error_type = error[0]
-
-        # only emit an error once
-        if error_type in seen:
-            continue
-
-        # emit relevant error messages
-        if error_type == CoverageDirector.ERROR_COVERAGE_ABSENT:
-            warn_module_missing()
-        elif error_type == CoverageDirector.ERROR_COVERAGE_SUSPICIOUS:
-            warn_bad_mapping()
-        else:
-            raise NotImplementedError("UNKNOWN ERROR OCCURRED")
-
-        seen.append(error_type)
-
-def warn_drcov_malformed():
-    """
-    Display a warning for malformed/unreadable coverage files.
-    """
-    disassembler.warning(
-        "Failed to parse one or more of the selected coverage files!\n\n"
-        " Possible reasons:\n"
-        " - You selected a file that was *not* a coverage file.\n"
-        " - The selected coverage file is malformed or unreadable.\n\n"
-        "Please see the disassembler console for more info..."
-    )
-
-def warn_module_missing():
-    """
-    Display a warning for missing coverage data.
-    """
-    disassembler.warning(
-        "No coverage data was extracted from one of the selected files.\n\n"
-        " Possible reasons:\n"
-        " - You selected a coverage file for the wrong binary.\n"
-        " - The name of the executable file used to generate this database\n"
-        "    is different than the one you collected coverage against.\n"
-        " - Your DBI failed to collect any coverage for this binary.\n\n"
-        "Please see the disassembler console for more info..."
-    )
-
-def warn_bad_mapping():
-    """
-    Display a warning for badly mapped coverage data.
-    """
-    disassembler.warning(
-        "One or more of the loaded coverage files appears to be badly mapped.\n\n"
-        " Possible reasons:\n"
-        " - You selected a coverage file that was collected against a\n"
-        "    slightly different version of the binary.\n"
-        " - You recorded an application with very abnormal control flow.\n"
-        " - The coverage file might be malformed.\n\n"
-        "This means that any coverage displayed by Lighthouse is probably\n"
-        "wrong, and should be used at your own discretion."
-    )
-

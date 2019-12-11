@@ -145,6 +145,11 @@ class CoverageOverview(DockableWindow):
         self._shell_elements = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self._shell_elements.setStyleSheet(
         """
+        QSplitter
+        {
+            border: none;
+        }
+
         QSplitter::handle
         {
             background-color: #909090;

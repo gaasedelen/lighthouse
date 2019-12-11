@@ -86,7 +86,7 @@ class ComposingShell(QtWidgets.QWidget):
         # the composer label at the head of the shell
         self._line_label = QtWidgets.QLabel("Composer")
         self._line_label.setStyleSheet("QLabel { margin: 0 1ex 0 1ex }")
-        self._line_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter)
+        self._line_label.setAlignment(QtCore.Qt.AlignCenter)
         self._line_label.setFont(self._font)
         self._line_label.setFixedWidth(self._line_label.sizeHint().width())
 
@@ -94,11 +94,21 @@ class ComposingShell(QtWidgets.QWidget):
         self._line = ComposingLine()
 
         # configure the shell background & default text color
-        palette = self._line.palette()
-        palette.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
-        palette.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
-        palette.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
-        self._line.setPalette(palette)
+        qpal = self._line.palette()
+        #qpal.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
+        qpal.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
+        qpal.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
+        self._line.setPalette(qpal)
+
+        self._line.setStyleSheet(
+            "QPlainTextEdit {"
+            "    background-color: %s;" % self._palette.overview_bg.name() +
+            "    border: 1px solid %s;" % self._palette.border.name() +
+            "} "
+            "QPlainTextEdit:hover, QPlainTextEdit:focus {"
+            "    border: 1px solid %s;" % self._palette.focus.name() +
+            "}"
+        )
 
     def _ui_init_completer(self):
         """

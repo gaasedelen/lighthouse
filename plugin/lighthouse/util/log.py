@@ -18,7 +18,7 @@ def lmsg(message):
 
     # only print to disassembler if its output window is alive
     if disassembler.is_msg_inited():
-        print prefix_message
+        disassembler.message(prefix_message)
     else:
         logger.info(message)
 
@@ -54,7 +54,8 @@ class LoggerProxy(object):
     def write(self, buf):
         for line in buf.rstrip().splitlines():
             self._logger.log(self._log_level, line.rstrip())
-        self._stream.write(buf)
+        if self._stream:
+            self._stream.write(buf)
 
     def flush(self):
         pass
@@ -80,7 +81,7 @@ def cleanup_log_directory(log_directory):
             filetimes[os.path.getmtime(filepath)] = filepath
 
     # get the filetimes and check if there's enough to warrant cleanup
-    times = filetimes.keys()
+    times = list(filetimes.keys())
     if len(times) < MAX_LOGS:
         return
 

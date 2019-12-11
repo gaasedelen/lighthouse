@@ -1,100 +1,82 @@
 #!/usr/bin/python
-
 import os
+import re
 import sys
 import mmap
 import struct
-import re
 from ctypes import *
 
+try:
+    from lighthouse.exceptions import CoverageMissingError
+    from lighthouse.reader.coverage_file import CoverageFile
+except ImportError as e:
+    CoverageFile = object
+
 #------------------------------------------------------------------------------
-# drcov log parser
+# DynamoRIO Drcov Log Parser
 #------------------------------------------------------------------------------
 
-class DrcovData(object):
+class DrcovData(CoverageFile):
     """
     A drcov log parser.
     """
-    def __init__(self, filepath=None):
 
-        # original filepath
+    def __init__(self, filepath=None):
         self.filepath = filepath
 
         # drcov header attributes
         self.version = 0
-        self.flavor  = None
+        self.flavor = None
 
         # drcov module table
-        self.module_table_count   = 0
+        self.module_table_count = 0
         self.module_table_version = 0
-        self.modules = []
+        self.modules = {}
 
         # drcov basic block data
-        self.bb_table_count     = 0
+        self.bbs = []
+        self.bb_table_count = 0
         self.bb_table_is_binary = True
-        self.basic_blocks = []
 
-        # parse the given filepath
-        self._parse_drcov_file(filepath)
+        # parse
+        super(DrcovData, self).__init__(filepath)
 
     #--------------------------------------------------------------------------
     # Public
     #--------------------------------------------------------------------------
 
-    def get_module(self, module_name, fuzzy=True):
+    def get_offsets(self, module_name):
         """
-        Get a module by its name.
-
-        Note that this is a 'fuzzy' lookup by default.
+        Return coverage data as basic block offsets for the named module.
         """
-
-        # fuzzy module name lookup
-        if fuzzy:
-
-            # attempt lookup using case-insensitive filename
-            for module in self.modules:
-                if module_name.lower() in module.filename.lower():
-                    return module
-
-            #
-            # no hits yet... let's cleave the extension from the given module
-            # name (if present) and try again
-            #
-
-            if "." in module_name:
-                module_name = module_name.split(".")[0]
-
-            # attempt lookup using case-insensitive filename without extension
-            for module in self.modules:
-                if module_name.lower() in module.filename.lower():
-                    return module
-
-        # strict lookup
-        else:
-            for module in self.modules:
-                if module_name == module.filename:
-                    return module
-
-        # no matching module exists
-        return None
-
-    def get_blocks_by_module(self, module_name):
-        """
-        Extract coverage blocks pertaining to the named module.
-        """
-
-        # locate the coverage that matches the given module_name
-        module = self.get_module(module_name)
-
-        # if we fail to find a module that matches the given name, bail
-        if not module:
-            raise ValueError("No coverage for module '%s' in log" % module_name)
+        try:
+            module = self.modules[module_name]
+        except KeyError:
+            return []
 
         # extract module id for speed
         mod_id = module.id
 
         # loop through the coverage data and filter out data for only this module
-        coverage_blocks = [(bb.start, bb.size) for bb in self.basic_blocks if bb.mod_id == mod_id]
+        coverage_blocks = [bb.start for bb in self.bbs if bb.mod_id == mod_id]
+
+        # return the filtered coverage blocks
+        return coverage_blocks
+
+    def get_offset_blocks(self, module_name):
+        """
+        Return coverage data as basic blocks (offset, size) for the named module.
+        """
+        try:
+            module = self.modules[module_name]
+        except KeyError:
+            return []
+
+        # extract module id for speed
+        mod_id = module.id
+
+        # loop through the coverage data and filter out data for only this module
+        coverage_blocks = [(bb.start, bb.size) for bb in self.bbs if bb.mod_id == mod_id]
 
         # return the filtered coverage blocks
         return coverage_blocks
@@ -103,20 +85,14 @@ class DrcovData(object):
     # Parsing Routines - Top Level
     #--------------------------------------------------------------------------
 
-    def _parse_drcov_file(self, filepath):
+    def _parse(self):
         """
         Parse drcov coverage from the given log file.
         """
-        with open(filepath, "rb") as f:
+        with open(self.filepath, "rb") as f:
             self._parse_drcov_header(f)
             self._parse_module_table(f)
             self._parse_bb_table(f)
-
-    def _parse_drcov_data(self, drcov_data):
-        """
-        Parse drcov coverage from the given data blob.
-        """
-        pass # TODO/DRCOV
 
     #--------------------------------------------------------------------------
     # Parsing Routines - Internals
@@ -129,12 +105,12 @@ class DrcovData(object):
 
         # parse drcov version from log
         #   eg: DRCOV VERSION: 2
-        version_line = f.readline().strip()
+        version_line = f.readline().decode('utf-8').strip()
         self.version = int(version_line.split(":")[1])
 
         # parse drcov flavor from log
         #   eg: DRCOV FLAVOR: drcov
-        flavor_line = f.readline().strip()
+        flavor_line = f.readline().decode('utf-8').strip()
         self.flavor = flavor_line.split(":")[1]
 
         assert self.version == 2, "Only drcov version 2 log files supported"
@@ -163,7 +139,7 @@ class DrcovData(object):
 
         # parse module table 'header'
         #   eg: Module Table: version 2, count 11
-        header_line = f.readline().strip()
+        header_line = f.readline().decode('utf-8').strip()
         field_name, field_data = header_line.split(": ")
         #assert field_name == "Module Table"
 
@@ -235,7 +211,7 @@ class DrcovData(object):
 
         # parse module table 'columns'
         #   eg: Columns: id, base, end, entry, checksum, timestamp, path
-        column_line = f.readline().strip()
+        column_line = f.readline().decode('utf-8').strip()
         field_name, field_data = column_line.split(": ")
         #assert field_name == "Columns"
 
@@ -250,9 +226,19 @@ class DrcovData(object):
         """
 
         # loop through each *expected* line in the module table and parse it
-        for i in xrange(self.module_table_count):
-            module = DrcovModule(f.readline().strip(), self.module_table_version)
-            self.modules.append(module)
+        for i in range(self.module_table_count):
+            module = DrcovModule(f.readline().decode('utf-8').strip(), self.module_table_version)
+
+            # try to handle module name collisions...
+            if module.filename in self.modules:
+                public_name = module.filename + "_" + str(i)
+            else:
+                public_name = module.filename
+
+            assert not (public_name in self.modules), "Stop doing weird stuff."
+
+            # save the parsed module
+            self.modules[public_name] = module
 
     def _parse_bb_table(self, f):
         """
@@ -268,7 +254,7 @@ class DrcovData(object):
 
         # parse basic block table 'header'
         #   eg: BB Table: 2792 bbs
-        header_line = f.readline().strip()
+        header_line = f.readline().decode('utf-8').strip()
         field_name, field_data = header_line.split(": ")
         #assert field_name == "BB Table"
 
@@ -279,7 +265,7 @@ class DrcovData(object):
 
         # peek at the next few bytes to determine if this is a binary bb table.
         # An ascii bb table will have the line: 'module id, start, size:'
-        token = "module id"
+        token = b"module id"
         saved_position = f.tell()
 
         # is this an ascii table?
@@ -297,30 +283,32 @@ class DrcovData(object):
         """
         Parse drcov log basic block table entries from filestream.
         """
+
         # allocate the ctypes structure array of basic blocks
-        self.basic_blocks = (DrcovBasicBlock * self.bb_table_count)()
+        self.bbs = (DrcovBasicBlock * self.bb_table_count)()
 
+        # read binary basic block entries directly into the newly allocated array
         if self.bb_table_is_binary:
-            # read the basic block entries directly into the newly allocated array
-            f.readinto(self.basic_blocks)
+            f.readinto(self.bbs)
 
-        else:  # let's parse the text records
-            text_entry = f.readline().strip()
+        # parse the plaintext basic block entries one by one
+        else:
+            text_entry = f.readline().decode('utf-8').strip()
 
             if text_entry != "module id, start, size:":
                 raise ValueError("Invalid BB header: %r" % text_entry)
 
-            pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-f]+)\,\s*(?P<size>[0-9]+)$")
-            for basic_block in self.basic_blocks:
-                text_entry = f.readline().strip()
+            pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-fA-F]+)\,\s*(?P<size>[0-9]+)$")
+            for bb in self.bbs:
+                text_entry = f.readline().decode('utf-8').strip()
 
                 match = pattern.match(text_entry)
                 if not match:
                     raise ValueError("Invalid BB entry: %r" % text_entry)
 
-                basic_block.start = int(match.group("start"), 16)
-                basic_block.size = int(match.group("size"), 10)
-                basic_block.mod_id = int(match.group("mod"), 10)
+                bb.start = int(match.group("start"), 16)
+                bb.size = int(match.group("size"), 10)
+                bb.mod_id = int(match.group("mod"), 10)
 
 #------------------------------------------------------------------------------
 # drcov module parser
@@ -468,10 +456,11 @@ if __name__ == "__main__":
 
     # base usage
     if argc < 2:
-        print "usage: %s <coverage filename>" % os.path.basename(sys.argv[0])
+        print("usage: {} <coverage filename>".format(os.path.basename(sys.argv[0])))
         sys.exit()
 
     # attempt file parse
     x = DrcovData(argv[1])
-    for bb in x.basic_blocks:
-        print "0x%08x" % bb.start
+    for bb in x.bbs:
+        print("0x{:08x}".format(bb.start))
+

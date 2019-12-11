@@ -87,18 +87,6 @@ class IDAAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
 
     @property
-    def version_major(self):
-        return self._version_major
-
-    @property
-    def version_minor(self):
-        return self._version_minor
-
-    @property
-    def version_patch(self):
-        return self._version_patch
-
-    @property
     def headless(self):
         return False
 
@@ -159,6 +147,9 @@ class IDAAPI(DisassemblerAPI):
 
     def set_function_name_at(self, function_address, new_name):
         idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+    def message(self, message):
+        print(message)
 
     #--------------------------------------------------------------------------
     # UI API Shims

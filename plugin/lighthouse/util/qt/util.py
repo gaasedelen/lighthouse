@@ -1,10 +1,11 @@
 import sys
 import time
-import Queue
 import logging
+import threading
 
 from .shim import *
 from ..misc import is_mainthread
+from ..python import *
 from ..disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Qt.Util")
@@ -216,7 +217,7 @@ def await_future(future):
         # to the mainthread. flush the requests now and try again
         #
 
-        except Queue.Empty as e:
+        except queue.Empty as e:
             pass
 
         logger.debug("Awaiting future...")
@@ -275,3 +276,82 @@ def await_lock(lock):
     #
 
     raise RuntimeError("Failed to acquire lock after %f seconds!" % timeout)
+
+class QMainthread(QtCore.QObject):
+    """
+    A Qt object whose sole purpose is to execute code on the mainthread.
+    """
+    toMainthread = QtCore.pyqtSignal(object)
+    toMainthreadFast = QtCore.pyqtSignal(object)
+
+    def __init__(self):
+        super(QMainthread, self).__init__()
+
+        # helpers used to ensure thread safety
+        self._lock = threading.Lock()
+        self._fast_refs = []
+        self._result_queue = queue.Queue()
+
+        # signals used to communicate with the Qt mainthread
+        self.toMainthread.connect(self._execute_with_result)
+        self.toMainthreadFast.connect(self._execute_fast)
+
+    #--------------------------------------------------------------------------
+    # Public
+    #--------------------------------------------------------------------------
+
+    def execute(self, function):
+        """
+        Execute a function on the mainthread and wait for its return value.
+
+        This function is safe to call from any thread, at any time.
+        """
+
+        # if we are already on the mainthread, execute the callable inline
+        if is_mainthread():
+            return function()
+
+        # execute the callable on the mainthread and wait for it to complete
+        with self._lock:
+            self.toMainthread.emit(function)
+            result = self._result_queue.get()
+
+        # return the result of executing on the mainthread
+        return result
+
+    def execute_fast(self, function):
+        """
+        Execute a function on the mainthread without waiting for completion.
+        """
+
+        #
+        # append the given function to a reference list.
+        #
+        # I do this because I am not confident python / qt will guarantee the
+        # lifetime of the callable (function) as we cross threads and the
+        # callee scope/callstack dissolves away from beneath us
+        #
+        # this callable will be deleted from the ref list in _excute_fast()
+        #
+
+        self._fast_refs.append(function)
+
+        # signal to the mainthread that a new function is ready to execute
+        self.toMainthreadFast.emit(function)
+
+    #--------------------------------------------------------------------------
+    # Internal
+    #--------------------------------------------------------------------------
+
+    def _execute_with_result(self, function):
+        try:
+            self._result_queue.put(function())
+        except Exception as e:
+            logger.exception("QMainthread Exception")
+            self._result_queue.put(None)
+
+    def _execute_fast(self, function):
+        function()
+        self._fast_refs.remove(function)
+
+qt_mainthread = QMainthread()

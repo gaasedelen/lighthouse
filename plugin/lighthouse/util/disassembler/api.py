@@ -30,6 +30,11 @@ class DisassemblerAPI(object):
     def __init__(self):
         self._waitbox = None
 
+        # required version fields
+        self._version_major = NotImplemented
+        self._version_minor = NotImplemented
+        self._version_patch = NotImplemented
+
         if not self.headless and QT_AVAILABLE:
             from ..qt import WaitBox
             self._waitbox = WaitBox("Please wait...")
@@ -38,31 +43,31 @@ class DisassemblerAPI(object):
     # Properties
     #--------------------------------------------------------------------------
 
-    @abc.abstractproperty
     def version_major(self):
         """
         Return the major version number of the disassembler framework.
         """
-        pass
+        assert self._version_major != NotImplemented
+        return self._version_major
 
-    @abc.abstractproperty
     def version_minor(self):
         """
         Return the minor version number of the disassembler framework.
         """
-        pass
+        assert self._version_patch != NotImplemented
+        return self._version_patch
 
-    @abc.abstractproperty
-    def version_minor(self):
+    def version_patch(self):
         """
         Return the patch version number of the disassembler framework.
         """
-        pass
+        assert self._version_patch != NotImplemented
+        return self._version_patch
 
     @abc.abstractproperty
     def headless(self):
         """
-        Return a bool indicating if the disassembler is running headlessly.
+        Return a bool indicating if the disassembler is running without a GUI.
         """
         pass
 
@@ -166,6 +171,13 @@ class DisassemblerAPI(object):
     def set_function_name_at(self, function_address, new_name):
         """
         Set the function name at given address.
+        """
+        pass
+
+    @abc.abstractmethod
+    def message(self, function_address, new_name):
+        """
+        Print a message to the disassembler console.
         """
         pass
 
