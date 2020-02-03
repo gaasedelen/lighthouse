@@ -1,3 +1,4 @@
+using namespace std;
 #include "ImageManager.h"
 #include "pin.H"
 
