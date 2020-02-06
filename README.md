@@ -1,3 +1,7 @@
+# The only difference between this repository and the upstream one is that this is updated to work with PIN 3.11
+
+I'll likely delete this if the pull request gets merged.
+
 # Lighthouse - A Code Coverage Explorer for Reverse Engineers
 <p align="center">
 <img alt="Lighthouse Plugin" src="screenshots/overview.gif"/>
