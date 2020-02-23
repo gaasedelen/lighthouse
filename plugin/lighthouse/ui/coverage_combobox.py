@@ -84,6 +84,23 @@ class CoverageComboBox(QtWidgets.QComboBox):
         # to be re-enlightened to direct mouse clicks (eg, to expand it). this
         # undos the setAttribute action in showPopup() above.
         #
+        # if the coverage combobox is *not* visible, the coverage window is
+        # probably being closed / deleted. but just in case, we should attempt
+        # to restore the combobox's ability to accept clicks before bailing.
+        #
+        # this fixes a bug / Qt warning first printed in IDA 7.4 where 'self'
+        # (the comobobox) would be deleted by the time the 100ms timer in the
+        # 'normal' case fires below
+        #
+
+        if not self.isVisible():
+            self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
+            return
+
+        #
+        # in the more normal case, the comobobox is simply being collapsed
+        # by the user clicking it, or clicking away from it.
+        #
         # we use a short timer of 100ms to ensure the 'hiding' of the dropdown
         # and its associated click are processed first. aftwards, it is safe to
         # begin accepting clicks again.
