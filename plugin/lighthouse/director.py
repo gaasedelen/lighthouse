@@ -334,7 +334,7 @@ class CoverageDirector(object):
 
         Returns a tuple of (coverage, errors)
         """
-        errors = []
+        errors = collections.defaultdict(list)
         aggregate_addresses = set()
 
         start = time.time()
@@ -351,12 +351,12 @@ class CoverageDirector(object):
 
             # save and suppress warnings generated from loading coverage files
             except CoverageParsingError as e:
-                errors.append(e)
+                errors[CoverageParsingError].append(e)
                 continue
 
             # ensure some data was actually extracted from the log
             if not coverage_addresses:
-                errors.append(CoverageMissingError(filepath))
+                errors[CoverageMissingError].append(CoverageMissingError(filepath))
                 continue
 
             # save the attribution data for this coverage data
@@ -376,9 +376,9 @@ class CoverageDirector(object):
 
         # evaluate coverage
         if not coverage.nodes:
-            errors.append(CoverageMappingAbsent(coverage))
+            errors[CoverageMappingAbsent].append(CoverageMappingAbsent(coverage))
         elif coverage.suspicious:
-            errors.append(CoverageMappingSuspicious(coverage))
+            errors[CoverageMappingSuspicious].append(CoverageMappingSuspicious(coverage))
 
         #----------------------------------------------------------------------
         end = time.time()
@@ -393,7 +393,7 @@ class CoverageDirector(object):
 
         Returns a tuple of (created_coverage, errors)
         """
-        errors = []
+        errors = collections.defaultdict(list)
         all_coverage = []
 
         start = time.time()
@@ -426,12 +426,12 @@ class CoverageDirector(object):
 
             # save and suppress warnings generated from loading coverage files
             except CoverageParsingError as e:
-                errors.append(e)
+                errors[CoverageParsingError].append(e)
                 continue
 
             # ensure some data was actually extracted from the log
             if not coverage_addresses:
-                errors.append(CoverageMissingError(filepath))
+                errors[CoverageMissingError].append(CoverageMissingError(filepath))
                 continue
 
             # save the attribution data for this coverage data
@@ -449,9 +449,9 @@ class CoverageDirector(object):
 
             # evaluate coverage
             if not coverage.nodes:
-                errors.append(CoverageMappingAbsent(coverage))
+                errors[CoverageMappingAbsent].append(CoverageMappingAbsent(coverage))
             elif coverage.suspicious:
-                errors.append(CoverageMappingSuspicious(coverage))
+                errors[CoverageMappingSuspicious].append(CoverageMappingSuspicious(coverage))
 
             # add the newly created coverage to the list of coverage to be returned
             all_coverage.append(coverage)
