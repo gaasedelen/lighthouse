@@ -63,7 +63,7 @@ class DatabaseMetadata(object):
 
         # name & imagebase of the executable this metadata is based on
         self.filename = ""
-        self.imagebase = -1
+        self.imagebase = BADADDR
 
         # database metadata cache status
         self.cached = False
