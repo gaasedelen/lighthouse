@@ -163,6 +163,10 @@ class BinjaAPI(DisassemblerAPI):
             ret = binaryninja.core_ui_enabled
         return not ret
 
+    @propery
+    def busy(self):
+        return False # TODO
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------

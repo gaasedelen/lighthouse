@@ -90,6 +90,10 @@ class IDAAPI(DisassemblerAPI):
     def headless(self):
         return False
 
+    @property
+    def busy(self):
+        return not(idaapi.auto_is_ok())
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------
