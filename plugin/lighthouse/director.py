@@ -536,7 +536,7 @@ class CoverageDirector(object):
 
         # bucketize coverage addresses
         instructions = addresses & set(self.metadata.instructions)
-        basic_blocks = instructions & self.metadata.nodes.viewkeys()
+        basic_blocks = instructions & self.metadata.nodes.keys()
         unknown = addresses - instructions
 
         # bucketize the uncategorized addresses
