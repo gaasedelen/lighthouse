@@ -93,6 +93,7 @@ class DatabaseMetadata(object):
 
         self._metadata_modified_callbacks = []
         self._function_renamed_callbacks = []
+        self._rebased_callbacks = []
 
     def terminate(self):
         """
@@ -399,6 +400,23 @@ class DatabaseMetadata(object):
         if self._rename_hooks:
             self._rename_hooks.unhook()
 
+        # grab the cached imagebase as it might have changed
+        prev_imagebase = self.imagebase
+        was_cached = self.cached
+
+        # refresh high level database properties that we wish to cache
+        self._sync_refresh_properties()
+
+        #
+        # if a rebase occured, trash all present metadata as its easier to
+        # rebuild the cache from scratch...
+        #
+
+        if prev_imagebase != self.imagebase:
+            self.nodes = {}
+            self.functions = {}
+            self.instructions = []
+
         #
         # if the caller provided no function addresses to target for refresh,
         # we will perform a complete metadata refresh of all database defined
@@ -410,9 +428,6 @@ class DatabaseMetadata(object):
                 disassembler.get_function_addresses
             )()
             function_addresses = list(set(function_addresses+list(self.functions)))
-
-        # refresh high level database properties that we wish to cache
-        self._sync_refresh_properties()
 
         # refresh the core database metadata asynchronously
         if is_async:
@@ -459,6 +474,10 @@ class DatabaseMetadata(object):
         # the metadata refresh is effectively done, and the data is now 'cached'
         if completed:
             self.cached = True
+
+        # detect & notify of a rebase event
+        if was_cached and (prev_imagebase != self.imagebase):
+            self._notify_rebased(prev_imagebase, self.imagebase)
 
         # return true/false to indicates completion
         return completed
@@ -661,6 +680,20 @@ class DatabaseMetadata(object):
         Notify listeners of a function rename event.
         """
         notify_callback(self._function_renamed_callbacks)
+
+    def rebased(self, callback):
+        """
+        Subscribe a callback for director rebasing events.
+        """
+        register_callback(self._rebased_callbacks, callback)
+
+    def _notify_rebased(self, old_imagebase, new_imagebase):
+        """
+        Notify listeners of a database rebasing event.
+
+        TODO/FUTURE: send old / new imagebases
+        """
+        notify_callback(self._rebased_callbacks)
 
 #------------------------------------------------------------------------------
 # Function Metadata

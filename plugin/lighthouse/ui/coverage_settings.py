@@ -95,7 +95,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         """
         Connect UI signals.
         """
-        self._action_refresh_metadata.triggered.connect(controller.refresh_metadata)
+        self._action_refresh_metadata.triggered.connect(core.director.refresh)
         self._action_hide_zero.triggered[bool].connect(controller._model.filter_zero_coverage)
         self._action_pause_paint.triggered[bool].connect(lambda x: core.painter.set_enabled(not x))
         self._action_clear_paint.triggered.connect(core.painter.clear_paint)

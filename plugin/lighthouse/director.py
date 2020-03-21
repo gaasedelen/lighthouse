@@ -5,6 +5,7 @@ import threading
 import traceback
 import collections
 
+from lighthouse.util.qt import flush_qt_events
 from lighthouse.util.misc import *
 from lighthouse.util.python import *
 from lighthouse.util.qt import await_future, await_lock, color_text
@@ -200,6 +201,9 @@ class CoverageDirector(object):
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
 
+        # director callbacks
+        self._refreshed_callbacks  = []
+
     def terminate(self):
         """
         Cleanup & terminate the director.
@@ -301,6 +305,18 @@ class CoverageDirector(object):
         TODO/FUTURE: send list of names deleted?
         """
         notify_callback(self._coverage_deleted_callbacks)
+
+    def refreshed(self, callback):
+        """
+        Subscribe a callback for director refresh events.
+        """
+        register_callback(self._refreshed_callbacks, callback)
+
+    def _notify_refreshed(self):
+        """
+        Notify listeners of a director refresh event.
+        """
+        notify_callback(self._refreshed_callbacks)
 
     #----------------------------------------------------------------------
     # Batch Loading
@@ -1298,13 +1314,27 @@ class CoverageDirector(object):
         """
         Complete refresh of the director and mapped coverage.
         """
-        logger.debug("Refreshing the CoverageDirector")
+        lmsg("Refreshing Lighthouse...")
 
-        # (re)build our metadata cache of the underlying database
+        #
+        # refreshing might take awhile, so pop a waitbox that should update
+        # with status messages as the refresh runs...
+        #
+
+        disassembler.show_wait_box("Refreshing Lighthouse...")
+        flush_qt_events()
+
+        # (re) build our metadata cache of the underlying database
         self.metadata.refresh()
 
         # (re)map each set of loaded coverage data to the database
         self._refresh_database_coverage()
+
+        # notify of full-refresh
+        self._notify_refreshed()
+
+        # all done ...
+        disassembler.hide_wait_box()
 
     def _refresh_database_coverage(self):
         """

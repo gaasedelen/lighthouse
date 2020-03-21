@@ -552,6 +552,8 @@ class CoverageTableController(object):
     def refresh_metadata(self):
         """
         Hard refresh of the director and table metadata layers.
+
+        TODO: remove
         """
         disassembler.show_wait_box("Building database metadata...")
         self._model._director.refresh()

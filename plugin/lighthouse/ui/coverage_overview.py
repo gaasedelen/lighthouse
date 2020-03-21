@@ -39,6 +39,9 @@ class CoverageOverview(DockableWindow):
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
 
+        # register for cues from the director
+        self._core.director.refreshed(self.refresh)
+
     #--------------------------------------------------------------------------
     # Pseudo Widget Functions
     #--------------------------------------------------------------------------
@@ -58,7 +61,7 @@ class CoverageOverview(DockableWindow):
         #
 
         if not self._core.director.metadata.cached:
-            self._table_controller.refresh_metadata()
+            self._core.director.refresh()
 
     def terminate(self):
         """

@@ -97,6 +97,7 @@ class DatabaseCoverage(object):
         #
 
         self._hitmap = build_hitmap(data)
+        self._imagebase = BADADDR
 
         #
         # the coverage hash is a simple hash of the coverage mask (hitmap keys)
@@ -239,6 +240,48 @@ class DatabaseCoverage(object):
         Install a new databasee metadata object.
         """
         self._metadata = weakref.proxy(metadata)
+
+        #
+        # if the underlying database / metadata gets rebased, we will need to
+        # rebase our coverage data. the 'raw' coverage data stored in the
+        # hitmap is stored as absolute addresses for performance reasons
+        #
+        # here we compute the offset that we will need to rebase the coverage
+        # data by should a rebase have occurred
+        #
+
+        rebase_offset = self._metadata.imagebase - self._imagebase
+
+        #
+        # if the coverage's imagebase is still BADADDR, that means that this
+        # coverage object hasn't yet been mapped onto a given metadata cache.
+        #
+        # that's fine, we just need to initialize our imagebase which should
+        # (hopefully!) match the imagebase originally used when baking the
+        # coverage data into an absolute address form.
+        #
+
+        if self._imagebase == BADADDR:
+            self._imagebase = self._metadata.imagebase
+
+        #
+        # if the imagebase for this coverage exists, then it is susceptible to
+        # being rebased by a metadata update. if rebase_offset is non-zero,
+        # this is an indicator that a rebase has occurred.
+        #
+        # when a rebase occurs in the metadata, we must also rebase our
+        # coverage data (stored in the hitmap)
+        #
+
+        elif rebase_offset:
+            self._hitmap = { (address + rebase_offset): hits for address, hits in iteritems(self._hitmap) }
+            self._imagebase = self._metadata.imagebase
+
+        #
+        # since the metadata has been updated in one form or another, we need
+        # to trash our existing coverage mapping, and rebuild it from the data.
+        #
+
         self.unmap_all()
 
     def refresh(self):
@@ -574,11 +617,15 @@ class DatabaseCoverage(object):
         """
         Unmap all mapped coverage data.
         """
-        self._unmapped_data = set(self._hitmap.keys())
-        self._unmapped_data.add(BADADDR)
-        self._misaligned_data = set()
+
+        # clear out the processed / computed coverage data structures
         self.nodes = {}
         self.functions = {}
+        self._misaligned_data = set()
+
+        # dump the source coverage data back into an 'unmapped' state
+        self._unmapped_data = set(self._hitmap.keys())
+        self._unmapped_data.add(BADADDR)
 
     #--------------------------------------------------------------------------
     # Debug
