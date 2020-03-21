@@ -352,7 +352,7 @@ class DatabasePainter(object):
         """
         db_metadata = self._director.metadata
         instructions = db_metadata.instructions
-        nodes = db_metadata.nodes.viewvalues()
+        nodes = viewvalues(db_metadata.nodes)
 
         # clear all instructions
         if not self._async_action(self._clear_instructions, instructions):
@@ -374,7 +374,7 @@ class DatabasePainter(object):
         """
         db_metadata = self._director.metadata
         instructions = db_metadata.instructions
-        nodes = db_metadata.nodes.viewvalues()
+        nodes = viewvalues(db_metadata.nodes)
 
         # a rebase has not occurred
         if not db_metadata.cached or (db_metadata.imagebase == self._imagebase):
