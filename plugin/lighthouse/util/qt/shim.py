@@ -24,6 +24,7 @@ QT_AVAILABLE = False
 #
 
 USING_PYQT5 = False
+USING_PYSIDE2 = False
 
 #------------------------------------------------------------------------------
 # PyQt5 Compatibility
@@ -45,22 +46,24 @@ if QT_AVAILABLE == False:
         pass
 
 #------------------------------------------------------------------------------
-# PySide Compatibility
+# PySide2 Compatibility
 #------------------------------------------------------------------------------
 
 # if PyQt5 did not import, try to load PySide
 if QT_AVAILABLE == False:
     try:
-        import PySide.QtGui as QtGui
-        import PySide.QtCore as QtCore
+        import PySide2.QtGui as QtGui
+        import PySide2.QtCore as QtCore
+        import PySide2.QtWidgets as QtWidgets
 
-        # alias for less PySide <--> PyQt5 shimming
-        QtWidgets = QtGui
+        # alias for less PySide2 <--> PyQt5 shimming
         QtCore.pyqtSignal = QtCore.Signal
         QtCore.pyqtSlot = QtCore.Slot
 
         # importing went okay, PySide must be available for use
         QT_AVAILABLE = True
+        USING_PYSIDE2 = True
+        USING_PYQT5 = True      # TODO: remove once PySide v1 is fully ripped out...
 
     # import failed. No Qt / UI bindings available...
     except ImportError:

@@ -7,35 +7,8 @@ import threading
 
 import binaryninja
 from binaryninja import PythonScriptingInstance, binaryview
+from binaryninjaui import DockHandler, DockContextHandler, UIContext
 from binaryninja.plugin import BackgroundTaskThread
-
-#------------------------------------------------------------------------------
-# External PyQt5 Dependency
-#------------------------------------------------------------------------------
-#
-#    amend the Python import path with a Libs folder for additional pip
-#    packages required by Lighthouse (at least on Windows, and maybe macOS)
-#
-#    TODO/FUTURE: it is kind of dirty that we have to do this here. maybe it
-#    can be moved with a later refactor. in the long run, binary ninja will
-#    ship with PyQt5 bindings in-box.
-#
-
-binja_user_plugin_path=None
-# Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
-try:
-    binja_user_plugin_path=binaryninja.user_plugin_path()
-except TypeError:
-    binja_user_plugin_path=binaryninja.user_plugin_path
-
-DEPENDENCY_PATH = os.path.join(
-    binja_user_plugin_path,
-    "Lib",
-    "site-packages"
-)
-sys.path.append(DEPENDENCY_PATH)
-
-#------------------------------------------------------------------------------
 
 from .api import DisassemblerAPI, DockableShim
 from ..qt import *
@@ -163,7 +136,7 @@ class BinjaAPI(DisassemblerAPI):
             ret = binaryninja.core_ui_enabled
         return not ret
 
-    @propery
+    @property
     def busy(self):
         return False # TODO
 
@@ -395,43 +368,28 @@ class DockableWindow(DockableShim):
         super(DockableWindow, self).__init__(window_title, icon_path)
 
         # configure dockable widget container
-        self._main_window = get_qt_main_window()
-        self._widget = QtWidgets.QWidget()
-        self._dockable = QtWidgets.QDockWidget(window_title, self._main_window)
-        self._dockable.setWidget(self._widget)
-        self._dockable.setWindowIcon(self._window_icon)
-        self._dockable.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-        self._dockable.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding,
-            QtWidgets.QSizePolicy.Expanding
-        )
+        self._active_context = UIContext.allContexts()[0]
+        self._main_window = self._active_context.mainWindow()
+        self._dock_handler = self._main_window.findChild(DockHandler, '__DockHandler')
+        self._widget = QtWidgets.QWidget(self._dock_handler.parent())
+        self._dock_contxet = DockContextHandler(self._widget, self._window_title)
+
         self._widget.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding,
             QtWidgets.QSizePolicy.Expanding
         )
 
         # dock the widget on the right side of Binja
-        self._main_window.addDockWidget(
-            QtCore.Qt.RightDockWidgetArea,
-            self._dockable
+        self._dock_handler.addDockWidget(self._widget, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, True, False)
+        self._dockable = self._dock_handler.getDockWidget(self._window_title)
+
+        self._dockable = QtWidgets.QDockWidget(window_title, self._main_window)
+        self._dockable.setWindowIcon(self._window_icon)
+        self._dockable.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self._dockable.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding,
+            QtWidgets.QSizePolicy.Expanding
         )
-
-    def show(self):
-
-        #
-        # NOTE/HACK:
-        #   this is a little dirty, but is used to set the default width
-        #   of the coverage overview / dockable widget when it is first shown
-        #
-
-        default_width = self._widget.sizeHint().width()
-        self._dockable.setMinimumWidth(default_width)
-
-        # show the widget
-        self._dockable.show()
-
-        # undo the HACK
-        self._dockable.setMinimumWidth(0)
 
 #------------------------------------------------------------------------------
 # Binary Ninja Hacks XXX / TODO / V35
