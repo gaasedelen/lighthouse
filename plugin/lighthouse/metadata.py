@@ -1030,6 +1030,7 @@ class NodeMetadata(object):
 
         while current_address < node_end:
             instruction_size = bv.get_instruction_length(current_address)
+            instruction_size = instruction_size if instruction_size else 1 # TODO/HACK: binja can return 0 for undef/bad inst
             self.instructions[current_address] = instruction_size
             current_address += instruction_size
 
