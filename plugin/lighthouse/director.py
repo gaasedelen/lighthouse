@@ -525,7 +525,7 @@ class CoverageDirector(object):
 
         try:
             coverage_offsets = coverage_file.get_offsets(module_name)
-            coverage_addresses = map(lambda x: imagebase+x, coverage_offsets)
+            coverage_addresses = [imagebase+x for x in coverage_offsets]
             return coverage_addresses
         except NotImplementedError:
             pass
