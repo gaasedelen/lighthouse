@@ -76,9 +76,12 @@ class DatabaseMetadata(object):
         # internal members to help index & navigate the cached metadata
         self._stale_lookup = False
         self._name2func = {}
-        self._last_node = []           # HACK: blank iterable for now
         self._node_addresses = []
         self._function_addresses = []
+
+        # HACK: dirty hack since we can't create a blank node easily
+        self._last_node = lambda: None
+        self._last_node.instructions = []
 
         # placeholder attribute for disassembler event hooks
         self._rename_hooks = None
@@ -149,7 +152,7 @@ class DatabaseMetadata(object):
         assert not self._stale_lookup, "Stale metadata is unsafe to use..."
 
         # fast path, effectively a LRU cache of 1 ;P
-        if address in self._last_node:
+        if address in self._last_node.instructions:
             return self._last_node
 
         #
@@ -165,7 +168,7 @@ class DatabaseMetadata(object):
         # node simply does not exist), then we have no match/metadata to return
         #
 
-        if not (node_metadata and address in node_metadata):
+        if not (node_metadata and address in node_metadata.instructions):
             return None
 
         #
@@ -363,7 +366,8 @@ class DatabaseMetadata(object):
           - get_function(ea)
 
         """
-        self._last_node = []
+        self._last_node = lambda: None # XXX blank node hack, see other ref to _last_node
+        self._last_node.instructions = []
         self._name2func = { f.name: f.address for f in itervalues(self.functions) }
         self._node_addresses = sorted(self.nodes.keys())
         self._function_addresses = sorted(self.functions.keys())

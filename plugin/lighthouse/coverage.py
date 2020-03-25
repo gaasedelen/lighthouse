@@ -511,9 +511,6 @@ class DatabaseCoverage(object):
                 node_coverage = NodeCoverage(node_metadata.address, self._weak_self)
                 self.nodes[node_metadata.address] = node_coverage
 
-            # compute the end address of the current basic block
-            node_end = node_metadata.address + node_metadata.size
-
             #
             # the loop below is as an inlined fast-path that assumes the next
             # several coverage addresses will likely belong to the same node
@@ -531,18 +528,20 @@ class DatabaseCoverage(object):
                 # discarding its address from the unmapped data list
                 #
 
-                if address in node_metadata.instructions:
-                    node_coverage.executed_instructions[address] = self._hitmap[address]
-                    self._unmapped_data.discard(address)
+                node_coverage.executed_instructions[address] = self._hitmap[address]
+                self._unmapped_data.discard(address)
 
-                #
-                # if the given address allegedly falls within this node's
-                # address range, but doesn't line up with the known
-                # instructions, log it as 'misaligned' / suspicious
-                #
+                ##
+                ## if the given address allegedly falls within this node's
+                ## address range, but doesn't line up with the known
+                ## instructions, log it as 'misaligned' / suspicious
+                ##
+                ## TODO / XXX: This will need to be moved as instruction to
+                ## node mapping is now guaranteed
+                ##
 
-                else:
-                    self._misaligned_data.add(address)
+                #else:
+                #    self._misaligned_data.add(address)
 
                 # get the next address to attempt mapping on
                 try:
@@ -557,7 +556,7 @@ class DatabaseCoverage(object):
                 # of this loop and send it through the full node lookup path
                 #
 
-                if not (node_metadata.address <= address < node_end):
+                if not (address in node_metadata.instructions):
                     coverage_addresses.appendleft(address)
                     break
 
