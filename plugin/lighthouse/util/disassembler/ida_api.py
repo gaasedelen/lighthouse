@@ -110,7 +110,8 @@ class IDAAPI(DisassemblerAPI):
 
     def create_rename_hooks(self):
         class RenameHooks(idaapi.IDB_Hooks):
-            pass
+            def renamed(self, a, b, c): # temporary, required for IDA 7.3/py3?
+                return 0
         return RenameHooks()
 
     def get_database_directory(self):
@@ -195,7 +196,7 @@ class IDAAPI(DisassemblerAPI):
 
         # locate the Qt Widget for a form and take 1px image slice of it
         import sip
-        widget = sip.wrapinstance(long(twidget), QtWidgets.QWidget)
+        widget = sip.wrapinstance(int(twidget), QtWidgets.QWidget)
         pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
 
         # convert the raw pixmap into an image (easier to interface with)
@@ -248,7 +249,8 @@ class DockableWindow(DockableShim):
 
         import sip
         self._form = idaapi.create_empty_widget(self._window_title)
-        self._widget = sip.wrapinstance(long(self._form), QtWidgets.QWidget)
+        self._widget = sip.wrapinstance(int(self._form), QtWidgets.QWidget)
+
 
         # set the window icon
         self._widget.setWindowIcon(self._window_icon)
@@ -328,7 +330,7 @@ def map_line2node(cfunc, metadata, line2citem):
     # an effort to resolve the set of graph nodes associated with its citems.
     #
 
-    for line_number, citem_indexes in line2citem.iteritems():
+    for line_number, citem_indexes in iteritems(line2citem):
         nodes = set()
 
         #

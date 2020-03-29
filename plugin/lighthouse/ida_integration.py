@@ -46,7 +46,7 @@ class LighthouseIDA(Lighthouse):
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "load.png"))
-        icon_data = str(open(icon_path, "rb").read())
+        icon_data = open(icon_path, "rb").read()
         self._icon_id_file = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
@@ -82,7 +82,7 @@ class LighthouseIDA(Lighthouse):
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "batch.png"))
-        icon_data = str(open(icon_path, "rb").read())
+        icon_data = open(icon_path, "rb").read()
         self._icon_id_batch = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
@@ -118,7 +118,7 @@ class LighthouseIDA(Lighthouse):
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "batch.png"))
-        icon_data = str(open(icon_path, "rb").read())
+        icon_data = open(icon_path, "rb").read()
         self._icon_id_xref = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
@@ -146,7 +146,7 @@ class LighthouseIDA(Lighthouse):
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "overview.png"))
-        icon_data = str(open(icon_path, "rb").read())
+        icon_data = open(icon_path, "rb").read()
         self._icon_id_overview = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action

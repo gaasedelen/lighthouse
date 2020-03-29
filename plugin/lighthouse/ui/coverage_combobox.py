@@ -106,7 +106,10 @@ class CoverageComboBox(QtWidgets.QComboBox):
         # begin accepting clicks again.
         #
 
-        QtCore.QTimer.singleShot(100, lambda: self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False))
+        QtCore.QTimer.singleShot(100, self.__hidePopup_setattr)
+
+    def __hidePopup_setattr(self):
+        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
 
     def mousePressEvent(self, e):
         """
