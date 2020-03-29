@@ -45,6 +45,7 @@ link ^
     /ignore:4049 ^
     /ignore:4210 ^
     /ignore:4217 ^
+    /ignore:4281 ^
     /DLL CodeCoverage.obj ImageManager.obj
 
 del *.obj *.pdb *.exp *.lib

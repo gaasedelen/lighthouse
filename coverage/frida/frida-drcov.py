@@ -227,12 +227,12 @@ def create_header(mods):
 
     header_modules = '\n'.join(entries)
 
-    return header + header_modules + '\n'
+    return ("%s%s\n" % (header, header_modules)).encode("utf-8")
 
 # take the recv'd basic blocks, finish the header, and append the coverage
 def create_coverage(data):
-    bb_header = 'BB Table: %d bbs\n' % len(data)
-    return bb_header + ''.join(data)
+    bb_header = b'BB Table: %d bbs\n' % len(data)
+    return bb_header + b''.join(data)
 
 def on_message(msg, data):
     #print(msg)
@@ -323,7 +323,7 @@ def main():
     script.on('message', on_message)
     script.load()
 
-    print('[*] Now collecting info, control-D to terminate....')
+    print('[*] Now collecting info, control-C or control-D to terminate....')
 
     sys.stdin.read()
 

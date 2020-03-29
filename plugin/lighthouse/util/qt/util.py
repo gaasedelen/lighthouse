@@ -54,13 +54,6 @@ def get_qt_icon(name):
     icon_type = getattr(QtWidgets.QStyle, name)
     return QtWidgets.QApplication.style().standardIcon(icon_type)
 
-def get_qt_main_window():
-    """
-    Get the QMainWindow instance for the current Qt runtime.
-    """
-    app = QtCore.QCoreApplication.instance()
-    return [x for x in app.allWidgets() if x.__class__ is QtWidgets.QMainWindow][0]
-
 def get_default_font_size():
     """
     Get the default font size for this QApplication.

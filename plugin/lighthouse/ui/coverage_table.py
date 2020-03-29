@@ -174,10 +174,7 @@ class CoverageTableView(QtWidgets.QTableView):
         #
 
         # force the table row heights to be fixed height
-        if USING_PYQT5:
-            vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
-        else:
-            vh.setResizeMode(QtWidgets.QHeaderView.Fixed)
+        vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
 
         # specify the fixed pixel height for the table headers
         spacing = title_fm.height() - title_fm.xHeight()
@@ -552,6 +549,8 @@ class CoverageTableController(object):
     def refresh_metadata(self):
         """
         Hard refresh of the director and table metadata layers.
+
+        TODO: remove
         """
         disassembler.show_wait_box("Building database metadata...")
         self._model._director.refresh()
@@ -584,7 +583,7 @@ class CoverageTableController(object):
         {
             "filter": "HTML Files (*.html)",
             "caption": "Save HTML Report",
-            "directory" if USING_PYQT5 else "dir": suggested_filepath
+            "directory": suggested_filepath
         }
 
         # prompt the user with the file dialog, and await their chosen filename(s)
@@ -596,7 +595,7 @@ class CoverageTableController(object):
         self._last_directory = os.path.dirname(filename) + os.sep
 
         # write the generated HTML report to disk
-        with open(filename, "wb") as fd:
+        with open(filename, "w") as fd:
             fd.write(self._model.to_html())
 
         lmsg("Saved HTML report to %s" % filename)

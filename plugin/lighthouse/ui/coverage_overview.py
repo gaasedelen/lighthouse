@@ -39,6 +39,9 @@ class CoverageOverview(DockableWindow):
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
 
+        # register for cues from the director
+        self._core.director.refreshed(self.refresh)
+
     #--------------------------------------------------------------------------
     # Pseudo Widget Functions
     #--------------------------------------------------------------------------
@@ -58,7 +61,7 @@ class CoverageOverview(DockableWindow):
         #
 
         if not self._core.director.metadata.cached:
-            self._table_controller.refresh_metadata()
+            self._core.director.refresh()
 
     def terminate(self):
         """
@@ -280,11 +283,7 @@ class EventProxy(QtCore.QObject):
             # that the user has probably started debugging.
             #
 
-            # NOTE / COMPAT:
-            if disassembler.USING_IDA7API:
-                debug_mode = bool(idaapi.find_widget("General registers"))
-            else:
-                debug_mode = bool(idaapi.find_tform("General registers"))
+            debug_mode = bool(idaapi.find_widget("General registers"))
 
             #
             # if this is the first time the user has started debugging, dock

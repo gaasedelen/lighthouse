@@ -5,6 +5,7 @@ import threading
 import traceback
 import collections
 
+from lighthouse.util.qt import flush_qt_events
 from lighthouse.util.misc import *
 from lighthouse.util.python import *
 from lighthouse.util.qt import await_future, await_lock, color_text
@@ -200,6 +201,9 @@ class CoverageDirector(object):
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
 
+        # director callbacks
+        self._refreshed_callbacks  = []
+
     def terminate(self):
         """
         Cleanup & terminate the director.
@@ -302,6 +306,18 @@ class CoverageDirector(object):
         """
         notify_callback(self._coverage_deleted_callbacks)
 
+    def refreshed(self, callback):
+        """
+        Subscribe a callback for director refresh events.
+        """
+        register_callback(self._refreshed_callbacks, callback)
+
+    def _notify_refreshed(self):
+        """
+        Notify listeners of a director refresh event.
+        """
+        notify_callback(self._refreshed_callbacks)
+
     #----------------------------------------------------------------------
     # Batch Loading
     #----------------------------------------------------------------------
@@ -334,7 +350,7 @@ class CoverageDirector(object):
 
         Returns a tuple of (coverage, errors)
         """
-        errors = []
+        errors = collections.defaultdict(list)
         aggregate_addresses = set()
 
         start = time.time()
@@ -351,12 +367,12 @@ class CoverageDirector(object):
 
             # save and suppress warnings generated from loading coverage files
             except CoverageParsingError as e:
-                errors.append(e)
+                errors[CoverageParsingError].append(e)
                 continue
 
             # ensure some data was actually extracted from the log
             if not coverage_addresses:
-                errors.append(CoverageMissingError(filepath))
+                errors[CoverageMissingError].append(CoverageMissingError(filepath))
                 continue
 
             # save the attribution data for this coverage data
@@ -376,9 +392,9 @@ class CoverageDirector(object):
 
         # evaluate coverage
         if not coverage.nodes:
-            errors.append(CoverageMappingAbsent(coverage))
+            errors[CoverageMappingAbsent].append(CoverageMappingAbsent(coverage))
         elif coverage.suspicious:
-            errors.append(CoverageMappingSuspicious(coverage))
+            errors[CoverageMappingSuspicious].append(CoverageMappingSuspicious(coverage))
 
         #----------------------------------------------------------------------
         end = time.time()
@@ -393,7 +409,7 @@ class CoverageDirector(object):
 
         Returns a tuple of (created_coverage, errors)
         """
-        errors = []
+        errors = collections.defaultdict(list)
         all_coverage = []
 
         start = time.time()
@@ -426,12 +442,12 @@ class CoverageDirector(object):
 
             # save and suppress warnings generated from loading coverage files
             except CoverageParsingError as e:
-                errors.append(e)
+                errors[CoverageParsingError].append(e)
                 continue
 
             # ensure some data was actually extracted from the log
             if not coverage_addresses:
-                errors.append(CoverageMissingError(filepath))
+                errors[CoverageMissingError].append(CoverageMissingError(filepath))
                 continue
 
             # save the attribution data for this coverage data
@@ -449,9 +465,9 @@ class CoverageDirector(object):
 
             # evaluate coverage
             if not coverage.nodes:
-                errors.append(CoverageMappingAbsent(coverage))
+                errors[CoverageMappingAbsent].append(CoverageMappingAbsent(coverage))
             elif coverage.suspicious:
-                errors.append(CoverageMappingSuspicious(coverage))
+                errors[CoverageMappingSuspicious].append(CoverageMappingSuspicious(coverage))
 
             # add the newly created coverage to the list of coverage to be returned
             all_coverage.append(coverage)
@@ -509,7 +525,7 @@ class CoverageDirector(object):
 
         try:
             coverage_offsets = coverage_file.get_offsets(module_name)
-            coverage_addresses = map(lambda x: imagebase+x, coverage_offsets)
+            coverage_addresses = [imagebase+x for x in coverage_offsets]
             return coverage_addresses
         except NotImplementedError:
             pass
@@ -582,9 +598,9 @@ class CoverageDirector(object):
         # presumably executed instructions
         #
 
-        block_instructions = []
+        block_instructions = set([])
         for address in basic_blocks:
-            block_instructions.extend(list(self.metadata.nodes[address].instructions))
+            block_instructions |= set(self.metadata.nodes[address].instructions)
 
         # DONE
         logger.debug("Optimized as basic block trace...")
@@ -1299,13 +1315,27 @@ class CoverageDirector(object):
         """
         Complete refresh of the director and mapped coverage.
         """
-        logger.debug("Refreshing the CoverageDirector")
+        lmsg("Refreshing Lighthouse...")
 
-        # (re)build our metadata cache of the underlying database
+        #
+        # refreshing might take awhile, so pop a waitbox that should update
+        # with status messages as the refresh runs...
+        #
+
+        disassembler.show_wait_box("Refreshing Lighthouse...")
+        flush_qt_events()
+
+        # (re) build our metadata cache of the underlying database
         self.metadata.refresh()
 
         # (re)map each set of loaded coverage data to the database
         self._refresh_database_coverage()
+
+        # notify of full-refresh
+        self._notify_refreshed()
+
+        # all done ...
+        disassembler.hide_wait_box()
 
     def _refresh_database_coverage(self):
         """

@@ -7,6 +7,10 @@ import functools
 import idaapi
 import idautils
 
+if int(idaapi.get_kernel_version()[0]) < 7:
+    idaapi.warning("Lighthouse has deprecated support for IDA 6, please upgrade.")
+    raise ImportError
+
 from .api import DisassemblerAPI, DockableShim
 from ..qt import *
 from ..misc import is_mainthread
@@ -57,16 +61,6 @@ class IDAAPI(DisassemblerAPI):
     """
     NAME = "IDA"
 
-    #
-    # in IDA 7.0, Hex-Rays refactored the IDA API quite a bit. This
-    # impacts Lighthouse in a few places, so we use version checks at
-    # these junctions to determine which API's to use (v7.x or v6.x)
-    #
-    # search 'USING_IDA7API' in the codebase for example cases
-    #
-
-    USING_IDA7API = bool(idaapi.IDA_SDK_VERSION >= 700)
-
     def __init__(self):
         super(IDAAPI, self).__init__()
         self._init_version()
@@ -90,6 +84,10 @@ class IDAAPI(DisassemblerAPI):
     def headless(self):
         return False
 
+    @property
+    def busy(self):
+        return not(idaapi.auto_is_ok())
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------
@@ -111,12 +109,9 @@ class IDAAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
 
     def create_rename_hooks(self):
-        if self.USING_IDA7API:
-            class RenameHooks(idaapi.IDB_Hooks):
-                pass
-        else:
-            class RenameHooks(idaapi.IDP_Hooks):
-                pass
+        class RenameHooks(idaapi.IDB_Hooks):
+            def renamed(self, a, b, c): # temporary, required for IDA 7.3/py3?
+                return 0
         return RenameHooks()
 
     def get_database_directory(self):
@@ -132,9 +127,7 @@ class IDAAPI(DisassemblerAPI):
         return idaapi.get_short_name(address)
 
     def get_function_raw_name_at(self, function_address):
-        if self.USING_IDA7API:
-            return idaapi.get_name(function_address)
-        return idaapi.get_true_name(idaapi.BADADDR, function_address)
+        return idaapi.get_name(function_address)
 
     def get_imagebase(self):
         return idaapi.get_imagebase()
@@ -164,10 +157,7 @@ class IDAAPI(DisassemblerAPI):
         disassembly view, and take a screenshot of said widget. It will then
         attempt to extract the color of a single background pixel (hopefully).
         """
-        if self.USING_IDA7API:
-            return self._get_ida_bg_color_ida7()
-        else:
-            return self._get_ida_bg_color_ida6()
+        return self._get_ida_bg_color_ida7()
 
     def is_msg_inited(self):
         return idaapi.is_msg_inited()
@@ -206,42 +196,8 @@ class IDAAPI(DisassemblerAPI):
 
         # locate the Qt Widget for a form and take 1px image slice of it
         import sip
-        widget = sip.wrapinstance(long(twidget), QtWidgets.QWidget)
+        widget = sip.wrapinstance(int(twidget), QtWidgets.QWidget)
         pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
-
-        # convert the raw pixmap into an image (easier to interface with)
-        image = QtGui.QImage(pixmap.toImage())
-
-        # return the predicted background color
-        return QtGui.QColor(predict_bg_color(image))
-
-    def _get_ida_bg_color_ida6(self):
-        """
-        Get the background color of the IDA disassembly view. (IDA 6.x)
-        """
-        names  = ["Enums", "Structures"]
-        names += ["Hex View-%u" % i for i in range(5)]
-        names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
-
-        # find a form (eg, IDA view) to analyze colors from
-        for window_name in names:
-            form = idaapi.find_tform(window_name)
-            if form:
-                break
-        else:
-            raise RuntimeError("Failed to find donor View")
-
-        # touch the target form so we know it is populated
-        self._touch_ida_window(form)
-
-        # locate the Qt Widget for a form and take 1px image slice of it
-        if USING_PYQT5:
-            widget = idaapi.PluginForm.FormToPyQtWidget(form, sys.modules[__name__])
-            pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
-        else:
-            widget = idaapi.PluginForm.FormToPySideWidget(form, sys.modules[__name__])
-            region = QtCore.QRect(0, 10, widget.width(), 1)
-            pixmap = QtGui.QPixmap.grabWidget(widget, region)
 
         # convert the raw pixmap into an image (easier to interface with)
         image = QtGui.QImage(pixmap.toImage())
@@ -265,39 +221,19 @@ class IDAAPI(DisassemblerAPI):
         """
 
         # get the currently active widget/form title (the form itself seems transient...)
-        if self.USING_IDA7API:
-            twidget = idaapi.get_current_widget()
-            title = idaapi.get_widget_title(twidget)
-        else:
-            form = idaapi.get_current_tform()
-            title = idaapi.get_tform_title(form)
+        twidget = idaapi.get_current_widget()
+        title = idaapi.get_widget_title(twidget)
 
-        # touch/draw the widget by playing musical chairs
-        if self.USING_IDA7API:
+        # touch the target window by switching to it
+        idaapi.activate_widget(target, True)
+        flush_qt_events()
 
-            # touch the target window by switching to it
-            idaapi.activate_widget(target, True)
-            flush_qt_events()
+        # locate our previous selection
+        previous_twidget = idaapi.find_widget(title)
 
-            # locate our previous selection
-            previous_twidget = idaapi.find_widget(title)
-
-            # return us to our previous selection
-            idaapi.activate_widget(previous_twidget, True)
-            flush_qt_events()
-
-        else:
-
-            # touch the target window by switching to it
-            idaapi.switchto_tform(target, True)
-            flush_qt_events()
-
-            # locate our previous selection
-            previous_form = idaapi.find_tform(title)
-
-            # lookup our original form and switch back to it
-            idaapi.switchto_tform(previous_form, True)
-            flush_qt_events()
+        # return us to our previous selection
+        idaapi.activate_widget(previous_twidget, True)
+        flush_qt_events()
 
 #------------------------------------------------------------------------------
 # Dockable Window
@@ -305,25 +241,16 @@ class IDAAPI(DisassemblerAPI):
 
 class DockableWindow(DockableShim):
     """
-    A Dockable Qt widget, compatible with IDA 6.8 --> 7.x.
+    A Dockable Qt widget for IDA 7.0 and above.
     """
 
     def __init__(self, window_title, icon_path):
         super(DockableWindow, self).__init__(window_title, icon_path)
 
-        # IDA 7+ Widgets
-        if IDAAPI.USING_IDA7API:
-            import sip
-            self._form = idaapi.create_empty_widget(self._window_title)
-            self._widget = sip.wrapinstance(long(self._form), QtWidgets.QWidget)
+        import sip
+        self._form = idaapi.create_empty_widget(self._window_title)
+        self._widget = sip.wrapinstance(int(self._form), QtWidgets.QWidget)
 
-        # legacy IDA PluginForm's
-        else:
-            self._form = idaapi.create_tform(self._window_title, None)
-            if USING_PYQT5:
-                self._widget = idaapi.PluginForm.FormToPyQtWidget(self._form, sys.modules[__name__])
-            else:
-                self._widget = idaapi.PluginForm.FormToPySideWidget(self._form, sys.modules[__name__])
 
         # set the window icon
         self._widget.setWindowIcon(self._window_icon)
@@ -332,23 +259,11 @@ class DockableWindow(DockableShim):
         """
         Show the dockable widget.
         """
-
-        # IDA 7+ Widgets
-        if IDAAPI.USING_IDA7API:
-            flags = idaapi.PluginForm.WOPN_TAB     | \
-                    idaapi.PluginForm.WOPN_MENU    | \
-                    idaapi.PluginForm.WOPN_RESTORE | \
-                    idaapi.PluginForm.WOPN_PERSIST
-            idaapi.display_widget(self._form, flags)
-
-        # legacy IDA PluginForm's
-        else:
-            flags = idaapi.PluginForm.FORM_TAB     | \
-                    idaapi.PluginForm.FORM_MENU    | \
-                    idaapi.PluginForm.FORM_RESTORE | \
-                    idaapi.PluginForm.FORM_PERSIST | \
-                    0x80 #idaapi.PluginForm.FORM_QWIDGET
-            idaapi.open_tform(self._form, flags)
+        flags = idaapi.PluginForm.WOPN_TAB     | \
+                idaapi.PluginForm.WOPN_MENU    | \
+                idaapi.PluginForm.WOPN_RESTORE | \
+                idaapi.PluginForm.WOPN_PERSIST
+        idaapi.display_widget(self._form, flags)
 
 #------------------------------------------------------------------------------
 # HexRays Util
@@ -415,7 +330,7 @@ def map_line2node(cfunc, metadata, line2citem):
     # an effort to resolve the set of graph nodes associated with its citems.
     #
 
-    for line_number, citem_indexes in line2citem.iteritems():
+    for line_number, citem_indexes in iteritems(line2citem):
         nodes = set()
 
         #
