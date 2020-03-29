@@ -114,28 +114,57 @@ class CutterAPI(DisassemblerAPI):
 
     def get_function_at(self, address):
         # TODO/CUTTER: Use Cutter API
-        return cutter.cmdj('afij @ ' + str(address))[0]
+        try:
+            return cutter.cmdj('afij @ ' + str(address))[0]
+        except IndexError:
+            return None
 
     def get_database_directory(self):
         # TODO/CUTTER: Use Cutter API
         return cutter.cmdj('ij')['core']['file']
 
     def get_disassembler_user_directory(self):
+
+        # TODO/CUTTER: is there an API for this yet?!? or at least the plugin dir...
         if sys.platform == "linux" or sys.platform == "linux2":
             return os.path.expanduser("~/.local/share/RadareOrg/Cutter")
         elif sys.platform == "darwin":
             raise RuntimeError("TODO OSX")
         elif sys.platform == "win32":
             return os.path.join(os.getenv("APPDATA"), "RadareOrg", "Cutter")
+
         raise RuntimeError("Unknown operating system")
 
     def get_function_addresses(self):
+
+        #
         # TODO/CUTTER: Use Cutter API
-        return [x['offset'] for x in cutter.cmdj('aflj')]
+        #
+        # TODO/CUTTER: Apparently, some of the addresses returned by this are
+        # ***NOT*** valid function addresses. they fail when passed into get_function_at()
+        #
+
+        maybe_functions = [x['offset'] for x in cutter.cmdj('aflj')]
+
+        #
+        # TODO/CUTTER/HACK: this is a gross hack to ensure lighthouse wont choke on *non*
+        # function addresses given in maybe_functions
+        #
+
+        good = set()
+        for address in maybe_functions:
+            if self.get_function_at(address):
+                good.add(address)
+
+        # return a list of *ALL FUNCTION ADDRESSES* in the database
+        return list(good)
 
     def get_function_name_at(self, address):
         # TODO/CUTTER: Use Cutter API
-        return self.get_function_at(address)['name']
+        func = self.get_function_at(address)
+        if not func:
+            return None
+        return func['name']
 
     def get_function_raw_name_at(self, address):
         return self.get_function_at(address)['name']
