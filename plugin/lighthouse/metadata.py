@@ -897,23 +897,20 @@ class FunctionMetadata(object):
             node_metadata.function = function_metadata
             function_metadata.nodes[bb['addr']] = node_metadata
 
-            #
-            # enumerate the edges produced by this node (basic block) with a
-            # destination that falls within this function.
-            #
+        #
+        # TODO/CUTTER: is there a better api for this? like xref from edge_src?
+        # we have to do it down here (unlike binja) because radare does not
+        # guarantee a its edges will land within the current function CFG...
+        #
 
-            #edge_src = node_metadata.instructions[-1]
-            #for edge in node.outgoing_edges:
-            #    function_metadata.edges[edge_src].append(edge.target.start)
-
-            # TODO Use Cutter cache/API
-            instructions = cutter.cmdj('pdbj @ ' + str(self.address))
-            edge_src = instructions[-1]['offset']
-            if bb.get('jump'):
-                function_metadata.edges[edge_src].append(bb.get('jump'))
-            if bb.get('fail'):
-                function_metadata.edges[edge_src].append(bb.get('fail'))
-
+        # compute all of the edges between nodes in the current function
+        for node_metadata in itervalues(function_metadata.nodes):
+            edge_src = node_metadata.edge_out
+            for bb in function:
+                if bb.get('jump', -1) in function_metadata.nodes:
+                    function_metadata.edges[edge_src].append(bb.get('jump'))
+                if bb.get('fail', -1) in function_metadata.nodes:
+                    function_metadata.edges[edge_src].append(bb.get('fail'))
 
     def _compute_complexity(self):
         """
@@ -1100,6 +1097,9 @@ class NodeMetadata(object):
             instruction_size = cutter.cmdj('aoj')[0]['size']
             self.instructions[current_address] = instruction_size
             current_address += int(cutter.cmd('?v $l @ ' + str(current_address)), 16)
+
+        # the source of the outward edge
+        self.edge_out = current_address - instruction_size
 
         ## save the number of instructions in this block
         self.instruction_count = len(self.instructions)
