@@ -333,7 +333,7 @@ class IDAPainter(DatabasePainter):
         lines_painted = 0
 
         # extract the node addresses that have been hit by our function's mapping data
-        executed_nodes = set(db_coverage.functions[cfunc.entry_ea].nodes.keys())
+        executed_nodes = set(viewkeys(db_coverage.functions[cfunc.entry_ea].nodes))
 
         #
         # now we loop through every line_number of the decompiled text that claims
@@ -341,7 +341,7 @@ class IDAPainter(DatabasePainter):
         # if it contains a node our coverage has marked as executed
         #
 
-        for line_number, line_nodes in line2node.items():
+        for line_number, line_nodes in iteritems(line2node):
 
             #
             # if there is any intersection of nodes on this line and the coverage

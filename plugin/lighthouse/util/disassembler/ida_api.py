@@ -329,7 +329,7 @@ def map_line2node(cfunc, metadata, line2citem):
     # an effort to resolve the set of graph nodes associated with its citems.
     #
 
-    for line_number, citem_indexes in line2citem.items():
+    for line_number, citem_indexes in iteritems(line2citem):
         nodes = set()
 
         #
