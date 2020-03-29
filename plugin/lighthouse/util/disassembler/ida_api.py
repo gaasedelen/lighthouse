@@ -110,7 +110,8 @@ class IDAAPI(DisassemblerAPI):
 
     def create_rename_hooks(self):
         class RenameHooks(idaapi.IDB_Hooks):
-            pass
+            def renamed(self, a, b, c): # temporary, required for IDA 7.3/py3?
+                return 0
         return RenameHooks()
 
     def get_database_directory(self):

@@ -595,8 +595,8 @@ class CoverageTableController(object):
         self._last_directory = os.path.dirname(filename) + os.sep
 
         # write the generated HTML report to disk
-        with open(filename, "wb") as fd:
-            fd.write(bytes(self._model.to_html(), encoding='utf-8'))
+        with open(filename, "w") as fd:
+            fd.write(self._model.to_html())
 
         lmsg("Saved HTML report to %s" % filename)
 
