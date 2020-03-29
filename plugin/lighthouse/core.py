@@ -22,9 +22,9 @@ logger = logging.getLogger("Lighthouse.Core")
 # Plugin Metadata
 #------------------------------------------------------------------------------
 
-PLUGIN_VERSION = "0.8.4-DEV"
+PLUGIN_VERSION = "0.9.0-DEV"
 AUTHORS        = "Markus Gaasedelen"
-DATE           = "2019"
+DATE           = "2020"
 
 #------------------------------------------------------------------------------
 # Lighthouse Plugin Core
