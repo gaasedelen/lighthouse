@@ -165,6 +165,7 @@ class DatabaseCoverage(object):
         self.nodes = {}
         self.functions = {}
         self.instruction_percent = 0.0
+        self.partial_nodes = set()
 
         #
         # we instantiate a single weakref of ourself (the DatbaseCoverage
@@ -313,8 +314,15 @@ class DatabaseCoverage(object):
         """
         Finalize the NodeCoverage objects statistics / data for use.
         """
-        for node_coverage in itervalues(dirty_nodes):
+        metadata = self._metadata
+        for address, node_coverage in iteritems(dirty_nodes):
             node_coverage.finalize()
+
+            # save off a reference to partially executed nodes
+            if node_coverage.instructions_executed != metadata.nodes[address].instruction_count:
+                self.partial_nodes.add(address)
+            else:
+                self.partial_nodes.discard(address)
 
     def _finalize_functions(self, dirty_functions):
         """
@@ -620,6 +628,7 @@ class DatabaseCoverage(object):
         # clear out the processed / computed coverage data structures
         self.nodes = {}
         self.functions = {}
+        self.partial_nodes = set()
         self._misaligned_data = set()
 
         # dump the source coverage data back into an 'unmapped' state
@@ -742,6 +751,7 @@ class NodeCoverage(object):
         self.database = database
         self.address = node_address
         self.executed_instructions = {}
+        self.instructions_executed = 0
 
     #--------------------------------------------------------------------------
     # Properties
@@ -753,13 +763,6 @@ class NodeCoverage(object):
         Return the number of instruction executions in this node.
         """
         return sum(itervalues(self.executed_instructions))
-
-    @property
-    def instructions_executed(self):
-        """
-        Return the number of unique instructions executed in this node.
-        """
-        return len(self.executed_instructions)
 
     #--------------------------------------------------------------------------
     # Controls
@@ -773,3 +776,6 @@ class NodeCoverage(object):
 
         # the estimated number of executions this node has experienced.
         self.executions = float(self.hits) / node_metadata.instruction_count
+
+        # the number of unique instructions executed
+        self.instructions_executed = len(self.executed_instructions)

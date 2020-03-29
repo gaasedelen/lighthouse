@@ -240,6 +240,7 @@ class DatabasePainter(object):
 
         # compute the painted nodes that will not get painted over
         stale_nodes_ea = painted - viewkeys(function_coverage.nodes)
+        stale_nodes_ea |= (painted & function_coverage.database.partial_nodes)
         stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
 
         # active instructions
@@ -317,6 +318,7 @@ class DatabasePainter(object):
 
         # compute the painted nodes that will not get painted over
         stale_nodes_ea = self._painted_nodes - viewkeys(db_coverage.nodes)
+        stale_nodes_ea |= db_coverage.partial_nodes
         stale_nodes = [db_metadata.nodes[ea] for ea in stale_nodes_ea]
 
         # clear old instruction paint

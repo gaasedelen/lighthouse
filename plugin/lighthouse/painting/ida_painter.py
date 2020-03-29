@@ -237,6 +237,10 @@ class IDAPainter(DatabasePainter):
         for node_coverage in nodes_coverage:
             node_metadata = db_metadata.nodes[node_coverage.address]
 
+            # ignore nodes that are only partially executed
+            if node_coverage.instructions_executed != node_metadata.instruction_count:
+                continue
+
             # assign the background color we would like to paint to this node
             node_info.bg_color = self.palette.coverage_paint
 
