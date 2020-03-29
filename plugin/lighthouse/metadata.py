@@ -1153,7 +1153,16 @@ def collect_function_metadata(function_addresses):
     """
     Collect function metadata for a list of addresses.
     """
-    return { ea: FunctionMetadata(ea) for ea in function_addresses }
+    output = {}
+    for ea in function_addresses:
+        try:
+            logger.debug(f"Collecting {ea:08X}")
+            output[ea] = FunctionMetadata(ea)
+        except Exception as e:
+            import traceback
+            logger.debug(traceback.format_exc())
+    return output
+    #return { ea: FunctionMetadata(ea) for ea in function_addresses }
 
 @disassembler.execute_ui
 def metadata_progress(completed, total):
