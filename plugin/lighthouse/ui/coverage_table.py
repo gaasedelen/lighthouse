@@ -174,10 +174,7 @@ class CoverageTableView(QtWidgets.QTableView):
         #
 
         # force the table row heights to be fixed height
-        if USING_PYQT5:
-            vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
-        else:
-            vh.setResizeMode(QtWidgets.QHeaderView.Fixed)
+        vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
 
         # specify the fixed pixel height for the table headers
         spacing = title_fm.height() - title_fm.xHeight()
@@ -586,7 +583,7 @@ class CoverageTableController(object):
         {
             "filter": "HTML Files (*.html)",
             "caption": "Save HTML Report",
-            "directory" if USING_PYQT5 else "dir": suggested_filepath
+            "directory": suggested_filepath
         }
 
         # prompt the user with the file dialog, and await their chosen filename(s)

@@ -798,25 +798,17 @@ class FunctionMetadata(object):
         for node_id in xrange(flowchart.size()):
             node = flowchart[node_id]
 
-            # NOTE/COMPAT
-            if disassembler.USING_IDA7API:
-                node_start = node.start_ea
-                node_end   = node.end_ea
-            else:
-                node_start = node.startEA
-                node_end   = node.endEA
-
             #
             # the node current node appears to have a size of zero. This means
             # that another flowchart / function owns this node so we can just
             # ignore it...
             #
 
-            if node_start == node_end:
+            if node.start_ea == node.end_ea:
                 continue
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node_start, node_end, node_id)
+            node_metadata = NodeMetadata(node.start_ea, node.end_ea, node_id)
 
             #
             # establish a relationship between this node (basic block) and
@@ -824,7 +816,7 @@ class FunctionMetadata(object):
             #
 
             node_metadata.function = function_metadata
-            function_metadata.nodes[node_start] = node_metadata
+            function_metadata.nodes[node.start_ea] = node_metadata
 
         # compute all of the edges between nodes in the current function
         for node_metadata in itervalues(function_metadata.nodes):

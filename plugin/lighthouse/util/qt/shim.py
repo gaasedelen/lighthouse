@@ -7,20 +7,16 @@
 QT_AVAILABLE = False
 
 #------------------------------------------------------------------------------
-# PyQt5 <--> PySide (Qt4) Interoperability
+# PyQt5 <--> PySide2 Compatibility
 #------------------------------------------------------------------------------
 #
-#    from Qt4 --> Qt5, a number of objects / modules have changed places
-#    within the Qt codebase. we use this file to shim/re-alias a few of these
-#    changes to reduce the number of compatibility checks / code churn in the
-#    plugin code that consumes them.
+#    we use this file to shim/re-alias a few Qt API's to ensure compatibility
+#    between the popular Qt frameworks. these shims serve to reduce the number
+#    of compatibility checks in the plugin code that consumes them.
 #
-#    this makes the plugin codebase compatible with both PySide & PyQt5, a
-#    necessary requirement to maintain compatibility with IDA 6.8 --> 7.x
-#
-#    additionally, the 'USING_PYQT5' global can be used to check if we are
-#    running in a PyQt5 context (versus PySide/Qt4). This may be used in a few
-#    places throughout the project that could not be covered by our shims.
+#    this file was critical for retaining compatibility with Qt4 frameworks
+#    used by IDA 6.8/6.95, but it less important now. support for Qt 4 and
+#    older versions of IDA will be deprecated in Lighthouse v0.9.0
 #
 
 USING_PYQT5 = False
@@ -63,7 +59,6 @@ if QT_AVAILABLE == False:
         # importing went okay, PySide must be available for use
         QT_AVAILABLE = True
         USING_PYSIDE2 = True
-        USING_PYQT5 = True      # TODO: remove once PySide v1 is fully ripped out...
 
     # import failed. No Qt / UI bindings available...
     except ImportError:

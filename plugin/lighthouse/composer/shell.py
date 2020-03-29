@@ -114,12 +114,7 @@ class ComposingShell(QtWidgets.QWidget):
         """
         Initialize the coverage hint UI elements.
         """
-
-        # NOTE/COMPAT:
-        if USING_PYQT5:
-            self._completer_model = QtCore.QStringListModel([])
-        else:
-            self._completer_model = QtGui.QStringListModel([])
+        self._completer_model = QtCore.QStringListModel([])
 
         self._completer = QtWidgets.QCompleter(self)
         self._completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)

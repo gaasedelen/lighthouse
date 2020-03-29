@@ -333,14 +333,8 @@ class UIHooks(idaapi.UI_Hooks):
 
     def finish_populating_widget_popup(self, widget, popup):
         """
-        A right click menu is about to be shown. (IDA 7)
+        A right click menu is about to be shown. (IDA 7.0+)
         """
         self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
         return 0
 
-    def finish_populating_tform_popup(self, form, popup):
-        """
-        A right click menu is about to be shown. (IDA 6.x) / COMPAT
-        """
-        self.integration._inject_ctx_actions(form, popup, idaapi.get_tform_type(form))
-        return 0

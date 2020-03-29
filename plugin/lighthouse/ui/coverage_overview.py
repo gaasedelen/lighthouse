@@ -283,11 +283,7 @@ class EventProxy(QtCore.QObject):
             # that the user has probably started debugging.
             #
 
-            # NOTE / COMPAT:
-            if disassembler.USING_IDA7API:
-                debug_mode = bool(idaapi.find_widget("General registers"))
-            else:
-                debug_mode = bool(idaapi.find_tform("General registers"))
+            debug_mode = bool(idaapi.find_widget("General registers"))
 
             #
             # if this is the first time the user has started debugging, dock
