@@ -14,8 +14,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._visible_action = None
         self._ui_init_actions()
 
-        if USING_PYQT5:
-            self.setToolTipsVisible(True)
+        self.setToolTipsVisible(True)
 
     #--------------------------------------------------------------------------
     # QMenu Overloads
@@ -33,19 +32,6 @@ class TableSettingsMenu(QtWidgets.QMenu):
                 action.trigger()
                 event.accept()
                 return True
-
-        # show action tooltips (for Qt < 5.1)
-        elif event.type() == QtCore.QEvent.ToolTip and not USING_PYQT5:
-            if action and self._visible_action != action:
-                QtWidgets.QToolTip.showText(event.globalPos(), action.toolTip())
-                self._visible_action = action
-            event.accept()
-            return True
-
-        # clear tooltips (for Qt < 5.1)
-        if not (action or USING_PYQT5):
-            QtWidgets.QToolTip.hideText()
-            self._visible_action = None
 
         # handle any other events as wee normally should
         return super(TableSettingsMenu, self).event(event)
@@ -95,7 +81,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         """
         Connect UI signals.
         """
-        self._action_refresh_metadata.triggered.connect(controller.refresh_metadata)
+        self._action_refresh_metadata.triggered.connect(core.director.refresh)
         self._action_hide_zero.triggered[bool].connect(controller._model.filter_zero_coverage)
         self._action_pause_paint.triggered[bool].connect(lambda x: core.painter.set_enabled(not x))
         self._action_clear_paint.triggered.connect(core.painter.clear_paint)

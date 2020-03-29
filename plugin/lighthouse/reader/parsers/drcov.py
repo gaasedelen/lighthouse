@@ -6,11 +6,18 @@ import mmap
 import struct
 from ctypes import *
 
+#
+# I know people like to use this parser in their own projects, so this
+# if/def makes it compatible with being imported or used outside Lighthouse
+#
+
 try:
     from lighthouse.exceptions import CoverageMissingError
     from lighthouse.reader.coverage_file import CoverageFile
+    g_lighthouse = True
 except ImportError as e:
     CoverageFile = object
+    g_lighthouse = False
 
 #------------------------------------------------------------------------------
 # DynamoRIO Drcov Log Parser
@@ -39,7 +46,10 @@ class DrcovData(CoverageFile):
         self.bb_table_is_binary = True
 
         # parse
-        super(DrcovData, self).__init__(filepath)
+        if g_lighthouse:
+            super(DrcovData, self).__init__(filepath)
+        else:
+            self._parse()
 
     #--------------------------------------------------------------------------
     # Public

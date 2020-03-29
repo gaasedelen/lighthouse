@@ -18,6 +18,7 @@ class DatabasePainter(object):
     MSG_TERMINATE = 0
     MSG_REPAINT = 1
     MSG_CLEAR = 2
+    MSG_REBASE = 3
 
     def __init__(self, director, palette):
 
@@ -38,6 +39,7 @@ class DatabasePainter(object):
         # instruction addresses and graph nodes it has painted.
         #
 
+        self._imagebase = BADADDR
         self._painted_nodes = set()
         self._painted_instructions = set()
 
@@ -75,6 +77,7 @@ class DatabasePainter(object):
         # register for cues from the director
         self._director.coverage_switched(self.repaint)
         self._director.coverage_modified(self.repaint)
+        self._director.refreshed(self.check_rebase)
 
     #--------------------------------------------------------------------------
     # Status
@@ -139,6 +142,13 @@ class DatabasePainter(object):
 
         # trigger the database clear
         self._msg_queue.put(self.MSG_CLEAR)
+
+    def check_rebase(self):
+        """
+        Perform a rebase on the painted data cache (if necessary).
+        """
+        self._msg_queue.put(self.MSG_REBASE)
+        self._msg_queue.put(self.MSG_REPAINT)
 
     #--------------------------------------------------------------------------
     # Commands
@@ -230,6 +240,7 @@ class DatabasePainter(object):
 
         # compute the painted nodes that will not get painted over
         stale_nodes_ea = painted - viewkeys(function_coverage.nodes)
+        stale_nodes_ea |= (painted & function_coverage.database.partial_nodes)
         stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
 
         # active instructions
@@ -290,6 +301,14 @@ class DatabasePainter(object):
         start = time.time()
         #------------------------------------------------------------------
 
+        # initialize imagebase if it hasn't been already...
+        if self._imagebase == BADADDR:
+            self._imagebase = db_metadata.imagebase
+
+        # abandon painting early if it appears a rebase has occurred
+        elif self._imagebase != db_metadata.imagebase:
+            return False
+
         # immediately paint user-visible regions of the database
         if not self._priority_paint():
             return False # a repaint was requested
@@ -299,6 +318,7 @@ class DatabasePainter(object):
 
         # compute the painted nodes that will not get painted over
         stale_nodes_ea = self._painted_nodes - viewkeys(db_coverage.nodes)
+        stale_nodes_ea |= db_coverage.partial_nodes
         stale_nodes = [db_metadata.nodes[ea] for ea in stale_nodes_ea]
 
         # clear old instruction paint
@@ -334,7 +354,7 @@ class DatabasePainter(object):
         """
         db_metadata = self._director.metadata
         instructions = db_metadata.instructions
-        nodes = db_metadata.nodes.viewvalues()
+        nodes = viewvalues(db_metadata.nodes)
 
         # clear all instructions
         if not self._async_action(self._clear_instructions, instructions):
@@ -345,6 +365,32 @@ class DatabasePainter(object):
             return False # a repaint was requested
 
         # paint finished successfully
+        return True
+
+    def _rebase_database(self):
+        """
+        Rebase the active database paint.
+
+        TODO/XXX: there may be some edgecases where painting can be wrong if
+                  a rebase occurs while the painter is running.
+        """
+        db_metadata = self._director.metadata
+        instructions = db_metadata.instructions
+        nodes = viewvalues(db_metadata.nodes)
+
+        # a rebase has not occurred
+        if not db_metadata.cached or (db_metadata.imagebase == self._imagebase):
+            return False
+
+        # compute the offset of the rebase
+        rebase_offset = db_metadata.imagebase - self._imagebase
+
+        # rebase the cached addresses of what we have painted
+        self._painted_nodes = set([address+rebase_offset for address in self._painted_nodes])
+        self._painted_instructions = set([address+rebase_offset for address in self._painted_instructions])
+        self._imagebase = db_metadata.imagebase
+
+        # a rebase has been observed
         return True
 
     #--------------------------------------------------------------------------
@@ -401,6 +447,10 @@ class DatabasePainter(object):
             # clear all possible database paint
             elif action == self.MSG_CLEAR:
                 result = self._clear_database()
+
+            # check for a rebase of the painted data
+            elif action == self.MSG_REBASE:
+                result = self._rebase_database()
 
             # spin down the painting thread (this thread)
             elif action == self.MSG_TERMINATE:

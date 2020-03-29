@@ -69,6 +69,11 @@ class Lighthouse(object):
         # the directory to start the coverage file dialog in
         self._last_directory = None
 
+        # a timed callback for lighthouse to check for certain state changes
+        self._scheduled = QtCore.QTimer()
+        self._scheduled.timeout.connect(self.scheduled)
+        #self._scheduled.start(1000) # TODO: re-enable once more testing is done...
+
     def print_banner(self):
         """
         Print the plugin banner.
@@ -103,6 +108,7 @@ class Lighthouse(object):
         """
         Spin down any lingering core components before plugin unload.
         """
+        self._scheduled.stop()
         self.painter.terminate()
         self.director.terminate()
         self.metadata.terminate()
@@ -425,3 +431,23 @@ class Lighthouse(object):
 
         # return the captured filenames
         return filenames
+
+    #--------------------------------------------------------------------------
+    # Scheduled
+    #--------------------------------------------------------------------------
+
+    @disassembler.execute_read
+    def scheduled(self):
+        metadata = self.director.metadata
+
+        # get current imagebase
+        base = disassembler.get_imagebase()
+        lmsg("Imagebase: 0x%08x" % base)
+
+        # detect an image rebase
+        if (metadata.cached and base != metadata.imagebase) and not disassembler.busy:
+            lmsg("Image rebase detected, rebasing Lighthouse metadata...")
+            self.director.refresh()
+
+        # schedule the next update
+        self._scheduled.start(1000)

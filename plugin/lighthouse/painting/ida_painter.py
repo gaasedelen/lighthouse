@@ -39,7 +39,7 @@ logger = logging.getLogger("Lighthouse.Painting.IDA")
 #    this section of code constitutes some of the most fragile, convoluted,
 #    and regression prone code in lighthouse. through some miraculous feats
 #    of engineering, the solution below appears to safely resolve both of
-#    these problems for downlevel versions (IDA 6.8 --> 7.0)
+#    these problems for downlevel versions (IDA 6.8 --> 7.x)
 #
 
 from lighthouse.util.qt import QtCore
@@ -223,12 +223,6 @@ class IDAPainter(DatabasePainter):
         # create a node info object as our vehicle for setting the node color
         node_info = idaapi.node_info_t()
 
-        # NOTE/COMPAT:
-        if disassembler.USING_IDA7API:
-            set_node_info = idaapi.set_node_info
-        else:
-            set_node_info = idaapi.set_node_info2
-
         #
         # loop through every node that we have coverage data for, painting them
         # in the IDA graph view as applicable.
@@ -237,11 +231,15 @@ class IDAPainter(DatabasePainter):
         for node_coverage in nodes_coverage:
             node_metadata = db_metadata.nodes[node_coverage.address]
 
+            # ignore nodes that are only partially executed
+            if node_coverage.instructions_executed != node_metadata.instruction_count:
+                continue
+
             # assign the background color we would like to paint to this node
             node_info.bg_color = self.palette.coverage_paint
 
             # do the *actual* painting of a single node instance
-            set_node_info(
+            idaapi.set_node_info(
                 node_metadata.function.address,
                 node_metadata.id,
                 node_info,
@@ -259,12 +257,6 @@ class IDAPainter(DatabasePainter):
         node_info = idaapi.node_info_t()
         node_info.bg_color = idc.DEFCOLOR
 
-        # NOTE/COMPAT:
-        if disassembler.USING_IDA7API:
-            set_node_info = idaapi.set_node_info
-        else:
-            set_node_info = idaapi.set_node_info2
-
         #
         # loop through every node that we have metadata data for, clearing
         # their paint (color) in the IDA graph view as applicable.
@@ -273,7 +265,7 @@ class IDAPainter(DatabasePainter):
         for node_metadata in nodes_metadata:
 
             # do the *actual* painting of a single node instance
-            set_node_info(
+            idaapi.set_node_info(
                 node_metadata.function.address,
                 node_metadata.id,
                 node_info,

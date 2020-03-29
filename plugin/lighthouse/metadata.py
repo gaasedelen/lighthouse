@@ -63,7 +63,7 @@ class DatabaseMetadata(object):
 
         # name & imagebase of the executable this metadata is based on
         self.filename = ""
-        self.imagebase = -1
+        self.imagebase = BADADDR
 
         # database metadata cache status
         self.cached = False
@@ -76,9 +76,12 @@ class DatabaseMetadata(object):
         # internal members to help index & navigate the cached metadata
         self._stale_lookup = False
         self._name2func = {}
-        self._last_node = []           # HACK: blank iterable for now
         self._node_addresses = []
         self._function_addresses = []
+
+        # HACK: dirty hack since we can't create a blank node easily
+        self._last_node = lambda: None
+        self._last_node.instructions = []
 
         # placeholder attribute for disassembler event hooks
         self._rename_hooks = None
@@ -93,6 +96,7 @@ class DatabaseMetadata(object):
 
         self._metadata_modified_callbacks = []
         self._function_renamed_callbacks = []
+        self._rebased_callbacks = []
 
     def terminate(self):
         """
@@ -148,7 +152,7 @@ class DatabaseMetadata(object):
         assert not self._stale_lookup, "Stale metadata is unsafe to use..."
 
         # fast path, effectively a LRU cache of 1 ;P
-        if address in self._last_node:
+        if address in self._last_node.instructions:
             return self._last_node
 
         #
@@ -164,7 +168,7 @@ class DatabaseMetadata(object):
         # node simply does not exist), then we have no match/metadata to return
         #
 
-        if not (node_metadata and address in node_metadata):
+        if not (node_metadata and address in node_metadata.instructions):
             return None
 
         #
@@ -362,7 +366,8 @@ class DatabaseMetadata(object):
           - get_function(ea)
 
         """
-        self._last_node = []
+        self._last_node = lambda: None # XXX blank node hack, see other ref to _last_node
+        self._last_node.instructions = []
         self._name2func = { f.name: f.address for f in itervalues(self.functions) }
         self._node_addresses = sorted(self.nodes.keys())
         self._function_addresses = sorted(self.functions.keys())
@@ -399,6 +404,23 @@ class DatabaseMetadata(object):
         if self._rename_hooks:
             self._rename_hooks.unhook()
 
+        # grab the cached imagebase as it might have changed
+        prev_imagebase = self.imagebase
+        was_cached = self.cached
+
+        # refresh high level database properties that we wish to cache
+        self._sync_refresh_properties()
+
+        #
+        # if a rebase occured, trash all present metadata as its easier to
+        # rebuild the cache from scratch...
+        #
+
+        if prev_imagebase != self.imagebase:
+            self.nodes = {}
+            self.functions = {}
+            self.instructions = []
+
         #
         # if the caller provided no function addresses to target for refresh,
         # we will perform a complete metadata refresh of all database defined
@@ -410,9 +432,6 @@ class DatabaseMetadata(object):
                 disassembler.get_function_addresses
             )()
             function_addresses = list(set(function_addresses+list(self.functions)))
-
-        # refresh high level database properties that we wish to cache
-        self._sync_refresh_properties()
 
         # refresh the core database metadata asynchronously
         if is_async:
@@ -459,6 +478,10 @@ class DatabaseMetadata(object):
         # the metadata refresh is effectively done, and the data is now 'cached'
         if completed:
             self.cached = True
+
+        # detect & notify of a rebase event
+        if was_cached and (prev_imagebase != self.imagebase):
+            self._notify_rebased(prev_imagebase, self.imagebase)
 
         # return true/false to indicates completion
         return completed
@@ -662,6 +685,20 @@ class DatabaseMetadata(object):
         """
         notify_callback(self._function_renamed_callbacks)
 
+    def rebased(self, callback):
+        """
+        Subscribe a callback for director rebasing events.
+        """
+        register_callback(self._rebased_callbacks, callback)
+
+    def _notify_rebased(self, old_imagebase, new_imagebase):
+        """
+        Notify listeners of a database rebasing event.
+
+        TODO/FUTURE: send old / new imagebases
+        """
+        notify_callback(self._rebased_callbacks)
+
 #------------------------------------------------------------------------------
 # Function Metadata
 #------------------------------------------------------------------------------
@@ -761,25 +798,17 @@ class FunctionMetadata(object):
         for node_id in xrange(flowchart.size()):
             node = flowchart[node_id]
 
-            # NOTE/COMPAT
-            if disassembler.USING_IDA7API:
-                node_start = node.start_ea
-                node_end   = node.end_ea
-            else:
-                node_start = node.startEA
-                node_end   = node.endEA
-
             #
             # the node current node appears to have a size of zero. This means
             # that another flowchart / function owns this node so we can just
             # ignore it...
             #
 
-            if node_start == node_end:
+            if node.start_ea == node.end_ea:
                 continue
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node_start, node_end, node_id)
+            node_metadata = NodeMetadata(node.start_ea, node.end_ea, node_id)
 
             #
             # establish a relationship between this node (basic block) and
@@ -787,7 +816,7 @@ class FunctionMetadata(object):
             #
 
             node_metadata.function = function_metadata
-            function_metadata.nodes[node_start] = node_metadata
+            function_metadata.nodes[node.start_ea] = node_metadata
 
         # compute all of the edges between nodes in the current function
         for node_metadata in itervalues(function_metadata.nodes):
@@ -997,6 +1026,7 @@ class NodeMetadata(object):
 
         while current_address < node_end:
             instruction_size = bv.get_instruction_length(current_address)
+            instruction_size = instruction_size if instruction_size else 1 # TODO/HACK: binja can return 0 for undef/bad inst
             self.instructions[current_address] = instruction_size
             current_address += instruction_size
 

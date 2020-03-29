@@ -84,6 +84,23 @@ class CoverageComboBox(QtWidgets.QComboBox):
         # to be re-enlightened to direct mouse clicks (eg, to expand it). this
         # undos the setAttribute action in showPopup() above.
         #
+        # if the coverage combobox is *not* visible, the coverage window is
+        # probably being closed / deleted. but just in case, we should attempt
+        # to restore the combobox's ability to accept clicks before bailing.
+        #
+        # this fixes a bug / Qt warning first printed in IDA 7.4 where 'self'
+        # (the comobobox) would be deleted by the time the 100ms timer in the
+        # 'normal' case fires below
+        #
+
+        if not self.isVisible():
+            self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
+            return
+
+        #
+        # in the more normal case, the comobobox is simply being collapsed
+        # by the user clicking it, or clicking away from it.
+        #
         # we use a short timer of 100ms to ensure the 'hiding' of the dropdown
         # and its associated click are processed first. aftwards, it is safe to
         # begin accepting clicks again.
@@ -258,18 +275,10 @@ class CoverageComboBox(QtWidgets.QComboBox):
         # event, (it looks weird) so clear the table/dropdown highlights now
         #
 
-        # NOTE/COMPAT
-        if USING_PYQT5:
-            self.view().selectionModel().setCurrentIndex(
-                QtCore.QModelIndex(),
-                QtCore.QItemSelectionModel.ClearAndSelect
-            )
-        else:
-            self.view().selectionModel().setCurrentIndex(
-                QtCore.QModelIndex(),
-                QtGui.QItemSelectionModel.ClearAndSelect
-            )
-
+        self.view().selectionModel().setCurrentIndex(
+            QtCore.QModelIndex(),
+            QtCore.QItemSelectionModel.ClearAndSelect
+        )
 
         #
         # the deletion of an entry will shift all the entries beneath it up
@@ -416,19 +425,13 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         hh = self.horizontalHeader()
 
         #
-        # NOTE/COMPAT:
         # - set the coverage name column to be stretchy and as tall as the text
         # - make the 'X' icon column fixed width
         #
 
-        if USING_PYQT5:
-            hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-            hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
-            vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-        else:
-            hh.setResizeMode(0, QtWidgets.QHeaderView.Stretch)
-            hh.setResizeMode(1, QtWidgets.QHeaderView.Fixed)
-            vh.setResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
 
         hh.setMinimumSectionSize(0)
         vh.setMinimumSectionSize(0)

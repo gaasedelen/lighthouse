@@ -41,7 +41,7 @@ class CoverageReader(object):
 
             # log the exceptions for each parse failure
             except Exception as e:
-                parse_failures[name] = traceback.format_exc(e)
+                parse_failures[name] = traceback.format_exc()
                 logger.debug("| Parse FAILED")
 
         #

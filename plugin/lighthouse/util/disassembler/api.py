@@ -71,6 +71,13 @@ class DisassemblerAPI(object):
         """
         pass
 
+    @abc.abstractproperty
+    def busy(self):
+        """
+        Return a bool indicating if the disassembler is busy / processing.
+        """
+        pass
+
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------
