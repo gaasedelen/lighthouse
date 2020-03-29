@@ -93,15 +93,19 @@ class CutterAPI(DisassemblerAPI):
                 self._core = core
 
             def hook(self):
-                #self._core.functionRenamed.connect(self.update)
-                print("TODO/CUTTER: Hook rename")
+                self._core.functionRenamed.connect(self.update)
 
             def unhook(self):
-                #self._core.functionRenamed.disconnect(self.update)
-                print("TODO/CUTTER: Unhook rename")
+                self._core.functionRenamed.disconnect(self.update)
 
             def update(self, old_name, new_name):
-                print('Received update event!', old_name, new_name)
+                logger.debug('Received update event!', old_name, new_name)
+                # TODO/CUTTER: HOW DO I GET A FUNCITON'S ADDRESS BY NAME??
+                #self.renamed(address, new_name)
+
+            # placeholder, this gets replaced in metadata.py
+            def renamed(self, address, new_name):
+                pass
 
         return RenameHooks(self._core)
 
