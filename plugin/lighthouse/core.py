@@ -2,6 +2,8 @@ import os
 import abc
 import logging
 
+import lighthouse
+
 from lighthouse.ui import CoverageOverview, CoverageXref
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
@@ -74,6 +76,9 @@ class Lighthouse(object):
         self._scheduled.timeout.connect(self.scheduled)
         #self._scheduled.start(1000) # TODO: re-enable once more testing is done...
 
+        # expose the live CoverageDirector object instance for external scripts
+        lighthouse.coverage_director = self.director
+
     def print_banner(self):
         """
         Print the plugin banner.
@@ -108,6 +113,11 @@ class Lighthouse(object):
         """
         Spin down any lingering core components before plugin unload.
         """
+
+        # remove access to the exposed CoverageDirector
+        lighthouse.coverage_director = None
+
+        # spin down the rest of the core subsystems
         self._scheduled.stop()
         self.painter.terminate()
         self.director.terminate()
