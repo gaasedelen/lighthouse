@@ -208,7 +208,7 @@ class Lighthouse(object):
         """
         Open the dockable 'Coverage Overview' dialog.
         """
-        self.palette.refresh_colors()
+        self.palette.refresh_theme()
 
         # the coverage overview is already open & visible, simply refresh it
         if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
@@ -256,7 +256,7 @@ class Lighthouse(object):
         """
         Perform the user-interactive loading of a coverage batch.
         """
-        self.palette.refresh_colors()
+        self.palette.refresh_theme()
 
         #
         # kick off an asynchronous metadata refresh. this will run in the
@@ -339,7 +339,7 @@ class Lighthouse(object):
         """
         Perform the user-interactive loading of individual coverage files.
         """
-        self.palette.refresh_colors()
+        self.palette.refresh_theme()
 
         #
         # kick off an asynchronous metadata refresh. this will run in the
