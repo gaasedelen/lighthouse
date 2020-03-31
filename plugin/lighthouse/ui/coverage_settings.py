@@ -1,4 +1,5 @@
 import logging
+
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 

@@ -6,8 +6,8 @@ import datetime
 import collections
 
 from lighthouse.util import *
-from lighthouse.palette import compute_color_on_gradiant
 from lighthouse.metadata import DatabaseMetadata
+from lighthouse.ui.palette import compute_color_on_gradiant
 
 logger = logging.getLogger("Lighthouse.Coverage")
 
@@ -734,8 +734,8 @@ class FunctionCoverage(object):
         # bake colors
         self.coverage_color = compute_color_on_gradiant(
             self.instruction_percent,
-            self.database.palette.coverage_bad,
-            self.database.palette.coverage_good
+            self.database.palette.table_coverage_bad,
+            self.database.palette.table_coverage_good
         )
 
 #------------------------------------------------------------------------------

@@ -95,18 +95,18 @@ class ComposingShell(QtWidgets.QWidget):
 
         # configure the shell background & default text color
         qpal = self._line.palette()
-        #qpal.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
-        qpal.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
-        qpal.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
+        #qpal.setColor(QtGui.QPalette.Base, self._palette.shell_background)
+        qpal.setColor(QtGui.QPalette.Text, self._palette.shell_text)
+        qpal.setColor(QtGui.QPalette.WindowText, self._palette.shell_text)
         self._line.setPalette(qpal)
 
         self._line.setStyleSheet(
             "QPlainTextEdit {"
-            "    background-color: %s;" % self._palette.overview_bg.name() +
-            "    border: 1px solid %s;" % self._palette.border.name() +
+            "    background-color: %s;" % self._palette.shell_background.name() +
+            "    border: 1px solid %s;" % self._palette.shell_border.name() +
             "} "
             "QPlainTextEdit:hover, QPlainTextEdit:focus {"
-            "    border: 1px solid %s;" % self._palette.focus.name() +
+            "    border: 1px solid %s;" % self._palette.shell_border_focus.name() +
             "}"
         )
 
@@ -124,8 +124,8 @@ class ComposingShell(QtWidgets.QWidget):
         self._completer.setWrapAround(False)
         self._completer.popup().setFont(self._font)
         self._completer.popup().setStyleSheet(
-            "background: %s;" % self._palette.shell_hint_bg.name() +
-            "color: %s;" % self._palette.shell_hint_fg.name()
+            "background: %s;" % self._palette.shell_hint_background.name() +
+            "color: %s;" % self._palette.shell_hint_text.name()
         )
         self._completer.setWidget(self._line)
 
@@ -388,9 +388,9 @@ class ComposingShell(QtWidgets.QWidget):
 
         # color search based on if there are any matching results
         if self._table_model.rowCount():
-            self._color_text(self._palette.valid_text, start=1)
+            self._color_text(self._palette.shell_text_valid, start=1)
         else:
-            self._color_text(self._palette.invalid_text, start=1)
+            self._color_text(self._palette.shell_text_invalid, start=1)
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -503,7 +503,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._color_clear()
 
         # color jump
-        self._color_text(self._palette.valid_text)
+        self._color_text(self._palette.shell_text_valid)
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -855,7 +855,7 @@ class ComposingShell(QtWidgets.QWidget):
         cursor_position = cursor.position()
 
         # setup the invalid text highlighter
-        invalid_color = self._palette.invalid_highlight
+        invalid_color = self._palette.shell_highlight_invalid
         highlight = QtGui.QTextCharFormat()
         highlight.setFontWeight(QtGui.QFont.Bold)
         highlight.setBackground(QtGui.QBrush(QtGui.QColor(invalid_color)))

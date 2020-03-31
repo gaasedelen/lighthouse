@@ -92,13 +92,13 @@ class CoverageTableView(QtWidgets.QTableView):
         self.setStyleSheet(
             "QTableView {"
             "  gridline-color: black;"
-            "  background-color: %s;" % palette.overview_bg.name() +
+            "  background-color: %s;" % palette.table_background.name() +
             #"  color: %s;" % palette.combobox_fg.name() +
             "  outline: none; "
             "} " +
             "QTableView::item:selected {"
             "  color: white; "
-            "  background-color: %s;" % palette.selection.name() +
+            "  background-color: %s;" % palette.table_selection.name() +
             "}"
         )
 
@@ -689,7 +689,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # a fallback coverage object for functions with no coverage
         self._blank_coverage = FunctionCoverage(BADADDR)
-        self._blank_coverage.coverage_color = director._palette.coverage_none
+        self._blank_coverage.coverage_color = director._palette.table_coverage_none
 
         # set the default column text alignment for each column (centered)
         self._default_alignment = QtCore.Qt.AlignCenter
@@ -1127,7 +1127,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             padding: 1ex 1em 1ex 1em;
         }}
         """.format(
-            table_bg=palette.overview_bg.name(),
+            table_bg=palette.table_background.name(),
             table_fg="white"
         )
 

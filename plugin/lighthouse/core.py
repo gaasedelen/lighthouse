@@ -4,12 +4,11 @@ import logging
 
 import lighthouse
 
-from lighthouse.ui import CoverageOverview, CoverageXref
+from lighthouse.ui import *
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
-from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
 from lighthouse.coverage import DatabaseCoverage

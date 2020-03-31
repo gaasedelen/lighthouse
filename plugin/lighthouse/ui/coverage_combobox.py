@@ -179,7 +179,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
             "   border: none;"
             "   padding: 0 0 0 2ex;"
             "   margin: 0;"
-            "   background-color: %s;" % palette.overview_bg.name() +
+            "   background-color: %s;" % palette.combobox_background.name() +
             "}"
         )
 
@@ -197,12 +197,12 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
         self.setStyleSheet(
             "QComboBox {"
-            "   color: %s;" % palette.combobox_fg.name() +
-            "   border: 1px solid %s;" % palette.border.name() +
+            "   color: %s;" % palette.combobox_text.name() +
+            "   border: 1px solid %s;" % palette.combobox_border.name() +
             "   padding: 0;"
             "} "
             "QComboBox:hover, QComboBox:focus {"
-            "   border: 1px solid %s;" % palette.focus.name() +
+            "   border: 1px solid %s;" % palette.combobox_border_focus.name() +
             "}"
         )
 
@@ -400,10 +400,10 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         # widget style
         self.setStyleSheet(
             "QTableView {"
-            "  background-color: %s;" % palette.combobox_bg.name() +
-            "  color: %s;" % palette.combobox_fg.name() +
-            "  selection-background-color: %s;" % palette.combobox_selection_bg.name() +
-            "  selection-color: %s;" % palette.combobox_selection_fg.name() +
+            "  background-color: %s;" % palette.combobox_background.name() +
+            "  color: %s;" % palette.combobox_text.name() +
+            "  selection-background-color: %s;" % palette.combobox_selection_background.name() +
+            "  selection-color: %s;" % palette.combobox_selection_text.name() +
             "  margin: 0; outline: none;"
             "} "
             "QTableView::item{ padding: 0.5ex; } "
