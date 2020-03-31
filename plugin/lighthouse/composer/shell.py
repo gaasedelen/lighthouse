@@ -858,7 +858,7 @@ class ComposingShell(QtWidgets.QWidget):
         invalid_color = self._palette.shell_highlight_invalid
         highlight = QtGui.QTextCharFormat()
         highlight.setFontWeight(QtGui.QFont.Bold)
-        highlight.setBackground(QtGui.QBrush(QtGui.QColor(invalid_color)))
+        highlight.setBackground(QtGui.QBrush(invalid_color))
 
         self._line.blockSignals(True)
         ################# UPDATES DISABLED #################
@@ -907,7 +907,7 @@ class ComposingShell(QtWidgets.QWidget):
         # setup a simple font coloring (or clearing) text format
         simple = QtGui.QTextCharFormat()
         if color:
-            simple.setForeground(QtGui.QBrush(QtGui.QColor(color)))
+            simple.setForeground(QtGui.QBrush(color))
 
         self._line.blockSignals(True)
         ################# UPDATES DISABLED #################

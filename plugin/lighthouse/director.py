@@ -8,7 +8,7 @@ import collections
 from lighthouse.util.qt import flush_qt_events
 from lighthouse.util.misc import *
 from lighthouse.util.python import *
-from lighthouse.util.qt import await_future, await_lock, color_text
+from lighthouse.util.qt import await_future, await_lock
 from lighthouse.util.disassembler import disassembler
 
 from lighthouse.reader import CoverageReader
@@ -876,7 +876,7 @@ class CoverageDirector(object):
         # could not locate coverage
         return None
 
-    def get_coverage_string(self, coverage_name, color=False):
+    def get_coverage_string(self, coverage_name):
         """
         Retrieve a detailed coverage string for the given coverage_name.
         """
@@ -896,23 +896,6 @@ class CoverageDirector(object):
         # build and return a generic detailed coverage string
         #   eg: 'A - 73.45% - drcov.boombox.exe.03820.0000.proc.log'
         #
-
-        if color:
-
-            # color the symbol token like the shell
-            symbol = color_text(symbol, self._palette.coverage_token)
-
-            # low coverage color
-            if percent < 30.0:
-                percent_str = color_text(percent_str, self._palette.coverage_bad)
-
-            # okay coverage color
-            elif percent < 60.0:
-                percent_str = color_text(percent_str, self._palette.coverage_okay)
-
-            # good coverage color
-            else:
-                percent_str = color_text(percent_str, self._palette.coverage_good)
 
         return "%s - %s%% - %s" % (symbol, percent_str, coverage_name)
 

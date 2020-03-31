@@ -25,6 +25,8 @@
     {
         "coverage_paint":                "darkBlue",
 
+        "table_text":                    "white",
+        "table_grid":                    "black",
         "table_coverage_none":           "darkGray2",
         "table_coverage_bad":            "red",
         "table_coverage_good":           "blue",

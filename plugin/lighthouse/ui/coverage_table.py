@@ -91,9 +91,9 @@ class CoverageTableView(QtWidgets.QTableView):
         # widget style
         self.setStyleSheet(
             "QTableView {"
-            "  gridline-color: black;"
+            "  gridline-color: %s;" % palette.table_grid.name() +
             "  background-color: %s;" % palette.table_background.name() +
-            #"  color: %s;" % palette.combobox_fg.name() +
+            "  color: %s;" % palette.table_text.name() +
             "  outline: none; "
             "} " +
             "QTableView::item:selected {"
@@ -862,10 +862,6 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
                 self._blank_coverage
             )
             return function_coverage.coverage_color
-
-        # cell text color request
-        elif role == QtCore.Qt.ForegroundRole:
-            return QtGui.QColor(QtCore.Qt.white)
 
         # cell font style format request
         elif role == QtCore.Qt.FontRole:
