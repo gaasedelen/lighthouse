@@ -8,6 +8,22 @@ This pintool is labeled only as a prototype.
 
 To compile the pintool, you first will need to [download](https://software.intel.com/en-us/articles/pin-a-binary-instrumentation-tool-downloads) and extract Pin.
 
+Intel only keeps download links for new versions of PIN, but all the old versions are still available if you have a link. Here are the links for PIN 3.7:
+
+https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.7-97619-g0d0c92f4f-gcc-linux.tar.gz
+
+https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.7-97619-g0d0c92f4f-msvc-windows.zip
+
+https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.7-97619-g0d0c92f4f-clang-mac.tar.gz
+
+And here for PIN 3.11, which is the latest version tested for lighthouse.
+
+https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.11-97998-g7ecce2dac-gcc-linux.tar.gz
+
+https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.11-97998-g7ecce2dac-msvc-windows.zip
+
+https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.11-97998-g7ecce2dac-clang-mac.tar.gz
+
 Follow the build instructions below for your respective platform.
 
 ## Building for MacOS or Linux
