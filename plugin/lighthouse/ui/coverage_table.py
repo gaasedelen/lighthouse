@@ -84,7 +84,7 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         Initialize the coverage table.
         """
-        palette = self._model._director._palette
+        palette = self._model._director.palette
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
 
@@ -689,7 +689,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # a fallback coverage object for functions with no coverage
         self._blank_coverage = FunctionCoverage(BADADDR)
-        self._blank_coverage.coverage_color = director._palette.table_coverage_none
+        self._blank_coverage.coverage_color = director.palette.table_coverage_none
 
         # set the default column text alignment for each column (centered)
         self._default_alignment = QtCore.Qt.AlignCenter
@@ -1066,7 +1066,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate the HTML coverage table.
         """
-        palette = self._director._palette
+        palette = self._director.palette
         table_rows = []
 
         # generate the table's column title row

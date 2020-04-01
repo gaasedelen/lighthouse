@@ -27,7 +27,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # external entities
         self._director = director
-        self._palette = director._palette
+        self._palette = director.palette
         self._table_model = table_model
         self._table_view = table_view
 

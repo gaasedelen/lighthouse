@@ -147,7 +147,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
         """
         Initialize UI elements.
         """
-        palette = self._director._palette
+        palette = self._director.palette
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
@@ -389,7 +389,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         """
         Initialize UI elements.
         """
-        palette = self.model()._director._palette
+        palette = self.model()._director.palette
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()

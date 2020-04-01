@@ -95,6 +95,129 @@ class LighthousePalette(object):
         # TODO
         self._populate_user_theme_dir()
 
+    @property
+    def TOKEN_COLORS(self):
+        """
+        Return the palette of token colors.
+        """
+
+        return \
+        {
+
+            # logic operators
+            "OR":    self.logic_token,
+            "XOR":   self.logic_token,
+            "AND":   self.logic_token,
+            "MINUS": self.logic_token,
+
+            # misc
+            "COMMA":   self.comma_token,
+            "LPAREN":  self.paren_token,
+            "RPAREN":  self.paren_token,
+            #"WS":      self.whitepsace_token,
+            #"UNKNOWN": self.unknown_token,
+
+            # coverage
+            "COVERAGE_TOKEN": self.coverage_token,
+        }
+
+    def interactive_change_theme(self):
+        """
+        Open a file dialog and let the user select a new Lighthoue theme.
+        """
+
+        # create & configure a Qt File Dialog for immediate use
+        file_dialog = QtWidgets.QFileDialog(
+            None,
+            "Open Lighthouse theme file",
+            self._last_directory,
+            "JSON Files (*.json)"
+        )
+        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+
+        # prompt the user with the file dialog, and await filename(s)
+        filename, _ = file_dialog.getOpenFileName()
+
+        #
+        # ensure the user is only trying to load themes from the user theme
+        # directory as it helps ensure some of our intenal loading logic
+        #
+
+        file_dir = os.path.abspath(os.path.dirname(filename))
+        user_dir = os.path.abspath(get_user_theme_dir())
+        if file_dir != user_dir:
+            text = "Please install your Lighthouse theme into the user theme directory:\n\n" + user_dir
+            disassembler.warning(text)
+            lmsg(text)
+            return
+
+        #
+        # remember the last directory we were in (parsed from a selected file)
+        # for the next time the user comes to load coverage files
+        #
+
+        if filename:
+            self._last_directory = os.path.dirname(filename) + os.sep
+
+        # log the captured (selected) filenames from the dialog
+        logger.debug("Captured filename from theme file dialog: '%s'" % filename)
+
+        # load & apply theme from disk
+        if self._load_theme(filename):
+            return
+
+        # if the selected theme failed to load, throw a visible warning
+        disassembler.warning(
+            "Failed to load Lighthouse user theme!\n\n"
+            "Please check the console for more information..."
+        )
+
+    def refresh_theme(self):
+        """
+        Dynamically compute palette color based on IDA theme.
+
+        Depending on if IDA is using a dark or light theme, we *try*
+        to select colors that will hopefully keep things most readable.
+        """
+
+        #
+        # attempt to load the user's preferred (or hinted) theme. if we are
+        # successful, then there's nothing else to do!
+        #
+
+        if self._load_preferred_theme():
+            return
+
+        #
+        # failed to load the preferred theme... so delete the 'active'
+        # file (if there is one) and warn the user before falling back
+        #
+
+        os.remove(os.path.join(get_user_theme_dir(), ".active_theme"))
+        disassembler.warning(
+            "Failed to load Lighthouse user theme!\n\n"
+            "Please check the console for more information..."
+        )
+
+        # if there is already a theme loaded, continue to use it...
+        if self.theme:
+            return
+
+        #
+        # if no theme is loaded, we will attempt to detect & load the in-box
+        # themes based on the user's disassembler theme
+        #
+
+        loaded = self._load_preferred_theme(fallback=True)
+        if loaded:
+            return
+
+        lmsg("Could not load Lighthouse fallback theme!")
+
+    #--------------------------------------------------------------------------
+    # Theme Internals
+    #--------------------------------------------------------------------------
+
     def _populate_user_theme_dir(self):
         """
         Create the Lighthouse user theme directory and install default themes.
@@ -168,69 +291,25 @@ class LighthousePalette(object):
         # at this point, a theme_name to load should be known
         return theme_name
 
-    def interactive_change_theme(self):
+    def _load_preferred_theme(self, fallback=False):
         """
-        Open a file dialog and let the user select a new Lighthoue theme.
+        TODO
         """
+        theme_name = self._select_preferred_theme()
+        if fallback:
+            theme_path = os.path.join(get_plugin_theme_dir(), theme_name)
+        else:
+            theme_path = os.path.join(get_user_theme_dir(), theme_name)
+        return self._load_theme(theme_path)
 
-        # create & configure a Qt File Dialog for immediate use
-        file_dialog = QtWidgets.QFileDialog(
-            None,
-            "Open Lighthouse theme file",
-            self._last_directory,
-            "JSON Files (*.json)"
-        )
-        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-
-        # prompt the user with the file dialog, and await filename(s)
-        filename, _ = file_dialog.getOpenFileName()
-
-        #
-        # ensure the user is only trying to load themes from the user theme
-        # directory as it helps ensure some of our intenal loading logic
-        #
-
-        file_dir = os.path.abspath(os.path.dirname(filename))
-        user_dir = os.path.abspath(get_user_theme_dir())
-        if file_dir != user_dir:
-            text = "Please install your Lighthouse theme into the user theme directory:\n\n" + user_dir
-            disassembler.warning(text)
-            lmsg(text)
-            return
-
-        #
-        # remember the last directory we were in (parsed from a selected file)
-        # for the next time the user comes to load coverage files
-        #
-
-        if filename:
-            self._last_directory = os.path.dirname(filename) + os.sep
-
-        # log the captured (selected) filenames from the dialog
-        logger.debug("Captured filename from theme file dialog: '%s'" % filename)
-
-        # load & apply theme from disk
-        if self.load_theme(filename):
-            return
-
-        # if the selected theme failed to load, throw a visible warning
-        disassembler.warning(
-            "Failed to load Lighthouse user theme!\n\n"
-            "Please check the console for more information..."
-        )
-
-    #--------------------------------------------------------------------------
-    # Theme Loading
-    #--------------------------------------------------------------------------
-
-    def load_theme(self, filepath):
+    def _load_theme(self, filepath):
         """
         TODO
         """
 
         # attempt to read json theme from disk
         try:
-            theme = self.read_theme(filepath)
+            theme = self._read_theme(filepath)
 
         # reading file from dsik failed
         except OSError:
@@ -249,7 +328,7 @@ class LighthousePalette(object):
 
         # try applying the loaded theme to Lighthouse
         try:
-            self.apply_theme(theme)
+            self._apply_theme(theme)
         except Exception as e:
             lmsg("Failed to load Lighthouse user theme\n%s" % e)
             return False
@@ -261,7 +340,7 @@ class LighthousePalette(object):
         # return success
         return True
 
-    def read_theme(self, filepath):
+    def _read_theme(self, filepath):
         """
         Load a Lighthouse theme file from the given filepath
         """
@@ -276,7 +355,7 @@ class LighthousePalette(object):
         # all good
         return theme
 
-    def apply_theme(self, theme):
+    def _apply_theme(self, theme):
         """
         Apply a given theme to Lighthouse.
         """
@@ -300,61 +379,8 @@ class LighthousePalette(object):
         self.theme = theme
 
     #--------------------------------------------------------------------------
-    # Theme Management
+    # Theme Inference
     #--------------------------------------------------------------------------
-
-    def _load_preferred_theme(self, fallback=False):
-        """
-        TODO
-        """
-        theme_name = self._select_preferred_theme()
-        if fallback:
-            theme_path = os.path.join(get_plugin_theme_dir(), theme_name)
-        else:
-            theme_path = os.path.join(get_user_theme_dir(), theme_name)
-        return self.load_theme(theme_path)
-
-    def refresh_theme(self):
-        """
-        Dynamically compute palette color based on IDA theme.
-
-        Depending on if IDA is using a dark or light theme, we *try*
-        to select colors that will hopefully keep things most readable.
-        """
-
-        #
-        # attempt to load the user's preferred (or hinted) theme. if we are
-        # successful, then there's nothing else to do!
-        #
-
-        if self._load_preferred_theme():
-            return
-
-        #
-        # failed to load the preferred theme... so delete the 'active'
-        # file (if there is one) and warn the user before falling back
-        #
-
-        os.remove(os.path.join(get_user_theme_dir(), ".active_theme"))
-        disassembler.warning(
-            "Failed to load Lighthouse user theme!\n\n"
-            "Please check the console for more information..."
-        )
-
-        # if there is already a theme loaded, continue to use it...
-        if self.theme:
-            return
-
-        #
-        # if no theme is loaded, we will attempt to detect & load the in-box
-        # themes based on the user's disassembler theme
-        #
-
-        loaded = self._load_preferred_theme(fallback=True)
-        if loaded:
-            return
-
-        lmsg("Could not load Lighthouse fallback theme!")
 
     def _disassembly_theme_hint(self):
         """
@@ -423,30 +449,3 @@ class LighthousePalette(object):
 
         # return 'Dark' or 'Light'
         return test_color_brightness(bg_color)
-
-    @property
-    def TOKEN_COLORS(self):
-        """
-        Return the palette of token colors.
-        """
-
-        return \
-        {
-
-            # logic operators
-            "OR":    self.logic_token,
-            "XOR":   self.logic_token,
-            "AND":   self.logic_token,
-            "MINUS": self.logic_token,
-
-            # misc
-            "COMMA":   self.comma_token,
-            "LPAREN":  self.paren_token,
-            "RPAREN":  self.paren_token,
-            #"WS":      self.whitepsace_token,
-            #"UNKNOWN": self.unknown_token,
-
-            # coverage
-            "COVERAGE_TOKEN": self.coverage_token,
-        }
-

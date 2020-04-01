@@ -56,7 +56,7 @@ class CoverageDirector(object):
         self.metadata = metadata
 
         # the plugin color palette
-        self._palette = palette
+        self.palette = palette
 
         #----------------------------------------------------------------------
         # Coverage
@@ -741,7 +741,7 @@ class CoverageDirector(object):
 
         # create a new database coverage mapping from the given coverage data
         new_coverage = DatabaseCoverage(
-            self._palette,
+            self.palette,
             coverage_name,
             coverage_filepath,
             coverage_data
@@ -856,7 +856,7 @@ class CoverageDirector(object):
         # TODO/FUTURE: check if there's any references to the coverage aggregate?
 
         # assign a new, blank aggregate set
-        self._special_coverage[AGGREGATE] = DatabaseCoverage(self._palette, AGGREGATE)
+        self._special_coverage[AGGREGATE] = DatabaseCoverage(self.palette, AGGREGATE)
         self._refresh_aggregate() # probably not needed
 
     def get_coverage(self, name):
@@ -1092,7 +1092,7 @@ class CoverageDirector(object):
 
         # if the AST is effectively 'null', return a blank coverage set
         if isinstance(ast, TokenNull):
-            return DatabaseCoverage(self._palette)
+            return DatabaseCoverage(self.palette)
 
         #
         # the director's composition evaluation code (this function) is most
@@ -1230,7 +1230,7 @@ class CoverageDirector(object):
             # we use the mask to generate a new DatabaseCoverage mapping.
             #
 
-            new_composition = DatabaseCoverage(self._palette, data=coverage_mask)
+            new_composition = DatabaseCoverage(self.palette, data=coverage_mask)
 
             # cache & return the newly computed composition
             self._composition_cache[composition_hash] = new_composition
@@ -1277,7 +1277,7 @@ class CoverageDirector(object):
         assert isinstance(range_token, TokenCoverageRange)
 
         # initialize output to a null coverage set
-        output = DatabaseCoverage(self._palette)
+        output = DatabaseCoverage(self.palette)
 
         # expand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
         symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
