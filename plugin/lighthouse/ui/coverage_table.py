@@ -35,6 +35,26 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # configure the widget for use
         self._ui_init()
+        self.refresh_theme()
+
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        palette = self._model._director.palette
+        self.setStyleSheet(
+            "QTableView {"
+            "  gridline-color: %s;" % palette.table_grid.name() +
+            "  background-color: %s;" % palette.table_background.name() +
+            "  color: %s;" % palette.table_text.name() +
+            "  outline: none; "
+            "} " +
+            "QTableView::item:selected {"
+            "  color: white; "
+            "  background-color: %s;" % palette.table_selection.name() +
+            "}"
+        )
 
     #--------------------------------------------------------------------------
     # QTableView Overloads
@@ -84,23 +104,8 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         Initialize the coverage table.
         """
-        palette = self._model._director.palette
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-
-        # widget style
-        self.setStyleSheet(
-            "QTableView {"
-            "  gridline-color: %s;" % palette.table_grid.name() +
-            "  background-color: %s;" % palette.table_background.name() +
-            "  color: %s;" % palette.table_text.name() +
-            "  outline: none; "
-            "} " +
-            "QTableView::item:selected {"
-            "  color: white; "
-            "  background-color: %s;" % palette.table_selection.name() +
-            "}"
-        )
 
         # these properties will allow the user shrink the table to any size
         self.setMinimumHeight(0)
@@ -735,6 +740,15 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._director.coverage_switched(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
         self._director.metadata.function_renamed(self._data_changed)
+
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+
+        Does not require @disassembler.execute_ui decorator, data_changed() has its own.
+        """
+        self._blank_coverage.coverage_color = self._director.palette.table_coverage_none
+        self._data_changed()
 
     #--------------------------------------------------------------------------
     # QAbstractTableModel Overloads

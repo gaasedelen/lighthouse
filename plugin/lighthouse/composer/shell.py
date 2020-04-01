@@ -46,6 +46,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # configure the widget for use
         self._ui_init()
+        self.refresh_theme()
 
     #--------------------------------------------------------------------------
     # Properties
@@ -93,23 +94,6 @@ class ComposingShell(QtWidgets.QWidget):
         # the text box / shell / ComposingLine
         self._line = ComposingLine()
 
-        # configure the shell background & default text color
-        qpal = self._line.palette()
-        #qpal.setColor(QtGui.QPalette.Base, self._palette.shell_background)
-        qpal.setColor(QtGui.QPalette.Text, self._palette.shell_text)
-        qpal.setColor(QtGui.QPalette.WindowText, self._palette.shell_text)
-        self._line.setPalette(qpal)
-
-        self._line.setStyleSheet(
-            "QPlainTextEdit {"
-            "    background-color: %s;" % self._palette.shell_background.name() +
-            "    border: 1px solid %s;" % self._palette.shell_border.name() +
-            "} "
-            "QPlainTextEdit:hover, QPlainTextEdit:focus {"
-            "    border: 1px solid %s;" % self._palette.shell_border_focus.name() +
-            "}"
-        )
-
     def _ui_init_completer(self):
         """
         Initialize the coverage hint UI elements.
@@ -123,10 +107,6 @@ class ComposingShell(QtWidgets.QWidget):
         self._completer.setModel(self._completer_model)
         self._completer.setWrapAround(False)
         self._completer.popup().setFont(self._font)
-        self._completer.popup().setStyleSheet(
-            "background: %s;" % self._palette.shell_hint_background.name() +
-            "color: %s;" % self._palette.shell_hint_text.name()
-        )
         self._completer.setWidget(self._line)
 
     def _ui_init_signals(self):
@@ -180,6 +160,36 @@ class ComposingShell(QtWidgets.QWidget):
         Public refresh of the shell.
         """
         self._internal_refresh()
+
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        assert (self._line and self._completer), "UI not yet initialized..."
+
+        # configure the shell background & default text color
+        qpal = self._line.palette()
+        qpal.setColor(QtGui.QPalette.Text, self._palette.shell_text)
+        qpal.setColor(QtGui.QPalette.WindowText, self._palette.shell_text)
+        self._line.setPalette(qpal)
+
+        # set other hard to access shell theme elements
+        self._line.setStyleSheet(
+            "QPlainTextEdit {"
+            "    background-color: %s;" % self._palette.shell_background.name() +
+            "    border: 1px solid %s;" % self._palette.shell_border.name() +
+            "} "
+            "QPlainTextEdit:hover, QPlainTextEdit:focus {"
+            "    border: 1px solid %s;" % self._palette.shell_border_focus.name() +
+            "}"
+        )
+
+        # refresh completer popup style...
+        self._completer.popup().setStyleSheet(
+            "background: %s;" % self._palette.shell_hint_background.name() +
+            "color: %s;" % self._palette.shell_hint_text.name()
+        )
 
     @disassembler.execute_ui
     def _internal_refresh(self):

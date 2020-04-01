@@ -302,6 +302,19 @@ class DatabaseCoverage(object):
         # dump the unmappable coverage data
         #self.dump_unmapped()
 
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+
+        Does not require @disassembler.execute_ui decorator as no Qt is touched.
+        """
+        for function in self.functions.values():
+            function.coverage_color = compute_color_on_gradiant(
+                function.instruction_percent,
+                self.palette.table_coverage_bad,
+                self.palette.table_coverage_good
+            )
+
     def _finalize(self, dirty_nodes, dirty_functions):
         """
         Finalize the DatabaseCoverage statistics / data for use.

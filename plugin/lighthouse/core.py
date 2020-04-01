@@ -57,6 +57,7 @@ class Lighthouse(object):
 
         # the plugin color palette
         self.palette = LighthousePalette()
+        self.palette.theme_changed(self.refresh_theme)
 
         # the coverage engine
         self.director = CoverageDirector(self.metadata, self.palette)
@@ -77,6 +78,7 @@ class Lighthouse(object):
 
         # expose the live CoverageDirector object instance for external scripts
         lighthouse.coverage_director = self.director
+
 
     def print_banner(self):
         """
@@ -203,6 +205,15 @@ class Lighthouse(object):
     #--------------------------------------------------------------------------
     # UI Actions (Public)
     #--------------------------------------------------------------------------
+
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        self.director.refresh_theme()
+        if self._ui_coverage_overview:
+            self._ui_coverage_overview.refresh_theme()
+        self.painter.repaint()
 
     def open_coverage_overview(self):
         """

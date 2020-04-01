@@ -1319,6 +1319,17 @@ class CoverageDirector(object):
         # all done ...
         disassembler.hide_wait_box()
 
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+
+        Does not require @disassembler.execute_ui decorator as no Qt is touched.
+        """
+        for coverage in self._database_coverage.values():
+            coverage.refresh_theme()
+        for coverage in self._special_coverage.values():
+            coverage.refresh_theme()
+
     def _refresh_database_coverage(self):
         """
         Refresh all the database coverage mappings managed by the director.
