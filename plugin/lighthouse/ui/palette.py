@@ -7,8 +7,8 @@ import traceback
 
 from lighthouse.util.qt import *
 from lighthouse.util.log import lmsg
-from lighthouse.util.misc import plugin_resource
 from lighthouse.util.disassembler import disassembler
+from lighthouse.util.misc import plugin_resource, register_callback, notify_callback
 
 logger = logging.getLogger("Lighthouse.UI.Palette")
 
@@ -92,8 +92,15 @@ class LighthousePalette(object):
             "light": "dullien.json"
         }
 
+        # list of objects requesting a callback after a theme change
+        self._theme_changed_callbacks = []
+
         # TODO
         self._populate_user_theme_dir()
+
+    #----------------------------------------------------------------------
+    # Properties
+    #----------------------------------------------------------------------
 
     @property
     def TOKEN_COLORS(self):
@@ -120,6 +127,26 @@ class LighthousePalette(object):
             # coverage
             "COVERAGE_TOKEN": self.coverage_token,
         }
+
+    #----------------------------------------------------------------------
+    # Callbacks
+    #----------------------------------------------------------------------
+
+    def theme_changed(self, callback):
+        """
+        Subscribe a callback for theme change events.
+        """
+        register_callback(self._theme_changed_callbacks, callback)
+
+    def _notify_theme_changed(self):
+        """
+        Notify listeners of a theme change event.
+        """
+        notify_callback(self._theme_changed_callbacks)
+
+    #----------------------------------------------------------------------
+    # Public
+    #----------------------------------------------------------------------
 
     def interactive_change_theme(self):
         """
@@ -338,6 +365,7 @@ class LighthousePalette(object):
             f.write(filepath)
 
         # return success
+        self._notify_theme_changed()
         return True
 
     def _read_theme(self, filepath):
