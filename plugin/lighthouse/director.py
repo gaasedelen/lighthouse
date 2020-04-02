@@ -1,3 +1,4 @@
+import os
 import time
 import string
 import logging
@@ -674,26 +675,53 @@ class CoverageDirector(object):
         """
         Return the closest matching module name in the given coverage file.
         """
+        target_name = target_name.lower()
 
-        # attempt lookup using case-insensitive filename
+        #
+        # 1. exact, case-insensitive filename matching
+        #
+
         for module_name in coverage_file.modules:
-            if module_name.lower() in target_name.lower():
+            if target_name == module_name.lower():
                 return module_name
 
         #
-        # no hits yet... let's cleave the extension from the given module
-        # name (if present) and try again
+        # 2. cleave the extension from the target module name (the source)
+        # and try again to see if matches anything in the coverage file
         #
 
-        if "." in target_name:
-            target_name = target_name.split(".")[0]
-
-        # attempt lookup using case-insensitive filename without extension
+        target_name, extension = os.path.splitext(target_name)
         for module_name in coverage_file.modules:
-            if module_name.lower() in target_name.lower():
+            if target_name == module_name.lower():
                 return module_name
 
-        return None
+        # too risky to do fuzzy matching on short names...
+        if len(target_name) < 6:
+            return None
+
+        #
+        # 3. try to match *{target_name}*{extension} in module_name, assuming
+        # target_name is more than 6 characters and there is no othe ambiguity
+        #
+
+        possible_names = []
+        for module_name in coverage_file.modules:
+            if target_name in module_name.lower() and extension in module_name.lower():
+                possible_names.append(module_name)
+
+        # there were no matches on the wildcarding, so we're done
+        if not possible_names:
+            return None
+
+        #
+        # if there is multiple potential matches it is too risky to pick one,
+        # so we are not going to return anything as a viable match
+        #
+
+        if len(possible_names) > 1:
+            return None
+
+        return possible_names[0]
 
     #----------------------------------------------------------------------
     # Coverage Management
