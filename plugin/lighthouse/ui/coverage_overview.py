@@ -264,7 +264,7 @@ class EventProxy(QtCore.QObject):
 
     def __init__(self, target):
         super(EventProxy, self).__init__()
-        self._target = target
+        self._target = weakref.proxy(target)
 
     def eventFilter(self, source, event):
 
@@ -274,6 +274,7 @@ class EventProxy(QtCore.QObject):
         #
 
         if int(event.type()) == 16: # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7?
+            source.removeEventFilter(self)
             self._target.terminate()
 
         #
