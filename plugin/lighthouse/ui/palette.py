@@ -80,6 +80,7 @@ class LighthousePalette(object):
         Initialize default palette colors for Lighthouse.
         """
         self._last_directory = None
+        self._required_fields = []
 
         # hints about the user theme (light/dark)
         self._user_qt_hint = "dark"
@@ -95,7 +96,10 @@ class LighthousePalette(object):
         # list of objects requesting a callback after a theme change
         self._theme_changed_callbacks = []
 
-        # TODO
+        # get a list of required theme fields, for user theme validation
+        self._load_required_fields()
+
+        # initialize the user theme directory
         self._populate_user_theme_dir()
 
     #----------------------------------------------------------------------
@@ -279,6 +283,22 @@ class LighthousePalette(object):
 
         self._last_directory = user_theme_dir
 
+    def _load_required_fields(self):
+        """
+        Load the required theme fields from a donor in-box theme.
+        """
+
+        # load a known-good theme from the plugin's in-box themes
+        filepath = os.path.join(get_plugin_theme_dir(), self._default_themes["dark"])
+        theme = self._read_theme(filepath)
+
+        #
+        # save all the defined fields in this 'good' theme as a ground truth
+        # to validate user themes against...
+        #
+
+        self._required_fields = theme["fields"].keys()
+
     def _select_preferred_theme(self):
         """
         Return the name of the preferred theme to try loading.
@@ -329,6 +349,23 @@ class LighthousePalette(object):
             theme_path = os.path.join(get_user_theme_dir(), theme_name)
         return self._load_theme(theme_path)
 
+    def _validate_theme(self, theme):
+        """
+        Pefrom rudimentary theme validation.
+        """
+        user_fields = theme.get("fields", None)
+        if not user_fields:
+            lmsg("Could not find theme 'fields' definition")
+            return False
+
+        # check that all the 'required' fields exist in the given theme
+        for field in self._required_fields:
+            if field not in user_fields:
+                lmsg("Could not find required theme field '%s'" % field)
+                return False
+
+        # theme looks good enough for now...
+        return True
     def _load_theme(self, filepath):
         """
         TODO
@@ -352,6 +389,10 @@ class LighthousePalette(object):
         # if the theme appears identical to the applied theme. nothing to do!
         if theme == self.theme:
             return True
+
+        # do some basic sanity checking on the given theme file
+        if not self._validate_theme(theme):
+            return False
 
         # try applying the loaded theme to Lighthouse
         try:
