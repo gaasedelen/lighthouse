@@ -244,6 +244,16 @@ class CoverageOverview(DockableWindow):
         self._shell.refresh()
         self._combobox.refresh()
 
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Update visual elements based on theme change.
+        """
+        self._table_view.refresh_theme()
+        self._table_model.refresh_theme()
+        self._shell.refresh_theme()
+        self._combobox.refresh_theme()
+
 #------------------------------------------------------------------------------
 # Qt Event Filter
 #------------------------------------------------------------------------------

@@ -41,6 +41,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         # configure the widget for use
         self._ui_init()
+        self.refresh_theme()
 
     #--------------------------------------------------------------------------
     # QComboBox Overloads
@@ -147,7 +148,6 @@ class CoverageComboBox(QtWidgets.QComboBox):
         """
         Initialize UI elements.
         """
-        palette = self._director._palette
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
@@ -173,16 +173,6 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.lineEdit().setReadOnly(True)    # text can't be edited
         self.lineEdit().setEnabled(False)    # text can't be selected
 
-        # configure the combobox style
-        self.lineEdit().setStyleSheet(
-            "QLineEdit { "
-            "   border: none;"
-            "   padding: 0 0 0 2ex;"
-            "   margin: 0;"
-            "   background-color: %s;" % palette.overview_bg.name() +
-            "}"
-        )
-
         #
         # the combobox will pick a size based on its contents when it is first
         # made visible, but we also make it is arbitrarily resizable for the
@@ -195,16 +185,6 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         # draw the QComboBox with a 'Windows'-esque style
         self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
-        self.setStyleSheet(
-            "QComboBox {"
-            "   color: %s;" % palette.combobox_fg.name() +
-            "   border: 1px solid %s;" % palette.border.name() +
-            "   padding: 0;"
-            "} "
-            "QComboBox:hover, QComboBox:focus {"
-            "   border: 1px solid %s;" % palette.focus.name() +
-            "}"
-        )
 
         # connect relevant signals
         self._ui_init_signals()
@@ -313,6 +293,36 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self._internal_refresh()
 
     @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        palette = self._director.palette
+        self.view().refresh_theme()
+
+        # configure the combobox's top row / visible dropdown
+        self.lineEdit().setStyleSheet(
+            "QLineEdit { "
+            "   border: none;"
+            "   padding: 0 0 0 2ex;"
+            "   margin: 0;"
+            "   background-color: %s;" % palette.combobox_background.name() +
+            "}"
+        )
+
+        # style the combobox dropdown
+        self.setStyleSheet(
+            "QComboBox {"
+            "   color: %s;" % palette.combobox_text.name() +
+            "   border: 1px solid %s;" % palette.combobox_border.name() +
+            "   padding: 0;"
+            "} "
+            "QComboBox:hover, QComboBox:focus {"
+            "   border: 1px solid %s;" % palette.combobox_border_focus.name() +
+            "}"
+        )
+
+    @disassembler.execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the coverage combobox.
@@ -358,6 +368,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
 
         # initialize UI elements
         self._ui_init()
+        self.refresh_theme()
 
     #--------------------------------------------------------------------------
     # QTableView Overloads
@@ -389,26 +400,12 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         """
         Initialize UI elements.
         """
-        palette = self.model()._director._palette
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
         self._font.setPointSizeF(normalize_to_dpi(9))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
-
-        # widget style
-        self.setStyleSheet(
-            "QTableView {"
-            "  background-color: %s;" % palette.combobox_bg.name() +
-            "  color: %s;" % palette.combobox_fg.name() +
-            "  selection-background-color: %s;" % palette.combobox_selection_bg.name() +
-            "  selection-color: %s;" % palette.combobox_selection_fg.name() +
-            "  margin: 0; outline: none;"
-            "} "
-            "QTableView::item{ padding: 0.5ex; } "
-            "QTableView::item:focus { padding: 0; }"
-        )
 
         # hide dropdown table headers, and default grid
         self.horizontalHeader().setVisible(False)
@@ -476,6 +473,24 @@ class CoverageComboBoxView(QtWidgets.QTableView):
             # this is a user entry, ensure there is no span present (clear it)
             else:
                 self.setSpan(row, 0, 0, model.columnCount())
+
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        palette = self.model()._director.palette
+        self.setStyleSheet(
+            "QTableView {"
+            "  background-color: %s;" % palette.combobox_background.name() +
+            "  color: %s;" % palette.combobox_text.name() +
+            "  selection-background-color: %s;" % palette.combobox_selection_background.name() +
+            "  selection-color: %s;" % palette.combobox_selection_text.name() +
+            "  margin: 0; outline: none;"
+            "} "
+            "QTableView::item{ padding: 0.5ex; } "
+            "QTableView::item:focus { padding: 0; }"
+        )
 
 #------------------------------------------------------------------------------
 # Coverage ComboBox - TableModel

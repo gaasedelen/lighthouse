@@ -35,6 +35,26 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # configure the widget for use
         self._ui_init()
+        self.refresh_theme()
+
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        palette = self._model._director.palette
+        self.setStyleSheet(
+            "QTableView {"
+            "  gridline-color: %s;" % palette.table_grid.name() +
+            "  background-color: %s;" % palette.table_background.name() +
+            "  color: %s;" % palette.table_text.name() +
+            "  outline: none; "
+            "} " +
+            "QTableView::item:selected {"
+            "  color: white; "
+            "  background-color: %s;" % palette.table_selection.name() +
+            "}"
+        )
 
     #--------------------------------------------------------------------------
     # QTableView Overloads
@@ -84,23 +104,8 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         Initialize the coverage table.
         """
-        palette = self._model._director._palette
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-
-        # widget style
-        self.setStyleSheet(
-            "QTableView {"
-            "  gridline-color: black;"
-            "  background-color: %s;" % palette.overview_bg.name() +
-            #"  color: %s;" % palette.combobox_fg.name() +
-            "  outline: none; "
-            "} " +
-            "QTableView::item:selected {"
-            "  color: white; "
-            "  background-color: %s;" % palette.selection.name() +
-            "}"
-        )
 
         # these properties will allow the user shrink the table to any size
         self.setMinimumHeight(0)
@@ -689,7 +694,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # a fallback coverage object for functions with no coverage
         self._blank_coverage = FunctionCoverage(BADADDR)
-        self._blank_coverage.coverage_color = director._palette.coverage_none
+        self._blank_coverage.coverage_color = director.palette.table_coverage_none
 
         # set the default column text alignment for each column (centered)
         self._default_alignment = QtCore.Qt.AlignCenter
@@ -735,6 +740,15 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._director.coverage_switched(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
         self._director.metadata.function_renamed(self._data_changed)
+
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+
+        Does not require @disassembler.execute_ui decorator, data_changed() has its own.
+        """
+        self._blank_coverage.coverage_color = self._director.palette.table_coverage_none
+        self._data_changed()
 
     #--------------------------------------------------------------------------
     # QAbstractTableModel Overloads
@@ -862,10 +876,6 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
                 self._blank_coverage
             )
             return function_coverage.coverage_color
-
-        # cell text color request
-        elif role == QtCore.Qt.ForegroundRole:
-            return QtGui.QColor(QtCore.Qt.white)
 
         # cell font style format request
         elif role == QtCore.Qt.FontRole:
@@ -999,6 +1009,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate an HTML representation of the coverage table.
         """
+        palette = self._director.palette
 
         # table summary
         summary_html, summary_css = self._generate_html_summary()
@@ -1011,13 +1022,16 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         body_html = "<body>%s</body>" % '\n'.join(body_elements)
         body_css = \
         """
-        body {
+        body {{
             font-family: Arial, Helvetica, sans-serif;
 
-            color: white;
-            background-color: #363636;
-        }
-        """
+            color: {page_fg};
+            background-color: {page_bg};
+        }}
+        """.format(
+            page_fg=palette.table_text.name(),
+            page_bg=palette.html_page_background.name()
+        )
 
         # HTML <head> tag
         css_elements = [body_css, summary_css, table_css]
@@ -1035,6 +1049,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate the HTML table summary.
         """
+        palette = self._director.palette
         metadata = self._director.metadata
         coverage = self._director.coverage
 
@@ -1057,9 +1072,17 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         list_html = "<ul>%s</ul>" % '\n'.join(details)
         list_css = \
         """
-        .detail { font-weight: bold; color: white; }
-        li { color: #c0c0c0; }
-        """
+        .detail {{
+            font-weight: bold;
+            color: {page_fg};
+        }}
+        li {{
+            color: {detail_fg};
+        }}
+        """.format(
+            page_fg=palette.table_text.name(),
+            detail_fg=palette.html_summary_text.name()
+        )
 
         # title + summary
         summary_html = title_html + list_html
@@ -1070,7 +1093,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate the HTML coverage table.
         """
-        palette = self._director._palette
+        palette = self._director.palette
         table_rows = []
 
         # generate the table's column title row
@@ -1079,7 +1102,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             header_cells.append(
                 "<th>%s</th>" % self.headerData(i, QtCore.Qt.Horizontal)
             )
-        table_rows.append(("#505050", header_cells))
+        table_rows.append((palette.html_table_header.name(), header_cells))
 
         # generate the table's coverage rows
         for row in xrange(self.rowCount()):
@@ -1127,8 +1150,8 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             padding: 1ex 1em 1ex 1em;
         }}
         """.format(
-            table_bg=palette.overview_bg.name(),
-            table_fg="white"
+            table_bg=palette.table_background.name(),
+            table_fg=palette.table_text.name()
         )
 
         return (table_html, table_css)

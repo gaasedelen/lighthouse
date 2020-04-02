@@ -1,0 +1,59 @@
+{
+    "name": "Dullien",
+
+    "colors":
+    {
+        "black":      [0, 0, 0],
+        "white":      [255, 255, 255],
+        "gray":       [100, 100, 100],
+        "lightGray":  [220, 220, 220],
+        "red":        [255, 0, 0],
+        "blue":       [0, 0, 255],
+        "lightRed":   [240, 150, 150],
+        "lightGreen": [150, 240, 150],
+        "lightBlue":  [140, 170, 220]
+    },
+
+    "fields":
+    {
+        "coverage_paint":                "lightGreen",
+
+        "table_text":                    "black",
+        "table_grid":                    "gray",
+        "table_coverage_none":           "lightRed",
+        "table_coverage_bad":            "lightRed",
+        "table_coverage_good":           "lightGreen",
+        "table_background":              "white",
+        "table_selection":               "lightBlue",
+
+        "html_summary_text":             "gray",
+        "html_table_header":             "lightGray",
+        "html_page_background":          "white",
+
+        "shell_text":                    "black",
+        "shell_text_valid":              "blue",
+        "shell_text_invalid":            "red",
+        "shell_highlight_invalid":       "lightRed",
+
+        "shell_border":                  "gray",
+        "shell_border_focus":            "lightBlue",
+        "shell_background":              "white",
+
+        "shell_hint_text":               "black",
+        "shell_hint_background":         "white",
+
+        "logic_token":                   "red",
+        "comma_token":                   "black",
+        "paren_token":                   "black",
+        "coverage_token":                "blue",
+
+        "combobox_text":                 "black",
+        "combobox_selection_text":       "white",
+        "combobox_selection_background": "lightBlue",
+
+        "combobox_border":               "gray",
+        "combobox_border_focus":         "lightBlue",
+        "combobox_background":           "white"
+    }
+}
+

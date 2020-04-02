@@ -8,7 +8,7 @@ import collections
 from lighthouse.util.qt import flush_qt_events
 from lighthouse.util.misc import *
 from lighthouse.util.python import *
-from lighthouse.util.qt import await_future, await_lock, color_text
+from lighthouse.util.qt import await_future, await_lock
 from lighthouse.util.disassembler import disassembler
 
 from lighthouse.reader import CoverageReader
@@ -56,7 +56,7 @@ class CoverageDirector(object):
         self.metadata = metadata
 
         # the plugin color palette
-        self._palette = palette
+        self.palette = palette
 
         #----------------------------------------------------------------------
         # Coverage
@@ -741,7 +741,7 @@ class CoverageDirector(object):
 
         # create a new database coverage mapping from the given coverage data
         new_coverage = DatabaseCoverage(
-            self._palette,
+            self.palette,
             coverage_name,
             coverage_filepath,
             coverage_data
@@ -856,7 +856,7 @@ class CoverageDirector(object):
         # TODO/FUTURE: check if there's any references to the coverage aggregate?
 
         # assign a new, blank aggregate set
-        self._special_coverage[AGGREGATE] = DatabaseCoverage(self._palette, AGGREGATE)
+        self._special_coverage[AGGREGATE] = DatabaseCoverage(self.palette, AGGREGATE)
         self._refresh_aggregate() # probably not needed
 
     def get_coverage(self, name):
@@ -876,7 +876,7 @@ class CoverageDirector(object):
         # could not locate coverage
         return None
 
-    def get_coverage_string(self, coverage_name, color=False):
+    def get_coverage_string(self, coverage_name):
         """
         Retrieve a detailed coverage string for the given coverage_name.
         """
@@ -896,23 +896,6 @@ class CoverageDirector(object):
         # build and return a generic detailed coverage string
         #   eg: 'A - 73.45% - drcov.boombox.exe.03820.0000.proc.log'
         #
-
-        if color:
-
-            # color the symbol token like the shell
-            symbol = color_text(symbol, self._palette.coverage_token)
-
-            # low coverage color
-            if percent < 30.0:
-                percent_str = color_text(percent_str, self._palette.coverage_bad)
-
-            # okay coverage color
-            elif percent < 60.0:
-                percent_str = color_text(percent_str, self._palette.coverage_okay)
-
-            # good coverage color
-            else:
-                percent_str = color_text(percent_str, self._palette.coverage_good)
 
         return "%s - %s%% - %s" % (symbol, percent_str, coverage_name)
 
@@ -1109,7 +1092,7 @@ class CoverageDirector(object):
 
         # if the AST is effectively 'null', return a blank coverage set
         if isinstance(ast, TokenNull):
-            return DatabaseCoverage(self._palette)
+            return DatabaseCoverage(self.palette)
 
         #
         # the director's composition evaluation code (this function) is most
@@ -1247,7 +1230,7 @@ class CoverageDirector(object):
             # we use the mask to generate a new DatabaseCoverage mapping.
             #
 
-            new_composition = DatabaseCoverage(self._palette, data=coverage_mask)
+            new_composition = DatabaseCoverage(self.palette, data=coverage_mask)
 
             # cache & return the newly computed composition
             self._composition_cache[composition_hash] = new_composition
@@ -1294,7 +1277,7 @@ class CoverageDirector(object):
         assert isinstance(range_token, TokenCoverageRange)
 
         # initialize output to a null coverage set
-        output = DatabaseCoverage(self._palette)
+        output = DatabaseCoverage(self.palette)
 
         # expand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
         symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
@@ -1327,7 +1310,7 @@ class CoverageDirector(object):
         # (re) build our metadata cache of the underlying database
         self.metadata.refresh()
 
-        # (re)map each set of loaded coverage data to the database
+        # (re) map each set of loaded coverage data to the database
         self._refresh_database_coverage()
 
         # notify of full-refresh
@@ -1335,6 +1318,17 @@ class CoverageDirector(object):
 
         # all done ...
         disassembler.hide_wait_box()
+
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+
+        Does not require @disassembler.execute_ui decorator as no Qt is touched.
+        """
+        for coverage in self._database_coverage.values():
+            coverage.refresh_theme()
+        for coverage in self._special_coverage.values():
+            coverage.refresh_theme()
 
     def _refresh_database_coverage(self):
         """

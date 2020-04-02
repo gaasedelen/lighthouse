@@ -1,0 +1,66 @@
+{
+    "name": "Synth",
+
+    "colors":
+    {
+        "black":     [0, 0, 0],
+        "white":     [255, 255, 255],
+
+        "darkGray":  [20, 20, 20],
+        "darkGray2": [30, 30, 30],
+        "darkGray3": [54, 54, 54],
+
+        "gray":      [100, 100, 100],
+        "lightGray": [180, 180, 180],
+
+        "red":       [221, 0, 0],
+        "green":     [64, 255, 64],
+        "blue":      [51, 153, 255],
+        "lightBlue": [128, 200, 255],
+        "darkBlue":  [0, 0, 153],
+        "purple":    [100, 0, 130]
+
+    },
+
+    "fields":
+    {
+        "coverage_paint":                "darkBlue",
+
+        "table_text":                    "white",
+        "table_grid":                    "black",
+        "table_coverage_none":           "darkGray2",
+        "table_coverage_bad":            "red",
+        "table_coverage_good":           "blue",
+        "table_background":              "darkGray",
+        "table_selection":               "purple",
+
+        "html_summary_text":             "lightGray",
+        "html_table_header":             "gray",
+        "html_page_background":          "darkGray3",
+
+        "shell_text":                    "white",
+        "shell_text_valid":              "lightBlue",
+        "shell_text_invalid":            "red",
+        "shell_highlight_invalid":       "red",
+
+        "shell_border":                  "gray",
+        "shell_border_focus":            "lightGray",
+        "shell_background":              "darkGray2",
+
+        "shell_hint_text":               "white",
+        "shell_hint_background":         "darkGray3",
+
+        "logic_token":                   "red",
+        "comma_token":                   "green",
+        "paren_token":                   "green",
+        "coverage_token":                "lightBlue",
+
+        "combobox_text":                 "white",
+        "combobox_selection_text":       "white",
+        "combobox_selection_background": "blue",
+
+        "combobox_border":               "gray",
+        "combobox_border_focus":         "lightGray",
+        "combobox_background":           "darkGray2"
+    }
+}

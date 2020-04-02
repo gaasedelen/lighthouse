@@ -4,12 +4,11 @@ import logging
 
 import lighthouse
 
-from lighthouse.ui import CoverageOverview, CoverageXref
+from lighthouse.ui import *
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
-from lighthouse.palette import LighthousePalette
 from lighthouse.painting import CoveragePainter
 from lighthouse.director import CoverageDirector
 from lighthouse.coverage import DatabaseCoverage
@@ -58,6 +57,7 @@ class Lighthouse(object):
 
         # the plugin color palette
         self.palette = LighthousePalette()
+        self.palette.theme_changed(self.refresh_theme)
 
         # the coverage engine
         self.director = CoverageDirector(self.metadata, self.palette)
@@ -78,6 +78,7 @@ class Lighthouse(object):
 
         # expose the live CoverageDirector object instance for external scripts
         lighthouse.coverage_director = self.director
+
 
     def print_banner(self):
         """
@@ -205,11 +206,20 @@ class Lighthouse(object):
     # UI Actions (Public)
     #--------------------------------------------------------------------------
 
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        self.director.refresh_theme()
+        if self._ui_coverage_overview:
+            self._ui_coverage_overview.refresh_theme()
+        self.painter.repaint()
+
     def open_coverage_overview(self):
         """
         Open the dockable 'Coverage Overview' dialog.
         """
-        self.palette.refresh_colors()
+        self.palette.refresh_theme()
 
         # the coverage overview is already open & visible, simply refresh it
         if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
@@ -257,7 +267,7 @@ class Lighthouse(object):
         """
         Perform the user-interactive loading of a coverage batch.
         """
-        self.palette.refresh_colors()
+        self.palette.refresh_theme()
 
         #
         # kick off an asynchronous metadata refresh. this will run in the
@@ -340,7 +350,7 @@ class Lighthouse(object):
         """
         Perform the user-interactive loading of individual coverage files.
         """
-        self.palette.refresh_colors()
+        self.palette.refresh_theme()
 
         #
         # kick off an asynchronous metadata refresh. this will run in the
