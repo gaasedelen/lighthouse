@@ -17,9 +17,15 @@ logger = logging.getLogger("Lighthouse.UI.Palette")
 #------------------------------------------------------------------------------
 
 def swap_rgb(i):
+    """
+    Swap RRGGBB (integer) to BBGGRR.
+    """
     return struct.unpack("<I", struct.pack(">I", i))[0] >> 8
 
 def to_rgb(color):
+    """
+    Split RRGGBB (integer) to (RR, GG, BB) tuple.
+    """
     return ((color >> 16 & 0xFF), (color >> 8 & 0xFF), (color & 0xFF))
 
 def test_color_brightness(color):
@@ -340,7 +346,7 @@ class LighthousePalette(object):
 
     def _load_preferred_theme(self, fallback=False):
         """
-        TODO
+        Load the user's preferred theme, or the one hinted at by the theme subsystem.
         """
         theme_name = self._select_preferred_theme()
         if fallback:
@@ -366,9 +372,10 @@ class LighthousePalette(object):
 
         # theme looks good enough for now...
         return True
+
     def _load_theme(self, filepath):
         """
-        TODO
+        Load and apply the Lighthouse theme at the given filepath.
         """
 
         # attempt to read json theme from disk
@@ -411,7 +418,7 @@ class LighthousePalette(object):
 
     def _read_theme(self, filepath):
         """
-        Load a Lighthouse theme file from the given filepath
+        Parse the Lighthouse theme file from the given filepath.
         """
         logging.debug("Opening theme '%s'..." % filepath)
 
@@ -426,7 +433,7 @@ class LighthousePalette(object):
 
     def _apply_theme(self, theme):
         """
-        Apply a given theme to Lighthouse.
+        Apply the given theme definition to Lighthouse.
         """
         logging.debug("Applying theme '%s'..." % theme["name"])
         colors = theme["colors"]
@@ -440,9 +447,10 @@ class LighthousePalette(object):
             # set theme self.[field_name] = color
             setattr(self, field_name, color)
 
-        # HACK: a little dirty, but patchup the theme...
-        rgb = int(self.coverage_paint.name()[1:], 16)
-        self.coverage_paint = swap_rgb(rgb)
+        # HACK: IDA uses BBGGRR for its databasse highlighting
+        if disassembler.NAME == "IDA":
+            rgb = int(self.coverage_paint.name()[1:], 16)
+            self.coverage_paint = swap_rgb(rgb)
 
         # all done, save the theme in case we need it later
         self.theme = theme
@@ -458,7 +466,7 @@ class LighthousePalette(object):
         This routine returns a best effort hint as to what kind of theme is
         in use for the IDA Views (Disas, Hex, HexRays, etc).
 
-        Returns 'Dark' or 'Light' indicating the user's theme
+        Returns 'dark' or 'light' indicating the user's theme
         """
 
         #
@@ -468,7 +476,7 @@ class LighthousePalette(object):
 
         bg_color = disassembler.get_disassembly_background_color()
 
-        # return 'Dark' or 'Light'
+        # return 'dark' or 'light'
         return test_color_brightness(bg_color)
 
     def _qt_theme_hint(self):
@@ -480,7 +488,7 @@ class LighthousePalette(object):
         who may be using Zyantific's IDASkins plugins (or others) to further
         customize IDA's appearance.
 
-        Returns 'Dark' or 'Light' indicating the user's theme
+        Returns 'dark' or 'light' indicating the user's theme
         """
 
         #
@@ -516,5 +524,5 @@ class LighthousePalette(object):
         test_widget.hide()
         test_widget.deleteLater()
 
-        # return 'Dark' or 'Light'
+        # return 'dark' or 'light'
         return test_color_brightness(bg_color)

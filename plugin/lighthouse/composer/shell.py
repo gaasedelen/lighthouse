@@ -177,6 +177,7 @@ class ComposingShell(QtWidgets.QWidget):
         # set other hard to access shell theme elements
         self._line.setStyleSheet(
             "QPlainTextEdit {"
+            "    color: %s;" % self._palette.shell_text.name() + # this line ensures the text cursor changes color, with the theme
             "    background-color: %s;" % self._palette.shell_background.name() +
             "    border: 1px solid %s;" % self._palette.shell_border.name() +
             "} "
