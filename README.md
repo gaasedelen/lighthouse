@@ -226,7 +226,7 @@ Time and motivation permitting, future work may include:
 * ~~Additional coverage sources, trace formats, etc~~
 * Improved pseudocode painting
 * ~~Lighthouse console access~~, headless usage
-* Custom themes
+* ~~Custom themes~~
 * ~~Python 3 support~~
 
 I welcome external contributions, issues, and feature requests. Please make any pull requests to the `develop` branch of this repo.

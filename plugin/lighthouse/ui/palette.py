@@ -95,7 +95,7 @@ class LighthousePalette(object):
         self.theme = None
         self._default_themes = \
         {
-            "dark":  "synthwave.json",
+            "dark":  "synth.json",
             "light": "dullien.json"
         }
 
