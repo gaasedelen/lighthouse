@@ -47,26 +47,26 @@ class TableSettingsMenu(QtWidgets.QMenu):
         """
 
         # lighthouse colors
-        self._action_colors = QtWidgets.QAction("Colors", None)
-        self._action_colors.setToolTip("Lighthouse color & theme customization")
-        #self.addAction(self._action_colors)
-        #self.addSeparator()
+        self._action_change_theme = QtWidgets.QAction("Change theme", None)
+        self._action_change_theme.setToolTip("Lighthouse color & theme customization")
+        self.addAction(self._action_change_theme)
+        self.addSeparator()
 
         # painting
         self._action_pause_paint = QtWidgets.QAction("Pause painting", None)
         self._action_pause_paint.setCheckable(True)
-        self._action_pause_paint.setToolTip("Disable coverage painting")
+        self._action_pause_paint.setToolTip("Disable the coverage painting subsystem")
         self.addAction(self._action_pause_paint)
 
         # misc
         self._action_clear_paint = QtWidgets.QAction("Clear paint", None)
-        self._action_clear_paint.setToolTip("Forcefully clear all paint")
+        self._action_clear_paint.setToolTip("Forcefully clear all paint from the database")
         self.addAction(self._action_clear_paint)
         self.addSeparator()
 
         # table actions
         self._action_refresh_metadata = QtWidgets.QAction("Full table refresh", None)
-        self._action_refresh_metadata.setToolTip("Refresh metadata & coverage for db")
+        self._action_refresh_metadata.setToolTip("Refresh the database metadata and coverage mapping")
         self.addAction(self._action_refresh_metadata)
 
         self._action_export_html = QtWidgets.QAction("Export to HTML", None)
@@ -82,6 +82,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         """
         Connect UI signals.
         """
+        self._action_change_theme.triggered.connect(core.palette.interactive_change_theme)
         self._action_refresh_metadata.triggered.connect(core.director.refresh)
         self._action_hide_zero.triggered[bool].connect(controller._model.filter_zero_coverage)
         self._action_pause_paint.triggered[bool].connect(lambda x: core.painter.set_enabled(not x))
