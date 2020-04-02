@@ -4,6 +4,7 @@ import re
 import sys
 import mmap
 import struct
+import collections
 from ctypes import *
 
 #
@@ -59,16 +60,26 @@ class DrcovData(CoverageFile):
         """
         Return coverage data as basic block offsets for the named module.
         """
-        try:
-            module = self.modules[module_name]
-        except KeyError:
+        modules = self.modules.get(module_name, [])
+        if not modules:
             return []
 
-        # extract module id for speed
-        mod_id = module.id
+        #
+        # I don't know if this should ever actually trigger, but if it does,
+        # it is a strange testcase to collect coverage against. It means that
+        # maybe the target library/module was loaded, unloaded, and reloaded?
+        #
+        # if someone ever actally triggers this, we can look into it :S
+        #
 
-        # loop through the coverage data and filter out data for only this module
-        coverage_blocks = [bb.start for bb in self.bbs if bb.mod_id == mod_id]
+        if self.version > 2:
+            assert all(module.containing_id == modules[0].id for module in modules)
+
+        # extract the unique module ids that we need to collect blocks for
+        mod_ids = [module.id for module in modules]
+
+        # loop through the coverage data and filter out data for the target ids
+        coverage_blocks = [bb.start for bb in self.bbs if bb.mod_id in mod_ids]
 
         # return the filtered coverage blocks
         return coverage_blocks
@@ -77,16 +88,19 @@ class DrcovData(CoverageFile):
         """
         Return coverage data as basic blocks (offset, size) for the named module.
         """
-        try:
-            module = self.modules[module_name]
-        except KeyError:
+        modules = self.modules.get(module_name, [])
+        if not modules:
             return []
 
-        # extract module id for speed
-        mod_id = module.id
+        # NOTE: see comment in get_offsets() for more info...
+        if self.version > 2:
+            assert all(module.containing_id == modules[0].id for module in modules)
 
-        # loop through the coverage data and filter out data for only this module
-        coverage_blocks = [(bb.start, bb.size) for bb in self.bbs if bb.mod_id == mod_id]
+        # extract the unique module ids that we need to collect blocks for
+        mod_ids = [module.id for module in modules]
+
+        # loop through the coverage data and filter out data for the target ids
+        coverage_blocks = [(bb.start, bb.size) for bb in self.bbs if bb.mod_id in mod_ids]
 
         # return the filtered coverage blocks
         return coverage_blocks
@@ -234,21 +248,14 @@ class DrcovData(CoverageFile):
         """
         Parse drcov log modules in the module table from filestream.
         """
+        modules = collections.defaultdict(list)
 
         # loop through each *expected* line in the module table and parse it
         for i in range(self.module_table_count):
             module = DrcovModule(f.readline().decode('utf-8').strip(), self.module_table_version)
+            modules[module.filename].append(module)
 
-            # try to handle module name collisions...
-            if module.filename in self.modules:
-                public_name = module.filename + "_" + str(i)
-            else:
-                public_name = module.filename
-
-            assert not (public_name in self.modules), "Stop doing weird stuff."
-
-            # save the parsed module
-            self.modules[public_name] = module
+        self.modules = modules
 
     def _parse_bb_table(self, f):
         """
