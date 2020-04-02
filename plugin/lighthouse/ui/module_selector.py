@@ -43,7 +43,7 @@ class ModuleSelector(QtWidgets.QDialog):
         """
         Initialize UI elements.
         """
-        self.setWindowTitle("Select module matching this session")
+        self.setWindowTitle("Select module matching this database")
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
         self.setModal(True)
 
@@ -67,14 +67,14 @@ class ModuleSelector(QtWidgets.QDialog):
         "-- <b>Coverage File:</b> %s<br />" \
         "<br />" \
         "Please double click the name of the module that matches this database, or close this dialog<br />" \
-        "if you do not see your binary listed in the table belowp..." % (self._target_name, self._coverage_file)
+        "if you do not see your binary listed in the table below..." % (self._target_name, self._coverage_file)
 
         self._label_description = QtWidgets.QLabel(description_text)
         self._label_description.setTextFormat(QtCore.Qt.RichText)
         #self._label_description.setWordWrap(True)
 
         # a checkbox to save the user selected alias to the database
-        self._checkbox_remember = QtWidgets.QCheckBox("Save target module alias to database")
+        self._checkbox_remember = QtWidgets.QCheckBox("Remember target module alias for this session")
 
     def _ui_init_table(self):
         """
