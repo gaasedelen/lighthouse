@@ -11,6 +11,7 @@ from lighthouse.util.python import *
 from lighthouse.util.qt import await_future, await_lock
 from lighthouse.util.disassembler import disassembler
 
+from lighthouse.ui import ModuleSelector
 from lighthouse.reader import CoverageReader
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
@@ -64,6 +65,7 @@ class CoverageDirector(object):
 
         # the coverage file parser
         self.reader = CoverageReader()
+        self._target_whitelist = []
 
         # the name of the active coverage
         self.coverage_name = NEW_COMPOSITION
@@ -491,26 +493,47 @@ class CoverageDirector(object):
         """
         Internal routine to extract relevant coverage data from a CoverageFile.
         """
-        imagebase = self.metadata.imagebase
+        database_target = self.metadata.filename
+        target_names = [database_target] + self._target_whitelist
 
         #
-        # inspect the coverage file and extract the module name that seems
-        # to match the executable loaded by the disassembler (fuzzy lookup)
+        # inspect the coverage file and extract the module name that seems to
+        # match the executable loaded by the disassembler (fuzzy lookup) or
+        # otherwise aliased by the user through the fallback dialog
         #
 
-        module_name = self._find_fuzzy_name(coverage_file, self.metadata.filename)
+        for name in target_names:
+            module_name = self._find_fuzzy_name(coverage_file, name)
+            if module_name:
+                break
 
         #
-        # TODO/BAILOUT
+        # if the fuzzy name lookup failed and there are named modules in the
+        # coverage file, then we will show them to the user and see if they
+        # can pick out a matching module to load coverage from
         #
 
         if not module_name and coverage_file.modules:
-            logger.debug("TODO/BAILOUT DIALOG")
-            return []
+
+            #
+            # if the user closes the dialog without selecting a name, there's
+            # nothing we can do for them ...
+            #
+
+            dialog = ModuleSelector(database_target, coverage_file.modules, coverage_file.filepath)
+            if not dialog.exec_():
+                return [] # no coverage data extracted ...
+
+            # the user selected a module name! use that to extract coverage
+            module_name = dialog.selected_name
+            if dialog.remember_alias:
+                self._target_whitelist.append(module_name)
 
         #
         # (module, offset, size) style logs (eg, drcov)
         #
+
+        imagebase = self.metadata.imagebase
 
         try:
             coverage_blocks = coverage_file.get_offset_blocks(module_name)
