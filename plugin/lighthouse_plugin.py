@@ -24,6 +24,10 @@ elif disassembler.NAME == "BINJA":
     from lighthouse.binja_loader import *
     from lighthouse import coverage_director
 
+elif disassembler.NAME == "CUTTER":
+    logger.info("Selecting Cutter loader...")
+    from lighthouse.cutter_loader import *
+
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")
 

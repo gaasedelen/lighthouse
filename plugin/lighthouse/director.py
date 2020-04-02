@@ -597,7 +597,7 @@ class CoverageDirector(object):
 
         if not instructions:
             logger.debug("No mappable instruction addresses in coverage data")
-            return None
+            return []
 
         #
         # TODO/COMMENT
@@ -676,8 +676,9 @@ class CoverageDirector(object):
         """
 
         # attempt lookup using case-insensitive filename
+        target_module_name = os.path.split(target_name)[-1]
         for module_name in coverage_file.modules:
-            if module_name.lower() in target_name.lower():
+            if target_module_name.lower() in module_name.lower():
                 return module_name
 
         #
