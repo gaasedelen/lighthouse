@@ -22,12 +22,6 @@ def swap_rgb(i):
     """
     return struct.unpack("<I", struct.pack(">I", i))[0] >> 8
 
-def to_rgb(color):
-    """
-    Split RRGGBB (integer) to (RR, GG, BB) tuple.
-    """
-    return ((color >> 16 & 0xFF), (color >> 8 & 0xFF), (color & 0xFF))
-
 def test_color_brightness(color):
     """
     Test the brightness of a color.
@@ -512,7 +506,11 @@ class LighthousePalette(object):
         #   lmao, don't ask me why they forgot about this attribute from 5.0 - 5.6
         #
 
-        test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
+        if disassembler.NAME == "BINJA":
+            test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)
+        else:
+            test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
+
 
         # render the (invisible) widget
         test_widget.show()

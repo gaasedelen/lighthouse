@@ -4,7 +4,6 @@ import binaryninja
 from binaryninja import HighlightStandardColor
 from binaryninja.highlight import HighlightColor
 
-from lighthouse.palette import to_rgb
 from lighthouse.painting import DatabasePainter
 from lighthouse.util.disassembler import disassembler
 
@@ -43,7 +42,7 @@ class BinjaPainter(DatabasePainter):
 
     def _paint_nodes(self, nodes_coverage):
         bv = disassembler.bv
-        b, g, r = to_rgb(self.palette.coverage_paint)
+        r, g, b, _ = self.palette.coverage_paint.getRgb()
         color = HighlightColor(red=r, green=g, blue=b)
         for node_coverage in nodes_coverage:
             node_metadata = node_coverage.database._metadata.nodes[node_coverage.address]
@@ -71,9 +70,14 @@ class BinjaPainter(DatabasePainter):
     #--------------------------------------------------------------------------
 
     def _priority_paint(self):
+        db_metadata = self._director.metadata
+
         current_address = disassembler.get_current_address()
         current_function = disassembler.bv.get_function_at(current_address)
-        if current_function:
+        function_metadata = db_metadata.get_closest_function(current_address)
+
+        if current_function and function_metadata:
             self._paint_function(current_function.start)
+
         return True
 
