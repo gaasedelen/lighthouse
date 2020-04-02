@@ -124,6 +124,7 @@ class CoverageXref(QtWidgets.QDialog):
             self._table.setItem(i, 2, QtWidgets.QTableWidgetItem(filepath))
             self._table.setItem(i, 3, QtWidgets.QTableWidgetItem(timestamp))
 
+        self._table.resizeRowsToContents()
         self._table.setSortingEnabled(True)
 
     def _ui_layout(self):
@@ -131,7 +132,6 @@ class CoverageXref(QtWidgets.QDialog):
         Layout the major UI elements of the widget.
         """
         layout = QtWidgets.QVBoxLayout()
-        layout.setContentsMargins(0,0,0,0)
 
         # layout child widgets
         layout.addWidget(self._table)
