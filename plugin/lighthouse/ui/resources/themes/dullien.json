@@ -6,6 +6,7 @@
         "black":      [0, 0, 0],
         "white":      [255, 255, 255],
         "gray":       [100, 100, 100],
+        "lightGray":  [220, 220, 220],
         "red":        [255, 0, 0],
         "blue":       [0, 0, 255],
         "lightRed":   [240, 150, 150],
@@ -24,6 +25,10 @@
         "table_coverage_good":           "lightGreen",
         "table_background":              "white",
         "table_selection":               "lightBlue",
+
+        "html_summary_text":             "gray",
+        "html_table_header":             "lightGray",
+        "html_page_background":          "white",
 
         "shell_text":                    "black",
         "shell_text_valid":              "blue",

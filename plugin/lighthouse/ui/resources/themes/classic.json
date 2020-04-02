@@ -8,9 +8,10 @@
 
         "darkGray":  [20, 20, 20],
         "darkGray2": [30, 30, 30],
+        "darkGray3": [54, 54, 54],
 
         "gray":      [100, 100, 100],
-        "lightGray": [160, 160, 160],
+        "lightGray": [180, 180, 180],
 
         "red":       [221, 0, 0],
         "green":     [64, 255, 64],
@@ -33,6 +34,10 @@
         "table_background":              "darkGray",
         "table_selection":               "purple",
 
+        "html_summary_text":             "lightGray",
+        "html_table_header":             "gray",
+        "html_page_background":          "darkGray3",
+
         "shell_text":                    "white",
         "shell_text_valid":              "lightBlue",
         "shell_text_invalid":            "red",
@@ -43,7 +48,7 @@
         "shell_background":              "darkGray2",
 
         "shell_hint_text":               "white",
-        "shell_hint_background":         "darkGray2",
+        "shell_hint_background":         "darkGray3",
 
         "logic_token":                   "red",
         "comma_token":                   "green",

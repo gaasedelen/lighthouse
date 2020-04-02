@@ -1009,6 +1009,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate an HTML representation of the coverage table.
         """
+        palette = self._director.palette
 
         # table summary
         summary_html, summary_css = self._generate_html_summary()
@@ -1021,13 +1022,16 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         body_html = "<body>%s</body>" % '\n'.join(body_elements)
         body_css = \
         """
-        body {
+        body {{
             font-family: Arial, Helvetica, sans-serif;
 
-            color: white;
-            background-color: #363636;
-        }
-        """
+            color: {page_fg};
+            background-color: {page_bg};
+        }}
+        """.format(
+            page_fg=palette.table_text.name(),
+            page_bg=palette.html_page_background.name()
+        )
 
         # HTML <head> tag
         css_elements = [body_css, summary_css, table_css]
@@ -1045,6 +1049,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate the HTML table summary.
         """
+        palette = self._director.palette
         metadata = self._director.metadata
         coverage = self._director.coverage
 
@@ -1067,9 +1072,17 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         list_html = "<ul>%s</ul>" % '\n'.join(details)
         list_css = \
         """
-        .detail { font-weight: bold; color: white; }
-        li { color: #c0c0c0; }
-        """
+        .detail {{
+            font-weight: bold;
+            color: {page_fg};
+        }}
+        li {{
+            color: {detail_fg};
+        }}
+        """.format(
+            page_fg=palette.table_text.name(),
+            detail_fg=palette.html_summary_text.name()
+        )
 
         # title + summary
         summary_html = title_html + list_html
@@ -1089,7 +1102,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             header_cells.append(
                 "<th>%s</th>" % self.headerData(i, QtCore.Qt.Horizontal)
             )
-        table_rows.append(("#505050", header_cells))
+        table_rows.append((palette.html_table_header.name(), header_cells))
 
         # generate the table's coverage rows
         for row in xrange(self.rowCount()):
@@ -1138,7 +1151,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         }}
         """.format(
             table_bg=palette.table_background.name(),
-            table_fg="white"
+            table_fg=palette.table_text.name()
         )
 
         return (table_html, table_css)
