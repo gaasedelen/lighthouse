@@ -950,6 +950,12 @@ class CoverageDirector(object):
 
         return "%s - %s%% - %s" % (symbol, percent_str, coverage_name)
 
+    def dump_unmapped(self):
+        """
+        Dump the unmapped coverage data for the active set.
+        """
+        self.coverage.dump_unmapped()
+
     #----------------------------------------------------------------------
     # Aliases
     #----------------------------------------------------------------------

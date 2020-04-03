@@ -656,7 +656,11 @@ class DatabaseCoverage(object):
         """
         Dump the unmapped coverage data.
         """
-        lmsg("Unmapped Coverage:")
+        lmsg("Unmapped coverage data for %s:" % self.name)
+        if len(self._unmapped_data) == 1: # 1 is going to be BADADDR
+            lmsg(" * (there is no unmapped data!)")
+            return
+
         for address in self._unmapped_data:
             lmsg(" * 0x%X" % address)
 

@@ -59,7 +59,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self.addAction(self._action_pause_paint)
 
         # misc
-        self._action_clear_paint = QtWidgets.QAction("Clear paint", None)
+        self._action_clear_paint = QtWidgets.QAction("Clear database paint", None)
         self._action_clear_paint.setToolTip("Forcefully clear all paint from the database")
         self.addAction(self._action_clear_paint)
         self.addSeparator()
@@ -69,9 +69,13 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_refresh_metadata.setToolTip("Refresh the database metadata and coverage mapping")
         self.addAction(self._action_refresh_metadata)
 
-        self._action_export_html = QtWidgets.QAction("Export to HTML", None)
+        self._action_export_html = QtWidgets.QAction("Generate HTML report", None)
         self._action_export_html.setToolTip("Export the coverage table to HTML")
         self.addAction(self._action_export_html)
+
+        self._action_dump_unmapped = QtWidgets.QAction("Dump unmapped coverage", None)
+        self._action_dump_unmapped.setToolTip("Print all coverage data not mapped to a function")
+        self.addAction(self._action_dump_unmapped)
 
         self._action_hide_zero = QtWidgets.QAction("Hide 0% coverage", None)
         self._action_hide_zero.setToolTip("Hide table entries with no coverage data")
@@ -88,6 +92,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_pause_paint.triggered[bool].connect(lambda x: core.painter.set_enabled(not x))
         self._action_clear_paint.triggered.connect(core.painter.clear_paint)
         self._action_export_html.triggered.connect(controller.export_to_html)
+        self._action_dump_unmapped.triggered.connect(core.director.dump_unmapped)
         core.painter.status_changed(self._ui_painter_changed_status)
 
     #--------------------------------------------------------------------------
