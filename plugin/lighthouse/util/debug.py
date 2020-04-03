@@ -1,4 +1,9 @@
+import sys
 import cProfile
+import traceback
+
+from .log import lmsg
+from .disassembler import disassembler
 
 #------------------------------------------------------------------------------
 # Debug
@@ -51,6 +56,44 @@ except ImportError:
         def nothing(*args, **kwargs):
             return func(*args, **kwargs)
         return nothing
+
+#------------------------------------------------------------------------------
+# Error Logging
+#------------------------------------------------------------------------------
+
+def catch_errors(func):
+    """
+    A simple catch-all decorator to try and log Lighthouse crashes.
+
+    This will be used to wrap high-risk or new code, in an effort to catch
+    and fix bugs without leaving the user in a stuck state.
+    """
+
+    def wrap(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+
+            st = traceback.format_stack()[:-1]
+            ex = traceback.format_exception(exc_type, exc_value, exc_traceback)[2:]
+
+            # log full crashing callstack to console
+            full_error = st + ex
+            full_error = ''.join(full_error).splitlines()
+
+            lmsg("Lighthouse experienced an error... please file an issue on GitHub with this traceback:")
+            lmsg("")
+            for line in full_error:
+                lmsg(line)
+
+            # notify the user that a bug occurred
+            disassembler.warning(
+                "Something bad happend to Lighthouse :-(\n\n" \
+                "Please file an issue on GitHub with the traceback from your disassembler console."
+            )
+
+    return wrap
 
 #------------------------------------------------------------------------------
 # Module Line Profiling

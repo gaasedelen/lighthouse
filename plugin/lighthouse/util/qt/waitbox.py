@@ -35,6 +35,11 @@ class WaitBox(QtWidgets.QDialog):
         qta = QtCore.QCoreApplication.instance()
         qta.processEvents()
 
+    def show(self):
+        result = super(WaitBox, self).show()
+        qta = QtCore.QCoreApplication.instance()
+        qta.processEvents()
+
     #--------------------------------------------------------------------------
     # Initialization - UI
     #--------------------------------------------------------------------------
