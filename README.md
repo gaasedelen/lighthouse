@@ -27,8 +27,8 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 Lighthouse is a cross-platform (Windows, macOS, Linux) python plugin. It takes zero third party dependencies, making the code both portable and easy to install.
 
 1. From your disassembler's python console, run the following command to find its plugin directory:
-   - IDA Pro: `os.path.join(idaapi.get_user_idadir(), "plugins")`
-   - Binary Ninja: `binaryninja.user_plugin_path()`
+   - **IDA Pro**: `os.path.join(idaapi.get_user_idadir(), "plugins")`
+   - **Binary Ninja**: `binaryninja.user_plugin_path()`
 
 2. Copy the contents of this repository's `/plugin/` folder to the listed directory.
 
@@ -42,7 +42,7 @@ Lighthouse loads automatically when a database is opened, installing a handful o
 <img alt="Lighthouse Menu Entries" src="screenshots/open.gif"/>
 </p>
 
-These are the entry points for a user to load and view coverage data.
+These are the entry points for a user to load and view coverage data. To generate coverage data that can be loaded into Lighthouse, please look at the [README](https://github.com/gaasedelen/lighthouse/tree/develop/coverage) in the coverage directory of this repository.
 
 ## Coverage Painting
 
@@ -145,44 +145,6 @@ A sample report can be seen [here](https://rawgit.com/gaasedelen/lighthouse/mast
 <p align="center">
 <img alt="Lighthouse HTML Report" src="screenshots/html_report.gif"/>
 </p>
-
-# Collecting Coverage
-
-Before using Lighthouse, one will need to collect code coverage data for their target binary / application.
-
-The examples below demonstrate how one can use [DynamoRIO](http://www.dynamorio.org), [Intel Pin](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool) or [Frida](https://www.frida.re) to collect Lighthouse compatible coverage against a target. The `.log` files produced by these instrumentation tools can be loaded directly into Lighthouse.
-
-## DynamoRIO
-
-Code coverage data can be collected via DynamoRIO's [drcov](http://dynamorio.org/docs/page_drcov.html) code coverage module. 
-
-Example usage:
-
-```
-..\DynamoRIO-Windows-7.0.0-RC1\bin64\drrun.exe -t drcov -- boombox.exe
-```
-
-## Intel Pin
-
-Using a [custom pintool](coverage/pin) contributed by [Agustin Gianni](https://twitter.com/agustingianni), the Intel Pin DBI can also be used to collect coverage data.
-
-Example usage:
-
-```
-pin.exe -t CodeCoverage64.dll -- boombox.exe
-```
-
-For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases) page. macOS and Linux users need to compile the pintool themselves following the [instructions](coverage/pin#compilation) included with the pintool for their respective platforms.
-
-## Frida (Experimental)
-
-Lighthouse offers limited support for Frida based code coverage via a custom [instrumentation script](coverage/frida) contributed by [yrp](https://twitter.com/yrp604). 
-
-Example usage:
-
-```
-sudo python frida-drcov.py bb-bench
-```
 
 # Future Work
 
