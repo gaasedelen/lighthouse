@@ -669,6 +669,18 @@ class ComposingShell(QtWidgets.QWidget):
             self._ui_hint_coverage_hide()
             return
 
+        #
+        # if the text cursor is moving and the user has their left mouse
+        # button held, then they are probably doing a click + drag text
+        # selection so we shouldn't be naggin them with hints and stuff
+        #
+        # without this condition, click+drag selection gets really choppy
+        #
+
+        if QtWidgets.QApplication.mouseButtons() & QtCore.Qt.LeftButton:
+            self._ui_hint_coverage_hide()
+            return
+
         # scrape info from the current shell text state
         cursor_index = self._line.textCursor().position()
         text_token   = self._get_cursor_coverage_token(cursor_index)
