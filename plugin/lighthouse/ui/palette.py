@@ -224,7 +224,11 @@ class LighthousePalette(object):
         # file (if there is one) and warn the user before falling back
         #
 
-        os.remove(os.path.join(get_user_theme_dir(), ".active_theme"))
+        try:
+            os.remove(os.path.join(get_user_theme_dir(), ".active_theme"))
+        except:
+            pass
+
         disassembler.warning(
             "Failed to load Lighthouse user theme!\n\n"
             "Please check the console for more information..."
@@ -309,7 +313,7 @@ class LighthousePalette(object):
         active_filepath = os.path.join(user_theme_dir, ".active_theme")
         try:
             theme_name = open(active_filepath).read().strip()
-        except OSError:
+        except (OSError, IOError):
             theme_name = None
 
         #
@@ -432,7 +436,15 @@ class LighthousePalette(object):
         logging.debug("Applying theme '%s'..." % theme["name"])
         colors = theme["colors"]
 
-        for field_name, color_name in theme["fields"].items():
+        for field_name, color_entry in theme["fields"].items():
+
+            # color has 'light' and 'dark' variants
+            if isinstance(color_entry, list):
+                color_name = self._pick_best_color(field_name, color_entry)
+
+            # there is only one color defined
+            else:
+                color_name = color_entry
 
             # load the color
             color_value = colors[color_name]
@@ -448,6 +460,25 @@ class LighthousePalette(object):
 
         # all done, save the theme in case we need it later
         self.theme = theme
+
+    def _pick_best_color(self, field_name, color_entry):
+        """
+        Given a variable color_entry, select the best color based on the theme hints.
+        """
+        assert len(color_entry) == 2, "Malformed color entry, must be (dark, light)"
+        dark, light = color_entry
+
+        # coverage_paint is actually the only field that applies to disas...
+        if field_name == "coverage_paint":
+            if self._user_disassembly_hint == "dark":
+                return dark
+            else:
+                return light
+
+        # the rest of the fields should be considered 'qt' fields
+        if self._user_qt_hint == "dark":
+            return dark
+        return light
 
     #--------------------------------------------------------------------------
     # Theme Inference

@@ -11,12 +11,13 @@
         "blue":       [0, 0, 255],
         "lightRed":   [240, 150, 150],
         "lightGreen": [150, 240, 150],
+        "darkGreen":  [0, 60, 0],
         "lightBlue":  [140, 170, 220]
     },
 
     "fields":
     {
-        "coverage_paint":                "lightGreen",
+        "coverage_paint":                ["darkGreen", "lightGreen"],
 
         "table_text":                    "black",
         "table_grid":                    "gray",

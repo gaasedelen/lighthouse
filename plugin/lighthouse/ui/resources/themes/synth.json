@@ -24,7 +24,7 @@
 
     "fields":
     {
-        "coverage_paint":                "darkBlue",
+        "coverage_paint":                ["darkBlue", "lightBlue"],
 
         "table_text":                    "white",
         "table_grid":                    "black",
