@@ -22,48 +22,17 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 * v0.2 -- Multifile support, performance improvements, bugfixes.
 * v0.1 -- Initial release
 
-# IDA Pro Installation
+# Installation
 
-Lighthouse is a cross-platform (Windows, macOS, Linux) python plugin, supporting IDA Pro 6.8 and newer.
+Lighthouse is a cross-platform (Windows, macOS, Linux) python plugin. It takes zero third party dependencies, making the code both portable and easy to install.
 
-- Copy the contents of the `plugin` folder to the IDA plugins folder
-    - On Windows, the folder is at `C:\Program Files (x86)\IDA 6.8\plugins`
-    - On macOS, the folder is at `/Applications/IDA\ Pro\ 6.8/idaq.app/Contents/MacOS/plugins`
-    - On Linux, the folder may be at `/opt/IDA/plugins/`
+1. From your disassembler's python console, run the following command to find its plugin directory:
+   - IDA Pro: `os.path.join(idaapi.get_user_idadir(), "plugins")`
+   - Binary Ninja: `binaryninja.user_plugin_path()`
 
-(If you need to locate the plugin directory for your setup, just type `idaapi.idadir(idaapi.PLG_SUBDIR)` in IDAPython console)
+2. Copy the contents of this repository's `/plugin/` folder to the listed directory.
 
-It has been primarily developed and tested on Windows, so that is where we expect the best experience.
-
-# Binary Ninja Installation (Experimental)
-
-At this time, support for Binary Ninja is considered experimental. Please feel free to report any bugs that you encounter.
-
-You can install Lighthouse & PyQt5 for Binary Ninja by following the instructions below.
-
-## Windows Installation
-
-1. Install PyQt5 from a Windows command prompt with the following command:
-
-```
-pip install --target="%appdata%\Binary Ninja\plugins\Lib\site-packages" python-qt5
-```
-
-2. Copy the contents of the `/plugin/` folder in this repo to your Binary Ninja [plugins folder](https://docs.binary.ninja/guide/plugins/index.html#using-plugins).
-
-## Linux Installation
-
-1. Install PyQt5 from a Linux shell with the following command:
-
-```
-sudo apt install python-pyqt5
-```
-
-2. Copy the contents of the `/plugin/` folder in this repo to your Binary Ninja [plugins folder](https://docs.binary.ninja/guide/plugins/index.html#using-plugins).
-
-## macOS Installation
-
-¯\\\_(ツ)\_/¯
+This project is primarily developed and tested with IDA for Windows, so that is where we expect the best experience. Support for Binary Ninja and other disassemblers is still considered exprimental at this time.
 
 # Usage
 
