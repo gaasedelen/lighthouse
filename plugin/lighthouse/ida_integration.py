@@ -335,6 +335,7 @@ class UIHooks(idaapi.UI_Hooks):
         """
         A right click menu is about to be shown. (IDA 7.0+)
         """
-        self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
+        if self.integration.director.aggregate.instruction_percent:
+            self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
         return 0
 
