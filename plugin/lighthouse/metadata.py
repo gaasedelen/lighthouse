@@ -39,11 +39,11 @@ logger = logging.getLogger("Lighthouse.Metadata")
 #
 #    2. Building the metadata comes with an upfront cost, but this cost has
 #       been reduced as much as possible. For example, generating metadata for
-#       a database with ~17k functions, ~95k nodes (basic blocks), and ~563k
-#       instructions takes only ~6 seconds.
+#       a larger database with ~25k functions, ~725k nodes (basic blocks), and
+#       ~3.4m instructions took ~27 seconds.
 #
-#       This will be negligible for small-medium sized databases, but may still
-#       be jarring for larger databases.
+#       This will be negligible for small-medium sized databases, but will be
+#       measurable for larger databases.
 #
 #    Ultimately, this model provides us a more responsive user experience at
 #    the expense of the occasional inaccuracies that can be corrected by
@@ -89,6 +89,7 @@ class DatabaseMetadata(object):
         # asynchronous metadata collection thread
         self._refresh_worker = None
         self._stop_threads = False
+        self._go_synchronous = False
 
         #----------------------------------------------------------------------
         # Callbacks
@@ -255,13 +256,21 @@ class DatabaseMetadata(object):
     # Refresh
     #--------------------------------------------------------------------------
 
-    def refresh(self, function_addresses=None):
+    def refresh(self):
         """
         Refresh the database metadata cache.
         """
-        self._core_refresh(function_addresses)
+        self._refresh()
 
-    def refresh_async(self, function_addresses=None, progress_callback=None, force=False):
+    def go_synchronous(self):
+        """
+        Switch an ongoing async refresh into a synchronous one.
+
+        This will make it go ... significantly faster ... but cannot be interrupted.
+        """
+        self._go_synchronous = True
+
+    def refresh_async(self, progress_callback=None, force=False):
         """
         Refresh the database metadata cache asynchronously.
 
@@ -280,19 +289,20 @@ class DatabaseMetadata(object):
             return result_queue
 
         #
-        # reset the async abort/stop flag so that it can be used to cancel our
-        # new refresh task if needed
+        # reset the async abort and go_synchronous flags so that we can use them
+        # for this new refresh if needed
         #
 
         self._stop_threads = False
+        self._go_synchronous = False
 
         #
         # kick off an asynchronous metadata collection task
         #
 
         self._refresh_worker = threading.Thread(
-            target=self._async_refresh,
-            args=(function_addresses, progress_callback, result_queue,)
+            target=self._refresh_async,
+            args=(result_queue, progress_callback,)
         )
         self._refresh_worker.start()
 
@@ -378,24 +388,23 @@ class DatabaseMetadata(object):
     #--------------------------------------------------------------------------
 
     @not_mainthread
-    def _async_refresh(self, function_addresses=None, progress_callback=None, result_queue=None):
+    def _refresh_async(self, result_queue, progress_callback=None):
         """
         Internal thread worker routine to refresh the database metadata asynchronously.
         """
 
         # start an interruptable refresh
-        completed = self._core_refresh(function_addresses, progress_callback, True)
+        completed = self._refresh(progress_callback, True)
 
         # clean up our thread's reference as it is basically done/dead
         self._refresh_worker = None
 
         # send the refresh result (good/bad) incase anyone is still listening
-        if result_queue:
-            result_queue.put(completed)
+        result_queue.put(completed)
 
         # exit thread...
 
-    def _core_refresh(self, function_addresses=None, progress_callback=None, is_async=False):
+    def _refresh(self, progress_callback=None, is_async=False):
         """
         Internal routine that will update the database metadata cache.
         """
@@ -412,8 +421,8 @@ class DatabaseMetadata(object):
         self._sync_refresh_properties()
 
         #
-        # if a rebase occured, trash all present metadata as its easier to
-        # rebuild the cache from scratch...
+        # if a rebase occured, trash all present metadata as code-wise, it is
+        # easier much easier to just rebuild the cache from scratch...
         #
 
         if prev_imagebase != self.imagebase:
@@ -422,25 +431,28 @@ class DatabaseMetadata(object):
             self.instructions = []
 
         #
-        # if the caller provided no function addresses to target for refresh,
         # we will perform a complete metadata refresh of all database defined
         # functions. let's retrieve that list from the disassembler now...
         #
 
-        if not function_addresses:
-            function_addresses = disassembler.execute_read(
-                disassembler.get_function_addresses
-            )()
-            function_addresses = list(set(function_addresses+list(self.functions)))
+        function_addresses = disassembler.execute_read(disassembler.get_function_addresses)()
+        #function_addresses = list(set(function_addresses+list(self.functions))) # TODO remove??
+        total = len(function_addresses)
+
+        start = time.time()
+        #----------------------------------------------------------------------
 
         # refresh the core database metadata asynchronously
-        if is_async:
-            completed = self._async_collect_metadata(function_addresses, progress_callback)
+        if is_async and self._async_collect_metadata(function_addresses, progress_callback):
+            return False
 
         # refresh the core database metadata synchronously
-        else:
-            self._sync_collect_metadata(function_addresses)
-            completed = True
+        completed = total - len(function_addresses)
+        self._sync_collect_metadata(function_addresses, progress_callback, completed)
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Metadata collection took %s seconds" % (end - start))
 
         # regenerate the instruction list from collected metadata
         self._refresh_instructions()
@@ -476,15 +488,14 @@ class DatabaseMetadata(object):
         self._rename_hooks.hook()
 
         # the metadata refresh is effectively done, and the data is now 'cached'
-        if completed:
-            self.cached = True
+        self.cached = True
 
         # detect & notify of a rebase event
         if was_cached and (prev_imagebase != self.imagebase):
             self._notify_rebased(prev_imagebase, self.imagebase)
 
         # return true/false to indicates completion
-        return completed
+        return True
 
     @disassembler.execute_read
     def _sync_refresh_properties(self):
@@ -495,16 +506,36 @@ class DatabaseMetadata(object):
         self.imagebase = disassembler.get_imagebase()
 
     @disassembler.execute_read
-    def _sync_collect_metadata(self, function_addresses):
+    def _sync_collect_metadata(self, function_addresses, progress_callback, progress_base=0):
         """
         Collect metadata from the underlying database.
         """
-        start = time.time()
-        #----------------------------------------------------------------------
-        self._update_functions({ ea: FunctionMetadata(ea) for ea in function_addresses })
-        #----------------------------------------------------------------------
-        end = time.time()
-        logger.debug("Synchronous metadata collection took %s seconds" % (end - start))
+        CHUNK_SIZE = 500
+        completed = progress_base
+        total = progress_base + len(function_addresses)
+        logger.debug("Refreshing synchronously from %u/%u" % (completed, total))
+
+        while function_addresses:
+
+            # split off a chunk of functions to process metadata for
+            try:
+                addresses_chunk = function_addresses[:CHUNK_SIZE]
+                del function_addresses[:CHUNK_SIZE]
+            except IndexError:
+                addresses_chunk = function_addresses[:]
+                function_addresses.clear()
+                CHUNK_SIZE = len(addresses_chunk)
+
+            # collect metadata from the database
+            self._update_functions({ ea: FunctionMetadata(ea) for ea in addresses_chunk })
+
+            # report incremental progress to an optional progress_callback
+            if progress_callback:
+                completed += CHUNK_SIZE
+                progress_callback(completed, total)
+
+            # sleep some so we don't choke the mainthread
+            time.sleep(.001)
 
     @not_mainthread
     def _async_collect_metadata(self, function_addresses, progress_callback):
@@ -513,11 +544,25 @@ class DatabaseMetadata(object):
         """
         CHUNK_SIZE = 150
         completed = 0
+        total = len(function_addresses)
+        logger.debug("Refreshing asynchronously from %u/%u" % (completed, total))
 
-        start = time.time()
-        #----------------------------------------------------------------------
+        while function_addresses:
 
-        for addresses_chunk in chunks(function_addresses, CHUNK_SIZE):
+            #
+            # here we will split off CHUNK_SIZE elements from the function
+            # addresses list, in-place. this allows the list to keep track of
+            # what has not been processed, such that the caller can continue
+            # to operate on it if needed
+            #
+
+            try:
+                addresses_chunk = function_addresses[:CHUNK_SIZE]
+                del function_addresses[:CHUNK_SIZE]
+            except IndexError:
+                addresses_chunk = function_addresses[:]
+                function_addresses.clear()
+                CHUNK_SIZE = len(addresses_chunk)
 
             #
             # collect function metadata from the open database in groups of
@@ -532,22 +577,23 @@ class DatabaseMetadata(object):
 
             # report incremental progress to an optional progress_callback
             if progress_callback:
-                completed += len(addresses_chunk)
-                progress_callback(completed, len(function_addresses))
+                completed += CHUNK_SIZE
+                progress_callback(completed, total)
 
             # if the refresh was canceled, stop collecting metadata and bail
             if self._stop_threads:
-                return False
+                logger.debug("Async metadata collection is bailing!")
+                return True
+
+            # ALL SYSTEMS GO!!
+            if self._go_synchronous:
+                break
 
             # sleep some so we don't choke the mainthread
             time.sleep(.0015)
 
-        #----------------------------------------------------------------------
-        end = time.time()
-        logger.debug("Metadata collection took %s seconds" % (end - start))
-
-        # refresh completed normally / was not interrupted
-        return True
+        # the refresh either completed, or it is going synchronous!
+        return False
 
     def _update_functions(self, fresh_metadata):
         """

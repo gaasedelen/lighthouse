@@ -6,10 +6,10 @@ import threading
 import traceback
 import collections
 
-from lighthouse.util.qt import flush_qt_events
 from lighthouse.util.misc import *
+from lighthouse.util.debug import catch_errors
 from lighthouse.util.python import *
-from lighthouse.util.qt import await_future, await_lock
+from lighthouse.util.qt import await_future, await_lock, flush_qt_events
 from lighthouse.util.disassembler import disassembler
 
 from lighthouse.ui import ModuleSelector
@@ -1354,15 +1354,15 @@ class CoverageDirector(object):
         """
         Complete refresh of the director and mapped coverage.
         """
-        lmsg("Refreshing Lighthouse...")
-
-        #
-        # refreshing might take awhile, so pop a waitbox that should update
-        # with status messages as the refresh runs...
-        #
-
         disassembler.show_wait_box("Refreshing Lighthouse...")
-        flush_qt_events()
+        self._refresh()
+        disassembler.hide_wait_box()
+
+    @catch_errors
+    def _refresh(self):
+        """
+        Internal refresh routine, wrapped to help catch bugs for now.
+        """
 
         # (re) build our metadata cache of the underlying database
         self.metadata.refresh()
@@ -1372,9 +1372,6 @@ class CoverageDirector(object):
 
         # notify of full-refresh
         self._notify_refreshed()
-
-        # all done ...
-        disassembler.hide_wait_box()
 
     def refresh_theme(self):
         """

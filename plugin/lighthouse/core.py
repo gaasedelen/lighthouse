@@ -313,6 +313,7 @@ class Lighthouse(object):
         #
 
         disassembler.show_wait_box("Building database metadata...")
+        self.metadata.go_synchronous()
         await_future(future)
 
         #
@@ -378,6 +379,7 @@ class Lighthouse(object):
         #
 
         disassembler.show_wait_box("Building database metadata...")
+        self.metadata.go_synchronous()
         await_future(future)
 
         #
