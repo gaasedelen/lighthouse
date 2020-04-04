@@ -34,6 +34,7 @@ class TextToken(object):
 
 # NOTE: this is now dynamically computed in parse(...)
 #COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[A-Za-z])'
+AGGREGATE_TOKEN = '*'
 
 #
 # LOGIC_TOKEN:
@@ -256,7 +257,7 @@ class CompositionParser(object):
         '(' EXPRESSION ')' COMPOSITION_TAIL | COVERAGE COMPOSITION_TAIL
 
     COVERAGE_TOKEN:
-        'A' | 'B' | 'C' | ... | 'Z'
+        'A' | 'B' | 'C' | ... | 'Z' | AGGREGATE_TOKEN | None
 
     LOGIC_TOKEN:
         '&' | '|' | '^' | '-' | None
@@ -286,7 +287,7 @@ class CompositionParser(object):
         # reflect the state of loaded coverage
         #
 
-        COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[%s])' % ''.join(coverage_tokens)
+        COVERAGE_TOKEN = r'(?P<COVERAGE_TOKEN>[%s])' % ''.join(coverage_tokens + [AGGREGATE_TOKEN])
 
         #
         # if there were any coverage tokens defined, then we definitely need
@@ -433,7 +434,7 @@ class CompositionParser(object):
     def _COVERAGE_TOKEN(self):
         """
         COVERAGE_TOKEN:
-            'A' | 'B' | 'C' | ... | 'Z'
+            'A' | 'B' | 'C' | ... | 'Z' | AGGREGATE_TOKEN | None
         """
         if self._accept("COVERAGE_TOKEN"):
             return TokenCoverageSingle(self.current_token)
