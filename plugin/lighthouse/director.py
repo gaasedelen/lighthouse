@@ -598,7 +598,7 @@ class CoverageDirector(object):
 
         if not instructions:
             logger.debug("No mappable instruction addresses in coverage data")
-            return None
+            return []
 
         #
         # TODO/COMMENT
