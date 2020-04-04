@@ -444,7 +444,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         hh.resizeSection(COLUMN_DELETE, icon_column_width)
 
         # install a delegate to do some custom painting against the combobox
-        self.setItemDelegate(ComboBoxDelegate())
+        self.setItemDelegate(ComboBoxDelegate(self))
 
     #--------------------------------------------------------------------------
     # Refresh
@@ -484,12 +484,16 @@ class CoverageComboBoxView(QtWidgets.QTableView):
             "QTableView {"
             "  background-color: %s;" % palette.combobox_background.name() +
             "  color: %s;" % palette.combobox_text.name() +
-            "  selection-background-color: %s;" % palette.combobox_selection_background.name() +
-            "  selection-color: %s;" % palette.combobox_selection_text.name() +
             "  margin: 0; outline: none;"
+            "  border: 1px solid %s; " % palette.shell_border.name() +
             "} "
-            "QTableView::item{ padding: 0.5ex; } "
-            "QTableView::item:focus { padding: 0; }"
+            "QTableView::item { " +
+            "  padding: 0.5ex; border: 0; "
+            "} "
+            "QTableView::item:focus { " +
+            "  background-color: %s; " % palette.combobox_selection_background.name() +
+            "  color: %s; " % palette.combobox_selection_text.name() +
+            "} "
         )
 
 #------------------------------------------------------------------------------
@@ -746,12 +750,11 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
     dropdown table in the Coverage ComboBox a bit more to our liking.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent):
         super(ComboBoxDelegate, self).__init__(parent)
 
         # painting property definitions
-        self._grid_color = QtGui.QColor(0x909090)
-        self._separator_color = QtGui.QColor(0x505050)
+        self._grid_color = parent.model()._director.palette.shell_border
 
     def sizeHint(self, option, index):
         """
@@ -770,13 +773,15 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
         if index.data(QtCore.Qt.AccessibleDescriptionRole) == ENTRY_USER:
             painter.save()
             painter.setPen(self._grid_color)
+            final_entry = (index.sibling(index.row()+1, 0).row() == -1)
 
             # draw the grid line beneath the current row (a coverage entry)
             tweak = QtCore.QPoint(0, 1) # 1px tweak provides better spacing
-            painter.drawLine(
-                option.rect.bottomLeft() + tweak,
-                option.rect.bottomRight() + tweak
-            )
+            if not final_entry:
+                painter.drawLine(
+                    option.rect.bottomLeft() + tweak,
+                    option.rect.bottomRight() + tweak
+                )
 
             #
             # now we will re-draw the grid line *above* the current entry,
@@ -791,18 +796,6 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
             )
 
             painter.restore()
-
-        # custom paint the separator entry between special & normal coverage
-        if index.data(QtCore.Qt.AccessibleDescriptionRole) == SEPARATOR:
-            painter.save()
-            painter.setPen(self._separator_color)
-            painter.drawRect(
-                option.rect
-            )
-            painter.restore()
-
-            # nothing else to paint for the separator entry
-            return
 
         # custom paint the 'X' icon where applicable
         if index.data(QtCore.Qt.DecorationRole):
@@ -825,9 +818,20 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
 
             # draw the icon to the column
             painter.drawPixmap(destination_rect, pixmap)
+            return
 
-            # nothing else to paint for the icon column entry
+        # custom paint the separator entry between special & normal coverage
+        if index.data(QtCore.Qt.AccessibleDescriptionRole) == SEPARATOR:
+            painter.save()
+            painter.setPen(self._grid_color)
+            painter.drawRect(
+                option.rect
+            )
+            painter.restore()
+
+            # nothing else to paint for the separator entry
             return
 
         # pass through to the standard painting
         super(ComboBoxDelegate, self).paint(painter, option, index)
+
