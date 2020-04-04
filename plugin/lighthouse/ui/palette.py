@@ -309,12 +309,12 @@ class LighthousePalette(object):
         """
         user_theme_dir = get_user_theme_dir()
 
-        # attempt te read the name of the user's active / preferred theme
+        # attempt te read the name of the user's active / preferred theme name
         active_filepath = os.path.join(user_theme_dir, ".active_theme")
         try:
-            theme_name = open(active_filepath).read().strip()
+            return open(active_filepath).read().strip()
         except (OSError, IOError):
-            theme_name = None
+            pass
 
         #
         # there is no preferred theme set, let's try to peek at the user's
@@ -322,25 +322,19 @@ class LighthousePalette(object):
         # might work best for them (a light theme or dark one, basically)
         #
 
-        if not theme_name:
-            self._user_qt_hint = self._qt_theme_hint()
-            self._user_disassembly_hint = self._disassembly_theme_hint()
+        self._refresh_theme_hints()
 
-            # if both hints agree with each other, let's shoot for that theme
-            if self._user_qt_hint == self._user_disassembly_hint:
-                theme_name = self._default_themes[self._user_qt_hint]
+        # if both hints agree with each other, let's shoot for that theme
+        if self._user_qt_hint == self._user_disassembly_hint:
+            return self._default_themes[self._user_qt_hint]
 
-            #
-            # the UI hints don't match, so the user is using some ... weird
-            # colors. let's just default to the 'dark' lighthouse theme as
-            # it is more robust and can look okay in both light and dark envs
-            #
+        #
+        # the UI hints don't match, so the user is using some ... weird
+        # colors. let's just default to the 'dark' lighthouse theme as
+        # it is more robust and can look okay in both light and dark envs
+        #
 
-            else:
-                theme_name = self._default_themes["dark"]
-
-        # at this point, a theme_name to load should be known
-        return theme_name
+        return self._default_themes[s]
 
     def _load_preferred_theme(self, fallback=False):
         """
@@ -391,13 +385,17 @@ class LighthousePalette(object):
             lmsg(" - " + str(e))
             return False
 
-        # if the theme appears identical to the applied theme. nothing to do!
-        if theme == self.theme:
-            return True
-
         # do some basic sanity checking on the given theme file
         if not self._validate_theme(theme):
             return False
+
+        #
+        # before applying the selected lighthouse theme, we should ensure that
+        # we know if the user is using a light or dark disassembler theme as
+        # it may change which colors get used by the lighthouse theme
+        #
+
+        self._refresh_theme_hints()
 
         # try applying the loaded theme to Lighthouse
         try:
@@ -483,6 +481,13 @@ class LighthousePalette(object):
     #--------------------------------------------------------------------------
     # Theme Inference
     #--------------------------------------------------------------------------
+
+    def _refresh_theme_hints(self):
+        """
+        Peek at the UI context to infer what kind of theme the user might be using.
+        """
+        self._user_qt_hint = self._qt_theme_hint()
+        self._user_disassembly_hint = self._disassembly_theme_hint()
 
     def _disassembly_theme_hint(self):
         """
