@@ -41,7 +41,7 @@ class CoverageXref(QtWidgets.QDialog):
         """
         Initialize UI elements.
         """
-        self.setWindowTitle("Coverage xrefs to 0x%X" % self.address)
+        self.setWindowTitle("Coverage Xrefs to 0x%X" % self.address)
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
         self.setModal(True)
 
@@ -66,8 +66,8 @@ class CoverageXref(QtWidgets.QDialog):
         self._table.setHorizontalHeaderLabels(["Sym", "Cov %", "Coverage Name", "Timestamp"])
         self._table.setColumnWidth(0, 45)
         self._table.setColumnWidth(1, 55)
-        self._table.setColumnWidth(2, 300)
-        self._table.setColumnWidth(3, 200)
+        self._table.setColumnWidth(2, 400)
+        self._table.setColumnWidth(3, 100)
 
         # left align text in column headers
         for i in range(4):
@@ -76,8 +76,8 @@ class CoverageXref(QtWidgets.QDialog):
         # disable bolding of column headers when selected
         self._table.horizontalHeader().setHighlightSections(False)
 
-        # stretch the last column of the table (aesthetics)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        # stretch the filename field, as it is the most important
+        self._table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
 
         # make table read only, select a full row by default
         self._table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
@@ -109,7 +109,9 @@ class CoverageXref(QtWidgets.QDialog):
             name_entry = QtWidgets.QTableWidgetItem(coverage.name)
             name_entry.setToolTip(coverage.filepath)
             self._table.setItem(i, 2, name_entry)
-            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem("%u (%s)" % (coverage.timestamp, human_timestamp(coverage.timestamp))))
+            date_entry = QtWidgets.QTableWidgetItem()
+            date_entry.setData(QtCore.Qt.DisplayRole, QtCore.QDateTime.fromMSecsSinceEpoch(coverage.timestamp*1000))
+            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem(date_entry))
 
         # filepaths
         for i, filepath in enumerate(file_xrefs, len(cov_xrefs)):
@@ -117,9 +119,8 @@ class CoverageXref(QtWidgets.QDialog):
             # try to read timestamp of the file on disk (if it exists)
             try:
                 timestamp = os.path.getmtime(filepath)
-                timestamp = "%u (%s)" % (timestamp, human_timestamp(timestamp))
             except (OSError, TypeError):
-                timestamp = "(unknown)"
+                timestamp = 0
 
             # populate table entry
             self._table.setItem(i, 0, QtWidgets.QTableWidgetItem("-"))
@@ -127,9 +128,13 @@ class CoverageXref(QtWidgets.QDialog):
             name_entry = QtWidgets.QTableWidgetItem(os.path.basename(filepath))
             name_entry.setToolTip(filepath)
             self._table.setItem(i, 2, name_entry)
-            self._table.setItem(i, 3, QtWidgets.QTableWidgetItem(timestamp))
+            date_entry = QtWidgets.QTableWidgetItem()
+            date_entry.setData(QtCore.Qt.DisplayRole, QtCore.QDateTime.fromMSecsSinceEpoch(timestamp*1000))
+            self._table.setItem(i, 3, date_entry)
 
+        self._table.resizeColumnsToContents()
         self._table.resizeRowsToContents()
+
         self._table.setSortingEnabled(True)
 
     def _ui_layout(self):
