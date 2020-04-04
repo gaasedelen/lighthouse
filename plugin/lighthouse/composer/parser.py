@@ -117,21 +117,6 @@ class TokenLogicOperator(AstToken):
             return operator.sub
         raise ValueError("Unknown Operator")
 
-class TokenCoverageRange(AstToken):
-    """
-    AST Token for a coverage range reference.
-
-    eg: 'A,Z'
-    """
-
-    def __init__(self, start, comma, end):
-        super(TokenCoverageRange, self).__init__()
-        self.text_tokens = [start, comma, end]
-
-        # referenced coverage sets
-        self.symbol_start = start.value.upper()
-        self.symbol_end   = end.value.upper()
-
 class TokenCoverageSingle(AstToken):
     """
     AST Token for a single coverage reference.
@@ -183,26 +168,23 @@ def _ast_equal_recursive(first, second):
         return False
 
     #
+    # if both tokens are terminating / None, they are a match
+    #
+
+    if first == second == None:
+        return True
+
+    #
     # if the current node is a logic operator, we need to evaluate the
     # expressions that make up its input.
     #
 
-    if isinstance(first, TokenLogicOperator):
+    elif isinstance(first, TokenLogicOperator):
         if not _ast_equal_recursive(first.op1, second.op1):
             return False
         if not _ast_equal_recursive(first.op2, second.op2):
             return False
         return first.operator == second.operator
-
-    #
-    # if the current node is a coverage range, we need to evaluate the
-    # range expression. this will produce an aggregate coverage set
-    # described by the start/end of the range (Eg, 'A,D')
-    #
-
-    elif isinstance(first, TokenCoverageRange):
-        return first.symbol_start == second.symbol_start and \
-               first.symbol_end   == second.symbol_end
 
     #
     # if the current node is a coverage token, we need simply need
@@ -216,7 +198,7 @@ def _ast_equal_recursive(first, second):
     # unknown token? (this should never happen)
     #
 
-    raise False
+    raise ValueError("Unknown token types, cannot compare them...")
 
 #------------------------------------------------------------------------------
 # Parsing
@@ -273,17 +255,11 @@ class CompositionParser(object):
     EXPRESSION:
         '(' EXPRESSION ')' COMPOSITION_TAIL | COVERAGE COMPOSITION_TAIL
 
-    COVERAGE:
-        COVERAGE_TOKEN COVERAGE_RANGE
-
-    COVERAGE_RANGE:
-        ',' COVERAGE_TOKEN | None
-
     COVERAGE_TOKEN:
         'A' | 'B' | 'C' | ... | 'Z'
 
     LOGIC_TOKEN:
-        '&' | '|' | '^' | '-'
+        '&' | '|' | '^' | '-' | None
 
     """
 
@@ -420,7 +396,7 @@ class CompositionParser(object):
     def _EXPRESSION(self):
         """
         EXPRESSION:
-            '(' EXPRESSION ')' COMPOSITION_TAIL | COVERAGE COMPOSITION_TAIL
+            '(' EXPRESSION ')' COMPOSITION_TAIL | COVERAGE_TOKEN COMPOSITION_TAIL
         """
 
         #
@@ -449,35 +425,10 @@ class CompositionParser(object):
         #
 
         else:
-            expression = self._COVERAGE()
+            expression = self._COVERAGE_TOKEN()
 
         # ... [COMPOSITION_TAIL]
         return self._COMPOSITION_TAIL(expression)
-
-    def _COVERAGE(self):
-        """
-        COVERAGE:
-            COVERAGE_TOKEN COVERAGE_RANGE
-        """
-        coverage_start = self._COVERAGE_TOKEN()
-        coverage_range = self._COVERAGE_RANGE()
-
-        # if a there was a trailing ',A-Za-z' parsed, it's a coverage range
-        if coverage_range:
-            comma, coverage_end = coverage_range
-            return TokenCoverageRange(coverage_start, comma, coverage_end)
-
-        # return a single coverage set
-        return TokenCoverageSingle(coverage_start)
-
-    def _COVERAGE_RANGE(self):
-        """
-        COVERAGE_RANGE:
-            ',' COVERAGE_TOKEN | None
-        """
-        if self._accept("COMMA"):
-            return (self.current_token, self._COVERAGE_TOKEN())
-        return None
 
     def _COVERAGE_TOKEN(self):
         """
@@ -485,13 +436,13 @@ class CompositionParser(object):
             'A' | 'B' | 'C' | ... | 'Z'
         """
         if self._accept("COVERAGE_TOKEN"):
-            return self.current_token
-        self._parse_error("Expected COVERAGE_TOKEN", TokenCoverageSingle)
+            return TokenCoverageSingle(self.current_token)
+        return None
 
     def _LOGIC_TOKEN(self):
         """
         LOGIC_TOKEN:
-            '&' | '|' | '^' | '-'
+            '&' | '|' | '^' | '-' | None
         """
         if self._accept("OR")  or \
            self._accept("XOR") or \

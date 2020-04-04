@@ -91,7 +91,6 @@ Coverage composition, or _Composing_ as demonstrated above is achieved through a
 ### Grammar Tokens
 * Logical Operators: `|, &, ^, -`
 * Coverage Symbol: `A, B, C, ..., Z`
-* Coverage Range: `A,C`, `Q,Z`, ...
 * Parenthesis: `(...)`
 
 ### Example Compositions

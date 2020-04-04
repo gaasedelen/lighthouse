@@ -1294,15 +1294,6 @@ class CoverageDirector(object):
             return new_composition
 
         #
-        # if the current AST node is a coverage range, we need to evaluate the
-        # range expression. this will produce an aggregate coverage set
-        # described by the start/end of the range (eg, 'A,D')
-        #
-
-        elif isinstance(node, TokenCoverageRange):
-            return self._evaluate_coverage_range(node)
-
-        #
         # if the current AST node is a coverage token, we need simply need to
         # return its associated DatabaseCoverage.
         #
@@ -1324,27 +1315,6 @@ class CoverageDirector(object):
         """
         assert isinstance(coverage_token, TokenCoverageSingle)
         return self.get_coverage(self._alias2name[coverage_token.symbol])
-
-    def _evaluate_coverage_range(self, range_token):
-        """
-        Evaluate a TokenCoverageRange AST token.
-
-        Returns a new aggregate database coverage mapping.
-        """
-        assert isinstance(range_token, TokenCoverageRange)
-
-        # initialize output to a null coverage set
-        output = DatabaseCoverage(self.palette)
-
-        # expand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
-        symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
-
-        # build a coverage aggregate described by the range of shorthand symbols
-        for symbol in symbols:
-            output.add_data(self.get_coverage(self._alias2name[symbol]).data)
-
-        # return the computed coverage
-        return output
 
     #----------------------------------------------------------------------
     # Refresh
