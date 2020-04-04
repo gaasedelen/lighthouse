@@ -219,7 +219,7 @@ class Lighthouse(object):
         """
         Open the dockable 'Coverage Overview' dialog.
         """
-        self.palette.refresh_theme()
+        self.palette.warmup()
 
         # the coverage overview is already open & visible, simply refresh it
         if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
@@ -252,7 +252,6 @@ class Lighthouse(object):
             disassembler.replace_wait_box
         )
 
-        # TODO rough...
         if not created_coverage:
             lmsg("No coverage files could be loaded...")
             disassembler.hide_wait_box()
@@ -267,7 +266,7 @@ class Lighthouse(object):
         """
         Perform the user-interactive loading of a coverage batch.
         """
-        self.palette.refresh_theme()
+        self.palette.warmup()
 
         #
         # kick off an asynchronous metadata refresh. this will run in the
@@ -351,7 +350,7 @@ class Lighthouse(object):
         """
         Perform the user-interactive loading of individual coverage files.
         """
-        self.palette.refresh_theme()
+        self.palette.warmup()
 
         #
         # kick off an asynchronous metadata refresh. this will run in the

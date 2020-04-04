@@ -79,6 +79,7 @@ class LighthousePalette(object):
         """
         Initialize default palette colors for Lighthouse.
         """
+        self._initialized = False
         self._last_directory = None
         self._required_fields = []
 
@@ -152,6 +153,50 @@ class LighthousePalette(object):
     # Public
     #----------------------------------------------------------------------
 
+    def warmup(self):
+        """
+        Warms up the theming system prior to initial use.
+        """
+        if self._initialized:
+            return
+
+        #
+        # attempt to load the user's preferred (or hinted) theme. if we are
+        # successful, then there's nothing else to do!
+        #
+
+        self._refresh_theme_hints()
+        if self._load_preferred_theme():
+            self._initialized = True
+            return
+
+        #
+        # failed to load the preferred theme... so delete the 'active'
+        # file (if there is one) and warn the user before falling back
+        #
+
+        try:
+            os.remove(os.path.join(get_user_theme_dir(), ".active_theme"))
+        except:
+            pass
+
+        disassembler.warning(
+            "Failed to load Lighthouse user theme!\n\n"
+            "Please check the console for more information..."
+        )
+
+        #
+        # if no theme is loaded, we will attempt to detect & load the in-box
+        # themes based on the user's disassembler theme
+        #
+
+        loaded = self._load_preferred_theme(fallback=True)
+        if not loaded:
+            lmsg("Could not load Lighthouse fallback theme!") # this is a bad place to be...
+            return
+
+        self._initialized = True
+
     def interactive_change_theme(self):
         """
         Open a file dialog and let the user select a new Lighthoue theme.
@@ -168,6 +213,8 @@ class LighthousePalette(object):
 
         # prompt the user with the file dialog, and await filename(s)
         filename, _ = file_dialog.getOpenFileName()
+        if not filename:
+            return
 
         #
         # ensure the user is only trying to load themes from the user theme
@@ -179,7 +226,6 @@ class LighthousePalette(object):
         if file_dir != user_dir:
             text = "Please install your Lighthouse theme into the user theme directory:\n\n" + user_dir
             disassembler.warning(text)
-            lmsg(text)
             return
 
         #
@@ -192,6 +238,14 @@ class LighthousePalette(object):
 
         # log the captured (selected) filenames from the dialog
         logger.debug("Captured filename from theme file dialog: '%s'" % filename)
+
+        #
+        # before applying the selected lighthouse theme, we should ensure that
+        # we know if the user is using a light or dark disassembler theme as
+        # it may change which colors get used by the lighthouse theme
+        #
+
+        self._refresh_theme_hints()
 
         # load & apply theme from disk
         if self._load_theme(filename):
@@ -210,44 +264,8 @@ class LighthousePalette(object):
         Depending on if IDA is using a dark or light theme, we *try*
         to select colors that will hopefully keep things most readable.
         """
-
-        #
-        # attempt to load the user's preferred (or hinted) theme. if we are
-        # successful, then there's nothing else to do!
-        #
-
-        if self._load_preferred_theme():
-            return
-
-        #
-        # failed to load the preferred theme... so delete the 'active'
-        # file (if there is one) and warn the user before falling back
-        #
-
-        try:
-            os.remove(os.path.join(get_user_theme_dir(), ".active_theme"))
-        except:
-            pass
-
-        disassembler.warning(
-            "Failed to load Lighthouse user theme!\n\n"
-            "Please check the console for more information..."
-        )
-
-        # if there is already a theme loaded, continue to use it...
-        if self.theme:
-            return
-
-        #
-        # if no theme is loaded, we will attempt to detect & load the in-box
-        # themes based on the user's disassembler theme
-        #
-
-        loaded = self._load_preferred_theme(fallback=True)
-        if loaded:
-            return
-
-        lmsg("Could not load Lighthouse fallback theme!")
+        self._refresh_theme_hints()
+        self._load_preferred_theme()
 
     #--------------------------------------------------------------------------
     # Theme Internals
@@ -303,48 +321,60 @@ class LighthousePalette(object):
 
         self._required_fields = theme["fields"].keys()
 
-    def _select_preferred_theme(self):
+    def _load_preferred_theme(self, fallback=False):
         """
-        Return the name of the preferred theme to try loading.
+        Load the user's preferred theme, or the one hinted at by the theme subsystem.
         """
         user_theme_dir = get_user_theme_dir()
 
         # attempt te read the name of the user's active / preferred theme name
         active_filepath = os.path.join(user_theme_dir, ".active_theme")
         try:
-            return open(active_filepath).read().strip()
+            theme_name = open(active_filepath).read().strip()
+            logger.debug("Got '%s' from .active_theme" % theme_name)
         except (OSError, IOError):
-            pass
+            theme_name = None
 
         #
-        # there is no preferred theme set, let's try to peek at the user's
-        # disassembler theme & active Qt context and figure out what theme
-        # might work best for them (a light theme or dark one, basically)
+        # if the user does not have a preferred theme set yet, we will try to
+        # pick one for them based on their disassembler UI.
         #
 
-        self._refresh_theme_hints()
+        if not theme_name:
 
-        # if both hints agree with each other, let's shoot for that theme
-        if self._user_qt_hint == self._user_disassembly_hint:
-            return self._default_themes[self._user_qt_hint]
+            #
+            # we have two themes hints which roughly correspond to the tone of
+            # their disassembly background, and then their general Qt widgets.
+            #
+            # if both themes seem to align on style (eg the user is using a
+            # 'dark' UI), then we will select the appropriate in-box theme
+            #
+
+            if self._user_qt_hint == self._user_disassembly_hint:
+                theme_name = self._default_themes[self._user_qt_hint]
+                logger.debug("No preferred theme, hints suggest theme '%s'" % theme_name)
+
+            #
+            # the UI hints don't match, so the user is using some ... weird
+            # mismatched theming in their disassembler. let's just default to
+            # the 'dark' lighthouse theme as it is more robust
+            #
+
+            else:
+                theme_name = self._default_themes["dark"]
 
         #
-        # the UI hints don't match, so the user is using some ... weird
-        # colors. let's just default to the 'dark' lighthouse theme as
-        # it is more robust and can look okay in both light and dark envs
+        # should the user themes be in a bad state, we can fallback to the
+        # in-box themes. this should only happen if users malform the default
+        # themes that have been copied into the user theme directory
         #
 
-        return self._default_themes[s]
-
-    def _load_preferred_theme(self, fallback=False):
-        """
-        Load the user's preferred theme, or the one hinted at by the theme subsystem.
-        """
-        theme_name = self._select_preferred_theme()
         if fallback:
             theme_path = os.path.join(get_plugin_theme_dir(), theme_name)
         else:
             theme_path = os.path.join(get_user_theme_dir(), theme_name)
+
+        # finally, attempt to load & apply the theme -- return True/False
         return self._load_theme(theme_path)
 
     def _validate_theme(self, theme):
@@ -388,14 +418,6 @@ class LighthousePalette(object):
         # do some basic sanity checking on the given theme file
         if not self._validate_theme(theme):
             return False
-
-        #
-        # before applying the selected lighthouse theme, we should ensure that
-        # we know if the user is using a light or dark disassembler theme as
-        # it may change which colors get used by the lighthouse theme
-        #
-
-        self._refresh_theme_hints()
 
         # try applying the loaded theme to Lighthouse
         try:
