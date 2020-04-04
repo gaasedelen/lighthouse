@@ -59,12 +59,13 @@ class CoverageXref(QtWidgets.QDialog):
         self._table = QtWidgets.QTableWidget()
         self._table.verticalHeader().setVisible(False)
         self._table.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self._table.setWordWrap(False)
 
         # symbol, cov %, name, time
         self._table.setColumnCount(4)
         self._table.setHorizontalHeaderLabels(["Sym", "Cov %", "Coverage Name", "Timestamp"])
-        self._table.setColumnWidth(0, 40)
-        self._table.setColumnWidth(1, 50)
+        self._table.setColumnWidth(0, 45)
+        self._table.setColumnWidth(1, 55)
         self._table.setColumnWidth(2, 300)
         self._table.setColumnWidth(3, 200)
 
@@ -105,7 +106,9 @@ class CoverageXref(QtWidgets.QDialog):
         for i, coverage in enumerate(cov_xrefs, 0):
             self._table.setItem(i, 0, QtWidgets.QTableWidgetItem(self._director.get_shorthand(coverage.name)))
             self._table.setItem(i, 1, QtWidgets.QTableWidgetItem("%5.2f" % (coverage.instruction_percent*100)))
-            self._table.setItem(i, 2, QtWidgets.QTableWidgetItem(coverage.name))
+            name_entry = QtWidgets.QTableWidgetItem(coverage.name)
+            name_entry.setToolTip(coverage.filepath)
+            self._table.setItem(i, 2, name_entry)
             self._table.setItem(i, 3, QtWidgets.QTableWidgetItem("%u (%s)" % (coverage.timestamp, human_timestamp(coverage.timestamp))))
 
         # filepaths
@@ -121,7 +124,9 @@ class CoverageXref(QtWidgets.QDialog):
             # populate table entry
             self._table.setItem(i, 0, QtWidgets.QTableWidgetItem("-"))
             self._table.setItem(i, 1, QtWidgets.QTableWidgetItem("-"))
-            self._table.setItem(i, 2, QtWidgets.QTableWidgetItem(filepath))
+            name_entry = QtWidgets.QTableWidgetItem(os.path.basename(filepath))
+            name_entry.setToolTip(filepath)
+            self._table.setItem(i, 2, name_entry)
             self._table.setItem(i, 3, QtWidgets.QTableWidgetItem(timestamp))
 
         self._table.resizeRowsToContents()
@@ -154,7 +159,7 @@ class CoverageXref(QtWidgets.QDialog):
         A cell/row has been double clicked in the xref table.
         """
         if self._table.item(row, 0).text() == "-":
-            self.selected_filepath = self._table.item(row, 2).text()
+            self.selected_filepath = self._table.item(row, 2).toolTip()
         else:
             self.selected_coverage = self._table.item(row, 2).text()
         self.accept()
