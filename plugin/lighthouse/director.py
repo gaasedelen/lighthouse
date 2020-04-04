@@ -1365,7 +1365,7 @@ class CoverageDirector(object):
         """
 
         # (re) build our metadata cache of the underlying database
-        self.metadata.refresh()
+        self.metadata.refresh(metadata_progress)
 
         # (re) map each set of loaded coverage data to the database
         self._refresh_database_coverage()
