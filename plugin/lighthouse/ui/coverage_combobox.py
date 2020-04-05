@@ -1,4 +1,6 @@
 import logging
+import weakref
+
 from lighthouse.util import *
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
@@ -46,71 +48,6 @@ class CoverageComboBox(QtWidgets.QComboBox):
     #--------------------------------------------------------------------------
     # QComboBox Overloads
     #--------------------------------------------------------------------------
-
-    def showPopup(self):
-        """
-        Show the QComboBox dropdown/popup.
-        """
-        super(CoverageComboBox, self).showPopup()
-
-        #
-        # the next line of code will prevent the combobox 'head' from getting
-        # any mouse actions now that the popup/dropdown is visible.
-        #
-        # this is pretty aggressive, but it will allow the user to 'collapse'
-        # the combobox dropdown while it is in an expanded state by simply
-        # clicking the combobox head as one can do to expand it.
-        #
-        # the reason this dirty trick is able to simulate a 'collapsing click'
-        # is because the user clicks 'outside' the popup/dropdown which
-        # automatically closes it. if the click was on the combobox head, it
-        # is simply ignored because we set this attribute!
-        #
-        # when the popup is closing, we undo this action in hidePopup()
-        #
-        # we have to use this workaround because we are using an 'editable' Qt
-        # combobox which behaves differently to clicks than a normal combobox.
-        #
-
-        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-
-    def hidePopup(self):
-        """
-        Hide the QComboBox dropdown/popup.
-        """
-        super(CoverageComboBox, self).hidePopup()
-
-        #
-        # the combobox popup is now hidden / collapsed. the combobox head needs
-        # to be re-enlightened to direct mouse clicks (eg, to expand it). this
-        # undos the setAttribute action in showPopup() above.
-        #
-        # if the coverage combobox is *not* visible, the coverage window is
-        # probably being closed / deleted. but just in case, we should attempt
-        # to restore the combobox's ability to accept clicks before bailing.
-        #
-        # this fixes a bug / Qt warning first printed in IDA 7.4 where 'self'
-        # (the comobobox) would be deleted by the time the 100ms timer in the
-        # 'normal' case fires below
-        #
-
-        if not self.isVisible():
-            self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
-            return
-
-        #
-        # in the more normal case, the comobobox is simply being collapsed
-        # by the user clicking it, or clicking away from it.
-        #
-        # we use a short timer of 100ms to ensure the 'hiding' of the dropdown
-        # and its associated click are processed first. aftwards, it is safe to
-        # begin accepting clicks again.
-        #
-
-        QtCore.QTimer.singleShot(100, self.__hidePopup_setattr)
-
-    def __hidePopup_setattr(self):
-        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
 
     def mousePressEvent(self, e):
         """
@@ -362,6 +299,8 @@ class CoverageComboBoxView(QtWidgets.QTableView):
     def __init__(self, model, parent=None):
         super(CoverageComboBoxView, self).__init__(parent)
         self.setObjectName(self.__class__.__name__)
+        self._combobox = weakref.proxy(parent)
+        self._timer = None
 
         # install the given data model into the table view
         self.setModel(model)
@@ -373,6 +312,77 @@ class CoverageComboBoxView(QtWidgets.QTableView):
     #--------------------------------------------------------------------------
     # QTableView Overloads
     #--------------------------------------------------------------------------
+
+    def showEvent(self, e):
+        """
+        Show the QComboBox dropdown/popup.
+        """
+
+        #
+        # the next line of code will prevent the combobox 'head' from getting
+        # any mouse actions now that the popup/dropdown is visible.
+        #
+        # this is pretty aggressive, but it will allow the user to 'collapse'
+        # the combobox dropdown while it is in an expanded state by simply
+        # clicking the combobox head as one can do to expand it.
+        #
+        # the reason this dirty trick is able to simulate a 'collapsing click'
+        # is because the user clicks 'outside' the popup/dropdown which
+        # automatically closes it. if the click was on the combobox head, it
+        # is simply ignored because we set this attribute!
+        #
+        # when the popup is closing, we undo this action in hideEvent().
+        #
+        # we have to use this workaround because we are using an 'editable' Qt
+        # combobox which behaves differently to clicks than a normal combobox.
+        #
+        # NOTE: we have to do this here in the tableview because the combobox's
+        # showPopup() and hidePopup() do not always trigger symmetrically.
+        #
+        # for example, hidePopup() was not being triggered when focus was lost
+        # via virutal desktop switch, and other external focus changes. this
+        # is really bad, because the combobox would get stuck *closed* as it
+        # was never re-enabled for mouse events
+        #
+
+        self._combobox.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+
+    def hideEvent(self, e):
+        """
+        Hide the QComboBox dropdown/popup.
+        """
+
+        #
+        # the combobox popup is now hidden / collapsed. the combobox head needs
+        # to be re-enlightened to direct mouse clicks (eg, to expand it). this
+        # undos the setAttribute action in showPopup() above.
+        #
+        # if the coverage combobox is *not* visible, the coverage window is
+        # probably being closed / deleted. but just in case, we should attempt
+        # to restore the combobox's ability to accept clicks before bailing.
+        #
+        # this fixes a bug / Qt warning first printed in IDA 7.4 where 'self'
+        # (the comobobox) would be deleted by the time the 100ms timer in the
+        # 'normal' case fires below
+        #
+
+        if not self._combobox.isVisible():
+            self._combobox.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
+            return
+
+        #
+        # in the more normal case, the comobobox is simply being collapsed
+        # by the user clicking it, or clicking away from it.
+        #
+        # we use a short timer of 100ms to ensure the 'hiding' of the dropdown
+        # and its associated click are processed first. aftwards, it is safe to
+        # begin accepting clicks again.
+        #
+
+        self._timer = QtCore.QTimer.singleShot(100, self.__hidePopup_setattr)
+
+    def __hidePopup_setattr(self):
+        self._combobox.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
 
     def leaveEvent(self, e):
         """
