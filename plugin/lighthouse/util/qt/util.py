@@ -109,6 +109,9 @@ def prompt_string(label, title, default=""):
         dpi_scale*400,
         dpi_scale*50
     )
+    dlg.setModal(True)
+    dlg.show()
+    dlg.setFocus(QtCore.Qt.PopupFocusReason)
     ok = dlg.exec_()
     text = str(dlg.textValue())
     return (ok, text)
