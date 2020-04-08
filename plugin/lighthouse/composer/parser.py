@@ -257,7 +257,7 @@ class CompositionParser(object):
         '(' EXPRESSION ')' COMPOSITION_TAIL | COVERAGE COMPOSITION_TAIL
 
     COVERAGE_TOKEN:
-        'A' | 'B' | 'C' | ... | 'Z' | AGGREGATE_TOKEN | None
+        'A' | 'B' | 'C' | ... | 'Z' | AGGREGATE_TOKEN
 
     LOGIC_TOKEN:
         '&' | '|' | '^' | '-' | None
@@ -434,11 +434,11 @@ class CompositionParser(object):
     def _COVERAGE_TOKEN(self):
         """
         COVERAGE_TOKEN:
-            'A' | 'B' | 'C' | ... | 'Z' | AGGREGATE_TOKEN | None
+            'A' | 'B' | 'C' | ... | 'Z' | AGGREGATE_TOKEN
         """
         if self._accept("COVERAGE_TOKEN"):
             return TokenCoverageSingle(self.current_token)
-        return None
+        self._parse_error("Expected COVERAGE_TOKEN", TokenCoverageSingle)
 
     def _LOGIC_TOKEN(self):
         """
