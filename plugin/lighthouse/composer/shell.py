@@ -127,6 +127,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._director.coverage_created(self._internal_refresh)
         self._director.coverage_deleted(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
+        self._director.coverage_switched(self._coverage_switched)
 
         # register for cues from the model
         self._table_model.layoutChanged.connect(self._ui_shell_text_changed)
@@ -198,6 +199,7 @@ class ComposingShell(QtWidgets.QWidget):
         Internal refresh of the shell.
         """
         self._refresh_hint_list()
+        self._ui_shell_text_changed()
 
     def _refresh_hint_list(self):
         """
@@ -218,6 +220,22 @@ class ComposingShell(QtWidgets.QWidget):
 
         # queue a UI coverage hint if necessary
         self._ui_hint_coverage_refresh()
+
+    def _coverage_switched(self):
+        """
+        Handle a coverage switched event.
+
+        specifically, we want cover the specical case where the hot shell is
+        being switched to. In these cases, we should forcefully clear the
+        'last' AST so that the full shell expression is re-evaluated and
+        sent forward to the director.
+
+        this will ensure that the director will evaluate and display the
+        results of the present expression as the 'Hot Shell' is now active.
+        """
+        if self._director.coverage_name == "Hot Shell":
+            self._last_ast = None
+        self._internal_refresh()
 
     #--------------------------------------------------------------------------
     # Signal Handlers
