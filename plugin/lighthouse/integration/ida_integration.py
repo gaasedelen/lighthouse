@@ -137,7 +137,7 @@ class LighthouseIDA(Lighthouse):
             RuntimeError("Failed to register coverage_xref action with IDA")
 
         self._ui_hooks.hook()
-        logger.info("Installed the 'Code coverage batch' menu entry")
+        logger.info("Installed the 'Coverage Xref' menu entry")
 
     def _install_open_coverage_overview(self):
         """

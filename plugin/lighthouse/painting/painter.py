@@ -20,14 +20,15 @@ class DatabasePainter(object):
     MSG_CLEAR = 2
     MSG_REBASE = 3
 
-    def __init__(self, director, palette):
+    def __init__(self, lctx, director, palette):
 
         #----------------------------------------------------------------------
         # Misc
         #----------------------------------------------------------------------
 
+        self.lctx = lctx
         self.palette = palette
-        self._director = director
+        self.director = director
         self._enabled = True
 
         #----------------------------------------------------------------------
@@ -75,9 +76,9 @@ class DatabasePainter(object):
         self._status_changed_callbacks = []
 
         # register for cues from the director
-        self._director.coverage_switched(self.repaint)
-        self._director.coverage_modified(self.repaint)
-        self._director.refreshed(self.check_rebase)
+        self.director.coverage_switched(self.repaint)
+        self.director.coverage_modified(self.repaint)
+        self.director.refreshed(self.check_rebase)
 
     #--------------------------------------------------------------------------
     # Status
@@ -137,7 +138,7 @@ class DatabasePainter(object):
         # to *preemptively* disable painting if no other coverage is loaded.
         #
 
-        if self.enabled and len(self._director.coverage_names):
+        if self.enabled and len(self.director.coverage_names):
             self.set_enabled(False)
 
         # trigger the database clear
@@ -220,8 +221,8 @@ class DatabasePainter(object):
         """
         Paint function instructions & nodes with the current database mappings.
         """
-        function_metadata = self._director.metadata.functions[address]
-        function_coverage = self._director.coverage.functions.get(address, None)
+        function_metadata = self.director.metadata.functions[address]
+        function_coverage = self.director.coverage.functions.get(address, None)
         if not function_coverage:
             return False
 
@@ -274,7 +275,7 @@ class DatabasePainter(object):
         """
         Clear paint from the given function.
         """
-        function_metadata = self._director.metadata.functions[address]
+        function_metadata = self.director.metadata.functions[address]
         instructions = function_metadata.instructions
         nodes = itervalues(function_metadata.nodes)
 
@@ -295,8 +296,8 @@ class DatabasePainter(object):
         """
 
         # more code-friendly, readable aliases (db_XX == database_XX)
-        db_coverage = self._director.coverage
-        db_metadata = self._director.metadata
+        db_coverage = self.director.coverage
+        db_metadata = self.director.metadata
 
         start = time.time()
         #------------------------------------------------------------------
@@ -352,7 +353,7 @@ class DatabasePainter(object):
         """
         Clear all paint from the current database.
         """
-        db_metadata = self._director.metadata
+        db_metadata = self.director.metadata
         instructions = db_metadata.instructions
         nodes = viewvalues(db_metadata.nodes)
 
@@ -374,7 +375,7 @@ class DatabasePainter(object):
         TODO/XXX: there may be some edgecases where painting can be wrong if
                   a rebase occurs while the painter is running.
         """
-        db_metadata = self._director.metadata
+        db_metadata = self.director.metadata
         instructions = db_metadata.instructions
         nodes = viewvalues(db_metadata.nodes)
 

@@ -1,7 +1,7 @@
 import logging
 
 from lighthouse.util.log import lmsg
-from lighthouse.binja_integration import LighthouseBinja
+from lighthouse.integration.binja_integration import LighthouseBinja
 
 logger = logging.getLogger("Lighthouse.Binja.Loader")
 

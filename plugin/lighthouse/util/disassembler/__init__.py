@@ -27,8 +27,9 @@ if disassembler == None:
 
 if disassembler == None:
     try:
-        from .binja_api import BinjaAPI, DockableWindow
-        disassembler = BinjaAPI()
+        from .binja_api import BinjaCoreAPI, BinjaContextAPI, DockableChild
+        disassembler = BinjaCoreAPI()
+        DisassemblerContextAPI = BinjaContextAPI
     except ImportError:
         pass
 

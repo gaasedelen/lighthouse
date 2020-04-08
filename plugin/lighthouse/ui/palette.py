@@ -103,6 +103,8 @@ class LighthousePalette(object):
         # initialize the user theme directory
         self._populate_user_theme_dir()
 
+        self.warmup()
+
     #----------------------------------------------------------------------
     # Properties
     #----------------------------------------------------------------------

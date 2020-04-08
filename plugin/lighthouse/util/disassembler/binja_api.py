@@ -7,10 +7,10 @@ import threading
 
 import binaryninja
 from binaryninja import PythonScriptingInstance, binaryview
-from binaryninjaui import DockHandler, DockContextHandler, UIContext
+from binaryninjaui import DockHandler, DockContextHandler, UIContext, UIActionHandler
 from binaryninja.plugin import BackgroundTaskThread
 
-from .api import DisassemblerAPI, DockableShim
+from .api import DisassemblerCoreAPI, DisassemblerContextAPI
 from ..qt import *
 from ..misc import is_mainthread, not_mainthread
 
@@ -75,27 +75,18 @@ def execute_sync(function):
 # Disassembler API
 #------------------------------------------------------------------------------
 
-class BinjaAPI(DisassemblerAPI):
+class BinjaCoreAPI(DisassemblerCoreAPI):
     """
     The Binary Ninja implementation of the disassembler API abstraction.
     """
     NAME = "BINJA"
 
-    def __init__(self, bv=None):
-        super(BinjaAPI, self).__init__()
+    def __init__(self):
+        super(BinjaCoreAPI, self).__init__()
         self._init_version()
 
-        # binja specific amenities
-        self._bv = bv
-        self._python = _binja_get_scripting_instance()
-
     def _init_version(self):
-        version_string = None
-        # Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
-        try:
-            version_string = binaryninja.core_version()
-        except TypeError:
-            version_string = binaryninja.core_version
+        version_string = binaryninja.core_version()
 
         # retrieve Binja's version #
         if "-" in version_string: # dev
@@ -115,18 +106,6 @@ class BinjaAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
 
     @property
-    def bv(self):
-        return self._bv
-
-    @bv.setter
-    def bv(self, bv):
-        if self._bv == bv:
-            return
-        if self._bv:
-            raise ValueError("BinaryView cannot be changed once set...")
-        self._bv = bv
-
-    @property
     def headless(self):
         ret = None
         # Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
@@ -135,10 +114,6 @@ class BinjaAPI(DisassemblerAPI):
         except TypeError:
             ret = binaryninja.core_ui_enabled
         return not ret
-
-    @property
-    def busy(self):
-        return False # TODO
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
@@ -165,16 +140,69 @@ class BinjaAPI(DisassemblerAPI):
                 return
 
             # schedule the task to run in the main thread
-            try:
-                binaryninja.execute_on_main_thread(ff)
-            except AttributeError: # TODO/V35: binja bug, fixed on dev
-                pass
+            binaryninja.execute_on_main_thread(ff)
 
         return wrapper
 
     #--------------------------------------------------------------------------
     # API Shims
     #--------------------------------------------------------------------------
+
+    def get_disassembler_user_directory(self):
+        return os.path.split(binaryninja.user_plugin_path())[0]
+
+    def get_disassembly_background_color(self):
+        palette = QtGui.QPalette()
+        return palette.color(QtGui.QPalette.Button)
+
+    def is_msg_inited(self):
+        return True
+
+    def warning(self, text):
+        binaryninja.interaction.show_message_box("Warning", text)
+
+    def message(self, message):
+        print(message)
+
+    #--------------------------------------------------------------------------
+    # UI API Shims
+    #--------------------------------------------------------------------------
+
+    def create_dockable_widget(self, dockable_name, create_widget_callback):
+        dock_handler = DockHandler.getActiveDockHandler()
+        dock_handler.addDockWidget(dockable_name, create_widget_callback, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, False)
+
+    def show_dockable_widget(self, dockable_name):
+        dock_handler = DockHandler.getActiveDockHandler()
+        dock_handler.setVisible(dockable_name, True)
+
+    #--------------------------------------------------------------------------
+    # XXX Binja Specfic Helpers
+    #--------------------------------------------------------------------------
+
+    def binja_get_bv_from_dock(self):
+        dh = DockHandler.getActiveDockHandler()
+        if not dh:
+            return None
+        vf = dh.getViewFrame()
+        if not vf:
+            return None
+        vi = vf.getCurrentViewInterface()
+        bv = vi.getData()
+        return bv
+
+class BinjaContextAPI(DisassemblerContextAPI):
+    """
+    TODO
+    """
+
+    def __init__(self, dctx):
+        super(BinjaContextAPI, self).__init__(dctx)
+        self.bv = dctx
+
+    @property
+    def busy(self):
+        return self.bv.analysis_info.state != binaryninja.enums.AnalysisState.IdleState
 
     #
     #  NOTE/TODO/V35:
@@ -188,22 +216,17 @@ class BinjaAPI(DisassemblerAPI):
     #    which *needs* database accesses to be made from the mainthread
     #
 
-    def create_rename_hooks(self):
-        return RenameHooks(self.bv)
+    #--------------------------------------------------------------------------
+    # API Shims
+    #--------------------------------------------------------------------------
 
     def get_current_address(self):
-        if not self._python:
-            self._python = _binja_get_scripting_instance()
-            if not self._python:
-                return -1
-        return self._python.current_addr
+        raise NotImplementedError("TODO!")
+        return 0
 
-    @execute_read.__func__
+    @BinjaCoreAPI.execute_read
     def get_database_directory(self):
         return os.path.dirname(self.bv.file.filename)
-
-    def get_disassembler_user_directory(self):
-        return os.path.split(binaryninja.user_plugin_path())[0]
 
     @not_mainthread
     def get_function_addresses(self):
@@ -216,7 +239,7 @@ class BinjaAPI(DisassemblerAPI):
             return None
         return func.symbol.short_name
 
-    @execute_read.__func__
+    @BinjaCoreAPI.execute_read
     def get_function_raw_name_at(self, address):
         func = self.bv.get_function_at(address)
         if not func:
@@ -234,7 +257,7 @@ class BinjaAPI(DisassemblerAPI):
     def navigate(self, address):
         return self.bv.navigate(self.bv.view, address)
 
-    @execute_write.__func__
+    @BinjaCoreAPI.execute_write
     def set_function_name_at(self, function_address, new_name):
         func = self.bv.get_function_at(function_address)
         if not func:
@@ -243,29 +266,12 @@ class BinjaAPI(DisassemblerAPI):
             new_name = None
         func.name = new_name
 
-        #
-        # TODO/V35: As a workaround for no symbol events, we trigger a data
-        # notification for this function instead.
-        #
-
-        self.bv.write(function_address, self.bv.read(function_address, 1))
-
-    def message(self, message):
-        print(message)
-
     #--------------------------------------------------------------------------
-    # UI API Shims
+    # Hooks API
     #--------------------------------------------------------------------------
 
-    def get_disassembly_background_color(self):
-        palette = QtGui.QPalette()
-        return palette.color(QtGui.QPalette.Button)
-
-    def is_msg_inited(self):
-        return True
-
-    def warning(self, text):
-        binaryninja.interaction.show_message_box("Warning", text)
+    def create_rename_hooks(self):
+        return RenameHooks(self.bv)
 
     #------------------------------------------------------------------------------
     # Function Prefix API
@@ -277,147 +283,97 @@ class BinjaAPI(DisassemblerAPI):
 # Hooking
 #------------------------------------------------------------------------------
 
-class RenameHooks(object):
+class RenameHooks(binaryview.BinaryDataNotification):
     """
-    A Hooking class to catch function renames in Binary Ninja.
+    A hooking class to catch symbol changes in Binary Ninja.
     """
 
     def __init__(self, bv):
         self._bv = bv
-
-        # hook certain Binary Ninja notifications
-        self._hooks = binaryview.BinaryDataNotification()
-        self._hooks.function_updated = self._workaround
-
-        # TODO/V35: turns out there are no adequate symbol event hooks...
-        #self._hooks.function_update_requested = self._before
-        #self._hooks.function_updated = self._after
-        #self._names = {}
+        self.symbol_added = self.__symbol_handler
+        self.symbol_updated = self.__symbol_handler
+        self.symbol_removed = self.__symbol_handler
 
     def hook(self):
-        self._bv.register_notification(self._hooks)
+        self._bv.register_notification(self)
 
     def unhook(self):
-        self._bv.unregister_notification(self._hooks)
+        self._bv.unregister_notification(self)
 
-    @BinjaAPI.execute_ui
-    def _renamed(self, address, new_name):
-        """
-        Pass off the (internal) rename event to the mainthread.
-        """
-        self.renamed(address, new_name)
-
-    def _before(self, _, function):
-        """
-        Capture function name prior to modification.
-        """
-        self._names[function.start] = function.name
-
-    def _after(self, _, function):
-        """
-        Capture function name post modification
-        """
-
-        #
-        # if we don't have an old name for a given function logged, that
-        # means we must have missed the function_update_requested event for it.
-        #
-        # hopefully this should never happen during real *rename* events...
-        #
-
-        old_name = self._names.get(function.start, None)
-        if not old_name:
+    def __symbol_handler(self, view, symbol):
+        func = self._bv.get_function_at(symbol.address)
+        if not func.start == symbol.address:
             return
-
-        # if the function name hasn't changed, then there is nothing to do!
-        if old_name == function.name:
-            return
-
-        # fire our custom 'function renamed' event
-        self._renamed(function.start, function.name)
-
-    #--------------------------------------------------------------------------
-    # Temporary Workaound
-    #--------------------------------------------------------------------------
-
-    def _workaround(self, _, function):
-        """
-        TODO/V35: workaround to detect name changes pending better API's
-        """
-        function_metadata = self.metadata.get_function(function.start)
-        if not function_metadata:
-            return
-
-        # if the function name hasn't changed, then there is nothing to do!
-        if function_metadata.name == function.symbol.short_name:
-            return
-
-        # fire our custom 'function renamed' event
-        self._renamed(function.start, function.symbol.short_name)
+        self.renamed(symbol.address, symbol.name)
 
 #------------------------------------------------------------------------------
 # UI
 #------------------------------------------------------------------------------
 
-class DockableWindow(DockableShim):
+class DockableChild(QtWidgets.QWidget, DockContextHandler):
     """
     A dockable Qt widget for Binary Ninja.
     """
 
-    def __init__(self, window_title, icon_path):
-        super(DockableWindow, self).__init__(window_title, icon_path)
+    def __init__(self, parent, name, dctx=None):
 
-        # configure dockable widget container
-        self._active_context = UIContext.allContexts()[0]
-        self._main_window = self._active_context.mainWindow()
-        self._dock_handler = self._main_window.findChild(DockHandler, '__DockHandler')
-        self._widget = QtWidgets.QWidget(self._dock_handler.parent())
-        self._dock_contxet = DockContextHandler(self._widget, self._window_title)
+        QtWidgets.QWidget.__init__(self, parent)
+        DockContextHandler.__init__(self, self, name)
 
-        self._widget.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding,
-            QtWidgets.QSizePolicy.Expanding
-        )
+        self.name = name
+        self.dctx = dctx
 
-        # dock the widget on the right side of Binja
-        self._dock_handler.addDockWidget(self._widget, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, True, False)
-        self._dockable = self._dock_handler.getDockWidget(self._window_title)
+        self.actionHandler = UIActionHandler()
+        self.actionHandler.setupActionHandler(self)
 
-        self._dockable = QtWidgets.QDockWidget(window_title, self._main_window)
-        self._dockable.setWindowIcon(self._window_icon)
-        self._dockable.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-        self._dockable.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding,
-            QtWidgets.QSizePolicy.Expanding
-        )
+        self.visible = False
 
-#------------------------------------------------------------------------------
-# Binary Ninja Hacks XXX / TODO / V35
-#------------------------------------------------------------------------------
+        #self._widget.setSizePolicy(
+        #    QtWidgets.QSizePolicy.Expanding,
+        #    QtWidgets.QSizePolicy.Expanding
+        #)
 
-def _binja_get_scripting_instance():
-    """
-    Get the python scripting console in Binary Ninja.
-    """
-    for t in threading.enumerate():
-        if type(t) == PythonScriptingInstance.InterpreterThread:
-            return t
-    return None
+        ## dock the widget on the right side of Binja
+        #self._dock_handler.addDockWidget(self._widget, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, True, False)
+        #self._dockable = self._dock_handler.getDockWidget(self._window_title)
 
-def binja_get_bv():
-    """
-    Get the current BinaryView in Binary Ninja.
-    """
-    python = _binja_get_scripting_instance()
-    if not python:
-        return None
-    return python.current_view
+        #self._dockable = QtWidgets.QDockWidget(window_title, self._main_window)
+        #self._dockable.setWindowIcon(self._window_icon)
+        #self._dockable.setSizePolicy(
+        #    QtWidgets.QSizePolicy.Expanding,
+        #    QtWidgets.QSizePolicy.Expanding
+        #)
 
-def binja_get_function_at(address):
-    """
-    Get the function object at the given address.
-    """
-    bv = binja_get_bv()
-    if not bv:
-        return None
-    return bv.get_function_at(address)
+    def notifyOffsetChanged(self, offset):
+        #print("Offset changed..")
+        #self.offset.setText(hex(offset))
+        pass
+
+    def shouldBeVisible(self, view_frame):
+        print("Should be visible called...")
+        if view_frame is None:
+            print(" - No, there's no BV")
+            return False
+        print("%r" % self.visible)
+        return self.visible
+
+    def notifyVisibilityChanged(self, is_visible):
+        print("Vis changed...")
+        self.visible = is_visible
+
+    def notifyViewChanged(self, view_frame):
+        print("Notify view changed", view_frame)
+        return
+        if view_frame is None:
+            self.datatype.setText("None")
+            self.data = None
+        else:
+            self.datatype.setText(view_frame.getCurrentView())
+            view = view_frame.getCurrentViewInterface()
+            self.data = view.getData()
+
+    def contextMenuEvent(self, event):
+        print("CTX Menu event")
+        return
+        #self.m_contextMenuManager.show(self.m_menu, self.actionHandler)
+

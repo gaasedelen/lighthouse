@@ -60,7 +60,8 @@ class DatabaseMetadata(object):
     Database level metadata cache.
     """
 
-    def __init__(self):
+    def __init__(self, lctx=None):
+        self.lctx = lctx
 
         # name & imagebase of the executable this metadata is based on
         self.filename = ""
@@ -83,8 +84,13 @@ class DatabaseMetadata(object):
         self._last_node = lambda: None
         self._last_node.instructions = []
 
-        # placeholder attribute for disassembler event hooks
-        self._rename_hooks = None
+        # create the disassembler hooks to listen for rename events
+        if lctx:
+            self._rename_hooks = disassembler[lctx].create_rename_hooks()
+            self._rename_hooks.renamed = self._name_changed
+            self._rename_hooks.metadata = weakref.proxy(self)
+        else:
+            self._rename_hooks = None
 
         # asynchronous metadata collection thread
         self._refresh_worker = None
@@ -434,7 +440,8 @@ class DatabaseMetadata(object):
         # functions. let's retrieve that list from the disassembler now...
         #
 
-        function_addresses = disassembler.execute_read(disassembler.get_function_addresses)()
+        disassembler_ctx = disassembler[self.lctx]
+        function_addresses = disassembler.execute_read(disassembler_ctx.get_function_addresses)()
         total = len(function_addresses)
 
         start = time.time()
@@ -459,28 +466,6 @@ class DatabaseMetadata(object):
         # refresh the internal function/node fast lookup lists
         self._refresh_lookup()
 
-        #
-        # NOTE:
-        #
-        #   creating the hooks inline like this is less than ideal, but they
-        #   they have been moved here (from the metadata constructor) to
-        #   accomodate shortcomings of the Binary Ninja API.
-        #
-        # TODO/FUTURE/V35:
-        #
-        #   it would be nice to move these back to the constructor once the
-        #   Binary Ninja API allows us to detect BV / sessions as they are
-        #   created, and able to load plugins on such events.
-        #
-
-        #----------------------------------------------------------------------
-
-        # create the disassembler hooks to listen for rename events
-        if not self._rename_hooks:
-            self._rename_hooks = disassembler.create_rename_hooks()
-            self._rename_hooks.renamed = self._name_changed
-            self._rename_hooks.metadata = weakref.proxy(self)
-
         #----------------------------------------------------------------------
 
         # reinstall the rename listener hooks now that the refresh is done
@@ -501,8 +486,9 @@ class DatabaseMetadata(object):
         """
         Refresh a selection of interesting database properties.
         """
-        self.filename = disassembler.get_root_filename()
-        self.imagebase = disassembler.get_imagebase()
+        disassembler_ctx = disassembler[self.lctx]
+        self.filename = disassembler_ctx.get_root_filename()
+        self.imagebase = disassembler_ctx.get_imagebase()
 
     @disassembler.execute_read
     def _sync_collect_metadata(self, function_addresses, progress_callback, progress_base=0):
@@ -601,11 +587,13 @@ class DatabaseMetadata(object):
         """
         Lift and cache function metadata for the given list of function addresses.
         """
+        disassembler_ctx = disassembler[self.lctx]
+
         for address in addresses_chunk:
 
             # attempt to 'lift' the function from the database
             try:
-                function_metadata = FunctionMetadata(address)
+                function_metadata = FunctionMetadata(address, disassembler_ctx)
 
             #
             # this is not exactly a good thing but it indicates that the
@@ -630,7 +618,7 @@ class DatabaseMetadata(object):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    @mainthread
+    #@mainthread # TODO update fore IDA
     def _name_changed(self, address, new_name, local_name=None):
         """
         Handler for rename event in IDA.
@@ -665,12 +653,11 @@ class DatabaseMetadata(object):
             return 0
 
         logger.debug("Name changing @ 0x%X" % address)
-        logger.debug("  Old name: %s" % function.name)
-        logger.debug("  New name: %s" % new_name)
+        logger.debug("  Old name: %s" % function.name.encode("utf-8"))
+        logger.debug("  New name: %s" % new_name.encode("utf-8"))
 
         # rename the function, and notify metadata listeners
-        #function.name = new_name
-        function.refresh_name()
+        function.name = new_name
         self._notify_function_renamed()
 
         # necessary for IDP/IDB_Hooks
@@ -727,7 +714,7 @@ class FunctionMetadata(object):
     Function level metadata cache.
     """
 
-    def __init__(self, address):
+    def __init__(self, address, disassembler_ctx=None):
 
         # function metadata
         self.address = address
@@ -745,8 +732,8 @@ class FunctionMetadata(object):
         self.cyclomatic_complexity = 0
 
         # collect metdata from the underlying database
-        if address != -1:
-            self._build_metadata()
+        if disassembler_ctx:
+            self._cache(disassembler_ctx)
 
     #--------------------------------------------------------------------------
     # Properties
@@ -767,29 +754,18 @@ class FunctionMetadata(object):
         return self.size == 0
 
     #--------------------------------------------------------------------------
-    # Public
-    #--------------------------------------------------------------------------
-
-    @disassembler.execute_read
-    def refresh_name(self):
-        """
-        Refresh the function name against the open database.
-        """
-        self.name = disassembler.get_function_name_at(self.address)
-
-    #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
 
-    def _build_metadata(self):
+    def _cache(self, disassembler_ctx):
         """
         Collect function metadata from the underlying database.
         """
-        self.name = disassembler.get_function_name_at(self.address)
-        self._refresh_nodes()
+        self.name = disassembler_ctx.get_function_name_at(self.address)
+        self._refresh_nodes(disassembler_ctx)
         self._finalize()
 
-    def _refresh_nodes(self):
+    def _refresh_nodes(self, disassembler_ctx):
         """
         This will be replaced with a disassembler-specific function at runtime.
 
@@ -844,7 +820,7 @@ class FunctionMetadata(object):
                 if edge_dst in function_metadata.nodes:
                     function_metadata.edges[edge_src].append(edge_dst)
 
-    def _binja_refresh_nodes(self):
+    def _binja_refresh_nodes(self, disassembler_ctx):
         """
         Refresh function node metadata against an open Binary Ninja database.
         """
@@ -852,7 +828,7 @@ class FunctionMetadata(object):
         function_metadata.nodes = {}
 
         # get the function from the Binja database
-        function = disassembler.bv.get_function_at(self.address)
+        function = disassembler_ctx.bv.get_function_at(self.address)
 
         #
         # now we will walk the flowchart for this function, collecting
@@ -863,7 +839,7 @@ class FunctionMetadata(object):
         for node in function.basic_blocks:
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node.start, node.end, node.index)
+            node_metadata = NodeMetadata(node.start, node.end, node.index, disassembler_ctx)
 
             #
             # establish a relationship between this node (basic block) and
@@ -971,7 +947,7 @@ class NodeMetadata(object):
     Node (basic block) level metadata cache.
     """
 
-    def __init__(self, start_ea, end_ea, node_id=None):
+    def __init__(self, start_ea, end_ea, node_id=None, disassembler_ctx=None):
 
         # node metadata
         self.size = end_ea - start_ea
@@ -991,13 +967,13 @@ class NodeMetadata(object):
         #----------------------------------------------------------------------
 
         # collect metadata from the underlying database
-        self._build_metadata()
+        self._cache(disassembler_ctx)
 
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
 
-    def _build_metadata(self):
+    def _cache(self, disassembler_ctx):
         """
         This will be replaced with a disassembler-specific function at runtime.
 
@@ -1029,11 +1005,11 @@ class NodeMetadata(object):
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
 
-    def _binja_build_metadata(self):
+    def _binja_cache(self, disassembler_ctx):
         """
         Collect node metadata from the underlying database.
         """
-        bv = disassembler.bv
+        bv = disassembler_ctx.bv
         current_address = self.address
         node_end = self.address + self.size
 
@@ -1131,7 +1107,7 @@ if disassembler.NAME == "IDA":
 elif disassembler.NAME == "BINJA":
     import binaryninja
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
-    NodeMetadata._build_metadata = NodeMetadata._binja_build_metadata
+    NodeMetadata._cache = NodeMetadata._binja_cache
 
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")
