@@ -2,6 +2,7 @@ import time
 import bisect
 import logging
 import weakref
+import itertools
 import threading
 import collections
 
@@ -352,8 +353,8 @@ class DatabaseMetadata(object):
         """
         instructions = []
         for function_metadata in itervalues(self.functions):
-            instructions.extend(function_metadata.instructions)
-        instructions = list(set(instructions))
+            instructions.append(function_metadata.instructions)
+        instructions = list(set(itertools.chain.from_iterable(instructions)))
         instructions.sort()
 
         # commit the updated instruction list
@@ -744,7 +745,7 @@ class FunctionMetadata(object):
         """
         Return the instruction addresses in this function.
         """
-        return set([ea for node in itervalues(self.nodes) for ea in node.instructions])
+        return set(itertools.chain.from_iterable([node.instructions for node in itervalues(self.nodes)]))
 
     @property
     def empty(self):
