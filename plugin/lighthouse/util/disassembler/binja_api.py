@@ -221,8 +221,23 @@ class BinjaContextAPI(DisassemblerContextAPI):
     #--------------------------------------------------------------------------
 
     def get_current_address(self):
-        raise NotImplementedError("TODO!")
-        return 0
+
+        # TODO/V35: this doen't work because of the loss of context bug...
+        #ctx = UIContext.activeContext()
+        #ah = ctx.contentActionHandler()
+        #ac = ah.actionContext()
+        #return ac.address
+
+        dh = DockHandler.getActiveDockHandler()
+        if not dh:
+            return 0
+        vf = dh.getViewFrame()
+        if not vf:
+            return 0
+        ac = vf.actionContext()
+        if not ac:
+            return 0
+        return ac.address
 
     @BinjaCoreAPI.execute_read
     def get_database_directory(self):

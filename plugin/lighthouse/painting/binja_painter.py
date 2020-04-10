@@ -92,10 +92,9 @@ class BinjaPainter(DatabasePainter):
     def _priority_paint(self):
         disassembler_ctx = disassembler[self.lctx]
         db_metadata = self.director.metadata
-        return True # TODO
 
         current_address = disassembler_ctx.get_current_address()
-        current_function = disassembler.bv.get_function_at(current_address)
+        current_function = disassembler_ctx.bv.get_function_at(current_address)
         function_metadata = db_metadata.get_closest_function(current_address)
 
         if current_function and function_metadata:

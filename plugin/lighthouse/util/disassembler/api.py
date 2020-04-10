@@ -206,6 +206,13 @@ class DisassemblerContextAPI(object):
     #--------------------------------------------------------------------------
 
     @abc.abstractmethod
+    def get_current_address(self):
+        """
+        Return the current cursor address in the open database.
+        """
+        pass
+
+    @abc.abstractmethod
     def get_database_directory(self):
         """
         Return the directory for the open database.
