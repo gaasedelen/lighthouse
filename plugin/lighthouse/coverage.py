@@ -607,28 +607,31 @@ class DatabaseCoverage(object):
             # (parent) metadata.
             #
 
-            function_metadata = self._metadata.nodes[node_coverage.address].function
+            functions = self._metadata.get_functions_by_node(node_coverage.address)
 
             #
-            # now we will attempt to retrieve the the FunctionCoverage object
+            # now we will attempt to retrieve the FunctionCoverage objects
             # that we need to parent the given NodeCoverage object to
             #
 
-            function_coverage = self.functions.get(function_metadata.address, None)
+            for function_metadata in functions:
+                function_coverage = self.functions.get(function_metadata.address, None)
 
-            #
-            # if we failed to locate a FunctionCoverage for this node, it means
-            # that this is the first time we have seen coverage for this
-            # function. create a new coverage function object and use it now.
-            #
+                #
+                # if we failed to locate the FunctionCoverage for a function
+                # that references this node, then it is the first time we have
+                # seen coverage for it.
+                #
+                # create a new coverage function object and use it now.
+                #
 
-            if not function_coverage:
-                function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
-                self.functions[function_metadata.address] = function_coverage
+                if not function_coverage:
+                    function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
+                    self.functions[function_metadata.address] = function_coverage
 
-            # add the NodeCoverage object to its parent FunctionCoverage
-            function_coverage.mark_node(node_coverage)
-            dirty_functions[function_metadata.address] = function_coverage
+                # add the NodeCoverage object to its parent FunctionCoverage
+                function_coverage.mark_node(node_coverage)
+                dirty_functions[function_metadata.address] = function_coverage
 
         # done, return a map of FunctionCoverage objects that were modified
         return dirty_functions

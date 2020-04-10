@@ -474,9 +474,9 @@ class ComposingShell(QtWidgets.QWidget):
         except ValueError:
             pass
         else:
-            function_metadata = self._director.metadata.get_function(address)
-            if function_metadata:
-                return function_metadata.address
+            functions = self._director.metadata.get_functions_containing(address)
+            if functions:
+                return functions[0].address
 
         #
         # the user string did not translate to a parsable hex number (address)

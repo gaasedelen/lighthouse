@@ -78,6 +78,7 @@ class DatabaseMetadata(object):
 
         # internal members to help index & navigate the cached metadata
         self._name2func = {}
+        self._node2func = collections.defaultdict(list)
         self._node_addresses = []
         self._function_addresses = []
 
@@ -171,12 +172,22 @@ class DatabaseMetadata(object):
         node_metadata = self.nodes.get(self._node_addresses[index], None)
 
         #
-        # if the given address does not fall within the selected node (or the
-        # node simply does not exist), then we have no match/metadata to return
+        # this should hit 99.9% of the time on the first index...
+        #
+        # but we added a fallback in the rare case when binja creates an edge
+        # to an unknown/undefined instruction, whose address happens to fall
+        # within a real one, thus throwing off the basic block lookup...
+        #
+        # technically, we could also fail going back only one block, but at
+        # that point, idc, the user is looking at some weird binaries... :\
         #
 
         if not (node_metadata and address in node_metadata.instructions):
-            return None
+            node_metadata = self.nodes.get(self._node_addresses[index-1], None)
+
+            # double fault, let's just dip...
+            if not (node_metadata and address in node_metadata.instructions):
+                return None
 
         #
         # if the selected node metadata contains the given target address, it
@@ -189,14 +200,20 @@ class DatabaseMetadata(object):
         # return the located node_metadata
         return node_metadata
 
-    def get_function(self, address):
+    def get_function(self, function_address):
         """
-        Get the function metadata for a given address.
+        Get the function metadata that starts at the given address.
+        """
+        return self.functions.get(function_address, None)
+
+    def get_functions_containing(self, address):
+        """
+        Get the list of function metadata objects that contain the given address.
         """
         node_metadata = self.get_node(address)
         if not node_metadata:
-            return None
-        return node_metadata.function
+            return []
+        return self.get_functions_by_node(node_metadata.address)
 
     def get_function_by_name(self, function_name):
         """
@@ -221,6 +238,12 @@ class DatabaseMetadata(object):
         Get the function index for a given address.
         """
         return self._function_addresses.index(address)
+
+    def get_functions_by_node(self, node_address):
+        """
+        Get the functions containing the given node.
+        """
+        return self._node2func.get(node_address, [])
 
     def get_closest_function(self, address):
         """
@@ -379,6 +402,9 @@ class DatabaseMetadata(object):
         self._name2func = { f.name: f.address for f in itervalues(self.functions) }
         self._node_addresses = sorted(self.nodes.keys())
         self._function_addresses = sorted(self.functions.keys())
+        for function_metadata in itervalues(self.functions):
+            for node_address in function_metadata.nodes:
+                self._node2func[node_address].append(function_metadata)
 
     def go_synchronous(self):
         """
@@ -416,6 +442,7 @@ class DatabaseMetadata(object):
         self.nodes = {}
         self.functions = {}
         self.instructions = []
+        self._node2func = collections.defaultdict(list)
         self._refresh_lookup()
         self.cached = False
         # TODO
@@ -811,7 +838,6 @@ class FunctionMetadata(object):
             # this function metadata (its parent)
             #
 
-            node_metadata.function = function_metadata
             function_metadata.nodes[node.start_ea] = node_metadata
 
         # compute all of the edges between nodes in the current function
@@ -848,7 +874,6 @@ class FunctionMetadata(object):
             # this function metadata (its parent)
             #
 
-            node_metadata.function = function_metadata
             function_metadata.nodes[node.start] = node_metadata
 
             #
@@ -970,9 +995,6 @@ class NodeMetadata(object):
         # flowchart node_id
         self.id = node_id
 
-        # parent function_metadata
-        self.function = None
-
         # instruction addresses
         self.instructions = {}
 
@@ -1059,7 +1081,6 @@ class NodeMetadata(object):
         output += " Size: %u\n" % self.size
         output += " Instruction Count: %u\n" % self.instruction_count
         output += " Id: %u\n" % self.id
-        output += " Function: %s\n" % self.function
         output += " Instructions: %s" % self.instructions
         return output
 
@@ -1081,7 +1102,6 @@ class NodeMetadata(object):
         result &= self.size == other.size
         result &= self.address == other.address
         result &= self.instruction_count == other.instruction_count
-        result &= self.function == other.function
         result &= self.id == other.id
         return result
 

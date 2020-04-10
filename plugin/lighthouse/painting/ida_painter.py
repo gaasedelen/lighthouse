@@ -235,12 +235,15 @@ class IDAPainter(DatabasePainter):
             if node_coverage.instructions_executed != node_metadata.instruction_count:
                 continue
 
+            # get the function address for this node (there should only be one...)
+            function_address = db_metadata.get_functions_by_node(node_coverage.address)[0]
+
             # assign the background color we would like to paint to this node
             node_info.bg_color = self.palette.coverage_paint
 
             # do the *actual* painting of a single node instance
             idaapi.set_node_info(
-                node_metadata.function.address,
+                function_address,
                 node_metadata.id,
                 node_info,
                 idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
@@ -252,6 +255,7 @@ class IDAPainter(DatabasePainter):
         """
         Clear paint from the given graph nodes.
         """
+        db_metadata = self._director.metadata
 
         # create a node info object as our vehicle for resetting the node color
         node_info = idaapi.node_info_t()
@@ -264,9 +268,12 @@ class IDAPainter(DatabasePainter):
 
         for node_metadata in nodes_metadata:
 
+            # get the function address for this node (there should only be one...)
+            function_address = db_metadata.get_functions_by_node(node_metadata.address)[0]
+
             # do the *actual* painting of a single node instance
             idaapi.set_node_info(
-                node_metadata.function.address,
+                function_address,
                 node_metadata.id,
                 node_info,
                 idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
