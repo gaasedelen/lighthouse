@@ -1,4 +1,5 @@
 import sys
+import inspect
 import cProfile
 import traceback
 
@@ -37,18 +38,17 @@ def profile(func):
 # Function Line Profiling
 #------------------------------------------------------------------------------
 
-# from: https://gist.github.com/sibelius/3920b3eb5adab482b105
 try:
-    from line_profiler import LineProfiler
+    import pprofile
     def line_profile(func):
         def profiled_func(*args, **kwargs):
             try:
-                profiler = LineProfiler()
-                profiler.add_function(func)
-                profiler.enable_by_count()
-                return func(*args, **kwargs)
+                profiler = pprofile.ThreadProfile()
+                with profiler():
+                    return func(*args, **kwargs)
             finally:
-                profiler.print_stats()
+                caller_file = inspect.getfile(func)
+                profiler.annotate(pprofile.EncodeOrReplaceWriter(sys.stdout), [caller_file])
         return profiled_func
 
 except ImportError:
@@ -95,20 +95,3 @@ def catch_errors(func):
 
     return wrap
 
-#------------------------------------------------------------------------------
-# Module Line Profiling
-#------------------------------------------------------------------------------
-
-if False:
-    from line_profiler import LineProfiler
-    lpr = LineProfiler()
-
-    # change this to the target file / module to profile
-    import lighthouse.metadata as metadata
-    lpr.add_module(metadata)
-
-    # put this code somewhere to dump results:
-    #global lpr
-    #lpr.enable_by_count()
-    #lpr.disable_by_count()
-    #lpr.print_stats(stripzeros=True)
