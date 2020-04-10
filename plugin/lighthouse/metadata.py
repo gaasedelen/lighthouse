@@ -684,8 +684,11 @@ class DatabaseMetadata(object):
         logger.debug("  Old name: %s" % function.name.encode("utf-8"))
         logger.debug("  New name: %s" % new_name.encode("utf-8"))
 
-        # rename the function, and notify metadata listeners
+        # update the function name in the cached lookup & rename it for real
+        self._name2func[new_name] = self._name2func.pop(function.name)
         function.name = new_name
+
+        # notify metadata listeners of the rename event
         self._notify_function_renamed()
 
         # necessary for IDP/IDB_Hooks
