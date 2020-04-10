@@ -827,9 +827,10 @@ class FunctionMetadata(object):
         """
         function_metadata = self
         function_metadata.nodes = {}
+        bv = disassembler_ctx.bv
 
         # get the function from the Binja database
-        function = disassembler_ctx.bv.get_function_at(self.address)
+        function = bv.get_function_at(self.address)
 
         #
         # now we will walk the flowchart for this function, collecting
@@ -856,8 +857,18 @@ class FunctionMetadata(object):
             #
 
             edge_src = node_metadata.edge_out
-            for edge in node.outgoing_edges:
-                function_metadata.edges[edge_src].append(edge.target.start)
+
+            count = ctypes.c_ulonglong(0)
+            edges = core.BNGetBasicBlockOutgoingEdges(node.handle, count)
+
+            for i in range(0, count.value):
+                if edges[i].target:
+                    function_metadata.edges[edge_src].append(node._create_instance(core.BNNewBasicBlockReference(edges[i].target), bv).start)
+            core.BNFreeBasicBlockEdgeList(edges, count.value)
+
+            # NOTE/PERF ~28% of metadata collection time alone...
+            #for edge in node.outgoing_edges:
+            #    function_metadata.edges[edge_src].append(edge.target.start)
 
     def _compute_complexity(self):
         """
@@ -1010,9 +1021,12 @@ class NodeMetadata(object):
         """
         Collect node metadata from the underlying database.
         """
-        bv = disassembler_ctx.bv
         current_address = self.address
         node_end = self.address + self.size
+
+        # NOTE/PERF: gotta go fast :D
+        bh = disassembler_ctx.bv.handle
+        ah = disassembler_ctx.bv.arch.handle
 
         #
         # Note that we 'iterate over' the instructions using their byte length
@@ -1021,8 +1035,7 @@ class NodeMetadata(object):
         #
 
         while current_address < node_end:
-            instruction_size = bv.get_instruction_length(current_address)
-            instruction_size = instruction_size if instruction_size else 1 # TODO/HACK: binja can return 0 for undef/bad inst
+            instruction_size = core.BNGetInstructionLength(bh, ah, current_address) or 1
             self.instructions[current_address] = instruction_size
             current_address += instruction_size
 
@@ -1106,7 +1119,9 @@ if disassembler.NAME == "IDA":
     NodeMetadata._build_metadata = NodeMetadata._ida_build_metadata
 
 elif disassembler.NAME == "BINJA":
+    import ctypes
     import binaryninja
+    from binaryninja import core
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
     NodeMetadata._cache = NodeMetadata._binja_cache
 

@@ -232,7 +232,6 @@ class BinjaContextAPI(DisassemblerContextAPI):
     def get_function_addresses(self):
         return [x.start for x in self.bv.functions]
 
-    @not_mainthread
     def get_function_name_at(self, address):
         func = self.bv.get_function_at(address)
         if not func:
