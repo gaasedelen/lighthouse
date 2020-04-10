@@ -29,25 +29,45 @@ class BinjaPainter(DatabasePainter):
     #
     # NOTE:
     #   due to the manner in which Binary Ninja implements basic block
-    #   (node) highlighting, I am not sure it is worth it to paint individual
-    #   instructions. for now we, will simply make the instruction
-    #   painting functions no-op's
+    #   (node) highlighting, there is almost no need to paint individual
+    #   instructions. for now we, will simply make the main instruction
+    #   painting function a no-op's
     #
 
     def _paint_instructions(self, instructions):
         self._action_complete.set()
 
     def _clear_instructions(self, instructions):
+        bv = disassembler[self.lctx].bv
+        for address in instructions:
+            for func in bv.get_functions_containing(address):
+                func.set_auto_instr_highlight(address, HighlightStandardColor.NoHighlightColor)
+        self._painted_instructions -= set(instructions)
         self._action_complete.set()
+
+    def _partial_paint(self, bv, instructions, color):
+        for address in instructions:
+            for func in bv.get_functions_containing(address):
+                func.set_auto_instr_highlight(address, color)
+        self._painted_instructions |= set(instructions)
 
     def _paint_nodes(self, nodes_coverage):
         bv = disassembler[self.lctx].bv
+
         r, g, b, _ = self.palette.coverage_paint.getRgb()
         color = HighlightColor(red=r, green=g, blue=b)
+
         for node_coverage in nodes_coverage:
             node_metadata = node_coverage.database._metadata.nodes[node_coverage.address]
+
+            # special case for nodes that are only partially executed...
+            if node_coverage.instructions_executed != node_metadata.instruction_count:
+                self._partial_paint(bv, node_coverage.executed_instructions.keys(), color)
+                continue
+
             for node in bv.get_basic_blocks_starting_at(node_metadata.address):
                 node.highlight = color
+
             self._painted_nodes.add(node_metadata.address)
         self._action_complete.set()
 
