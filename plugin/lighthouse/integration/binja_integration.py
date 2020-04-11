@@ -30,10 +30,7 @@ class LighthouseBinja(LighthouseCore):
 
         # create a new LighthouseContext if this is a new disassembler ctx / bv
         if dctx_id not in self.lighthouse_contexts:
-            print("Creating new Lctx!", dctx)
             self.lighthouse_contexts[dctx_id] = LighthouseContext(self, dctx)
-        else:
-            print("Using ctx...", dctx)
 
         # return the lighthouse context object for this disassembler ctx / bv
         return self.lighthouse_contexts[dctx_id]

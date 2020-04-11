@@ -22,9 +22,10 @@ class CoverageOverview(DockableChild):
     """
 
     def __init__(self, core, parent, name, dctx=None):
-        super(CoverageOverview, self).__init__(parent, name, dctx)
+        super(CoverageOverview, self).__init__(parent, name)
         #    plugin_resource(os.path.join("icons", "overview.png"))
         self._core = core
+        self.dctx = dctx
 
         self.lctx = self._core.get_context(self.dctx)
         self.lctx.coverage_overview = self

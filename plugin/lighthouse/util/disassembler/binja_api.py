@@ -4,6 +4,8 @@ import sys
 import logging
 import functools
 import threading
+import collections
+
 
 import binaryninja
 from binaryninja import PythonScriptingInstance, binaryview
@@ -347,18 +349,18 @@ class DockableChild(QtWidgets.QWidget, DockContextHandler):
     A dockable Qt widget for Binary Ninja.
     """
 
-    def __init__(self, parent, name, dctx=None):
+    def __init__(self, parent, name):
 
         QtWidgets.QWidget.__init__(self, parent)
         DockContextHandler.__init__(self, self, name)
 
         self.name = name
-        self.dctx = dctx
 
         self.actionHandler = UIActionHandler()
         self.actionHandler.setupActionHandler(self)
 
-        self.visible = False
+        self._active_view = None
+        self._visible_for_view = collections.defaultdict(lambda: False)
 
         #self._widget.setSizePolicy(
         #    QtWidgets.QSizePolicy.Expanding,
@@ -376,36 +378,32 @@ class DockableChild(QtWidgets.QWidget, DockContextHandler):
         #    QtWidgets.QSizePolicy.Expanding
         #)
 
-    def notifyOffsetChanged(self, offset):
-        #print("Offset changed..")
-        #self.offset.setText(hex(offset))
-        pass
+    @property
+    def visible(self):
+        return self._visible_for_view[self._active_view]
+
+    @visible.setter
+    def visible(self, is_visible):
+        self._visible_for_view[self._active_view] = is_visible
 
     def shouldBeVisible(self, view_frame):
-        print("Should be visible called...")
-        if view_frame is None:
-            print(" - No, there's no BV")
+        if not view_frame:
             return False
-        print("%r" % self.visible)
-        return self.visible
+
+        import shiboken2 as shiboken
+        vf_ptr = shiboken.getCppPointer(view_frame)[0]
+        return self._visible_for_view[vf_ptr]
 
     def notifyVisibilityChanged(self, is_visible):
-        print("Vis changed...")
         self.visible = is_visible
 
     def notifyViewChanged(self, view_frame):
-        print("Notify view changed", view_frame)
-        return
-        if view_frame is None:
-            self.datatype.setText("None")
-            self.data = None
-        else:
-            self.datatype.setText(view_frame.getCurrentView())
-            view = view_frame.getCurrentViewInterface()
-            self.data = view.getData()
+        if not view_frame:
+            self._active_view = None
+            return
 
-    def contextMenuEvent(self, event):
-        print("CTX Menu event")
-        return
-        #self.m_contextMenuManager.show(self.m_menu, self.actionHandler)
-
+        import shiboken2 as shiboken
+        self._active_view = shiboken.getCppPointer(view_frame)[0]
+        if self.visible:
+            dock_handler = DockHandler.getActiveDockHandler()
+            dock_handler.setVisible(self.m_name, True)
