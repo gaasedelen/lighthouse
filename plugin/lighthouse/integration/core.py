@@ -398,7 +398,7 @@ class LighthouseCore(object):
     # Scheduled
     #--------------------------------------------------------------------------
 
-    # TODO
+    # TODO/REBASING
     @disassembler.execute_read
     def scheduled(self):
         metadata = self.director.metadata

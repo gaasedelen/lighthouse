@@ -187,9 +187,6 @@ class DisassemblerCoreAPI(object):
 #------------------------------------------------------------------------------
 # Disassembler Contextual API
 #------------------------------------------------------------------------------
-#
-# TODO
-#
 
 class DisassemblerContextAPI(object):
     """

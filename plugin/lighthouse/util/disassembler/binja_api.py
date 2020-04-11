@@ -195,7 +195,7 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
 
 class BinjaContextAPI(DisassemblerContextAPI):
     """
-    TODO
+    TODO/COMMENT
     """
 
     def __init__(self, dctx):
@@ -205,18 +205,6 @@ class BinjaContextAPI(DisassemblerContextAPI):
     @property
     def busy(self):
         return self.bv.analysis_info.state != binaryninja.enums.AnalysisState.IdleState
-
-    #
-    #  NOTE/TODO/V35:
-    #
-    #    The use of @not_mainthread or @execute_read on some of these API's
-    #    is to ensure the function is called from a background thread/task.
-    #    This is because calling database functions from the mainthread can
-    #    cause deadlocks (not threadsafe?) in Binary Ninja...
-    #
-    #    this is pretty annoying because it conflicts directly with IDA
-    #    which *needs* database accesses to be made from the mainthread
-    #
 
     #--------------------------------------------------------------------------
     # API Shims

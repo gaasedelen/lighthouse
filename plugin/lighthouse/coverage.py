@@ -557,7 +557,7 @@ class DatabaseCoverage(object):
                 ## address range, but doesn't line up with the known
                 ## instructions, log it as 'misaligned' / suspicious
                 ##
-                ## TODO / XXX: This will need to be moved as instruction to
+                ## TODO/COV: This will need to be moved as instruction to
                 ## node mapping is now guaranteed
                 ##
 

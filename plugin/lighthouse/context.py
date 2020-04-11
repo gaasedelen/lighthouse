@@ -17,7 +17,7 @@ logger = logging.getLogger("Lighthouse.Context")
 
 class LighthouseContext(object):
     """
-    TODO
+    TODO/COMMENT
     """
 
     def __init__(self, core, dctx):
@@ -40,7 +40,7 @@ class LighthouseContext(object):
         # the directory to start the coverage file dialog in
         self._last_directory = None
 
-        # TODO: re-enable
+        # TODO/HEADLESS: re-enable
         # expose the live CoverageDirector object instance for external scripts
         #lighthouse.coverage_director = self.director
 
@@ -49,7 +49,7 @@ class LighthouseContext(object):
         Spin down any session subsystems before the session is deleted.
         """
 
-        # TODO
+        # TODO/HEADLESS: re-enable
         # remove access to the exposed CoverageDirector
         #lighthouse.coverage_director = None
 

@@ -556,22 +556,6 @@ class CoverageTableController(object):
         # send the new alignment to the model
         self._model.set_column_alignment(column, new_alignment)
 
-    def refresh_metadata(self):
-        """
-        Hard refresh of the director and table metadata layers.
-
-        TODO: remove
-        """
-        disassembler.show_wait_box("Building database metadata...")
-        self._model._director.refresh()
-
-        # ensure the table's model gets refreshed
-        disassembler.replace_wait_box("Refreshing Coverage Overview...")
-        self._model.refresh()
-
-        # all done
-        disassembler.hide_wait_box()
-
     def export_to_html(self):
         """
         Export the coverage table to an HTML report.

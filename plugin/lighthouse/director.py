@@ -74,7 +74,7 @@ class CoverageDirector(object):
         # a map of loaded or composed database coverages
         self._database_coverage = collections.OrderedDict()
 
-        # TODO
+        # TODO/COMMENT
         self.owners = collections.defaultdict(set)
 
         #
@@ -538,7 +538,7 @@ class CoverageDirector(object):
 
         try:
             coverage_blocks = coverage_file.get_offset_blocks(module_name)
-            coverage_addresses = [imagebase+offset for s, n in coverage_blocks for offset in xrange(s, s+n)]
+            coverage_addresses = [imagebase+offset for bb_start, bb_len in coverage_blocks for offset in xrange(bb_start, bb_start+bb_len)]
             return coverage_addresses
         except NotImplementedError:
             pass
@@ -549,7 +549,7 @@ class CoverageDirector(object):
 
         try:
             coverage_offsets = coverage_file.get_offsets(module_name)
-            coverage_addresses = [imagebase+x for x in coverage_offsets]
+            coverage_addresses = [imagebase+offset for offset in coverage_offsets]
             return coverage_addresses
         except NotImplementedError:
             pass
@@ -592,8 +592,8 @@ class CoverageDirector(object):
                 misaligned.append(address)
 
         #
-        # TODO: what if there are no defined instructions?
-        # TODO: display undefined/misaligned data somehow
+        # TODO/LOADING: what if there are no defined instructions?
+        # TODO/LOADING: display undefined/misaligned data somehow
         #
 
         if not instructions:

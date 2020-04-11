@@ -40,8 +40,8 @@ class LighthouseBinja(LighthouseCore):
     #--------------------------------------------------------------------------
 
     #
-    # NOTE / HACK / XXX: Some of Binja's UI elements (such as the terminal) do
-    # not get assigned a BV, even if there is only one open.
+    # TODO / HACK / XXX / V35: Some of Binja's UI elements (such as the
+    # terminal) do not get assigned a BV, even if there is only one open.
     #
     # this is problematic, because if the user 'clicks' onto the termial, and
     # then tries to execute our UIActions (like 'Load Coverage File'), the
@@ -49,8 +49,6 @@ class LighthouseBinja(LighthouseCore):
     #
     # in the meantime, we have to use this workaround that will try to grab
     # the 'current' bv from the dock. this is not ideal, but it will suffice.
-    #
-    # TODO/V35: There is no good way to enable/disable UIActions on the fly...
     #
 
     def _interactive_load_file(self, context):
@@ -93,6 +91,7 @@ class LighthouseBinja(LighthouseCore):
         Menu.mainMenu("Tools").addAction(action, "Loading", 1)
         logger.info("Installed the 'Code coverage batch' menu entry")
 
+    # TODO/V35: convert to a UI action once we can disable/disable them on the fly
     def _install_open_coverage_xref(self):
         PluginCommand.register_for_address(
             self.ACTION_COVERAGE_XREF,
@@ -101,50 +100,16 @@ class LighthouseBinja(LighthouseCore):
             lambda bv, addr: bool(self.get_context(bv).director.aggregate.instruction_percent)
         )
 
-        # TODO: enable as a UI action once we can disable/disable them on the fly
-        #action = self.ACTION_COVERAGE_XREF
-        #UIAction.registerAction(action)
-        #UIActionHandler.globalActions().bindAction(action, UIAction(self._open_coverage_xref))
-        #Menu.mainMenu("Tools").addAction(action, "Coverage Xref")
-        #logger.info("Installed the 'Coverage Xref' menu entry")
-
+    # NOTE/V35: Binja automatically creates View --> Show Coverage Overview
     def _install_open_coverage_overview(self):
-        #action = self.ACTION_COVERAGE_OVERVIEW
-        #UIAction.registerAction(action)
-        #UIActionHandler.globalActions().bindAction(action, UIAction(self.open_coverage_overview))
-        #Menu.mainMenu("Tools").addAction("Lighthouse", action, "Coverage Overview")
-        logger.info("Installed the 'Coverage Overview' menu entry")
+        pass
 
-    #
-    # TODO/V35: No good signals to unload (core) UI entries on
-    #
-
+    # NOTE/V35: Binja doesn't really 'unload' plugins, so whatever...
     def _uninstall_load_file(self):
-        action = self.ACTTION_LOAD_FILE
-        UIActionHandler.globalActions().unbindAction(action)
-        Menu.mainMenu("Tools").removeAction(action)
-        UIAction.unregisterAction(action)
-        logger.info("Uninstalled the 'Code coverage file' menu entry")
-
+        pass
     def _uninstall_load_batch(self):
-        action = self.ACTTION_LOAD_BATCH
-        UIActionHandler.globalActions().unbindAction(action)
-        Menu.mainMenu("Tools").removeAction(action)
-        UIAction.unregisterAction(action)
-        logger.info("Uninstalled the 'Code coverage batch' menu entry")
-
+        pass
     def _uninstall_open_coverage_xref(self):
         pass
-        #action = self.ACTTION_COVERAGE_XREF
-        #UIActionHandler.globalActions().unbindAction(action)
-        ##Menu.mainMenu("Tools").removeAction(action)
-        #UIAction.unregisterAction(action)
-        #logger.info("Uninstalled the 'Coverage Xref' menu entry")
-
     def _uninstall_open_coverage_overview(self):
-        #action = self.ACTTION_COVERAGE_OVERVIEW
-        #UIActionHandler.globalActions().unbindAction(action)
-        #Menu.mainMenu("Tools").removeAction(action)
-        #UIAction.unregisterAction(action)
-        logger.info("Uninstalled the 'Coverage Overview' menu entry")
-
+        pass

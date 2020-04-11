@@ -23,8 +23,6 @@ logger = logging.getLogger("Lighthouse.Binja.Loader")
 #    when Binary Ninja is starting up. As such, this is our only opportunity
 #    to load & integrate Lighthouse.
 #
-#    TODO/V35: it would be nice load/unload plugins with BNDB's like IDA
-#
 
 try:
     lighthouse = LighthouseBinja()

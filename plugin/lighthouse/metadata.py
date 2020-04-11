@@ -445,7 +445,6 @@ class DatabaseMetadata(object):
         self._node2func = collections.defaultdict(list)
         self._refresh_lookup()
         self.cached = False
-        # TODO
 
     def _refresh(self, progress_callback=None, is_async=False):
         """
