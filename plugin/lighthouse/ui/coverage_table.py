@@ -537,7 +537,8 @@ class CoverageTableController(object):
         Navigate to the function depicted by the given row.
         """
         lctx = self._model._director.metadata.lctx # TODO dirty
-        disassembler[lctx].navigate(self._model.row2func[row])
+        function_address = self._model.row2func[row]
+        disassembler[lctx].navigate_to_function(function_address, function_address)
 
     def toggle_column_alignment(self, column):
         """

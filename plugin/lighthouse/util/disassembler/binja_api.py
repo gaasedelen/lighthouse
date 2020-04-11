@@ -271,6 +271,24 @@ class BinjaContextAPI(DisassemblerContextAPI):
     def navigate(self, address):
         return self.bv.navigate(self.bv.view, address)
 
+    def navigate_to_function(self, function_address, address):
+
+        #
+        # attempt a more 'precise' jump, that guarantees to place us within
+        # the given function. this is necessary when trying to jump to an
+        # an address/node that is shared between two functions
+        #
+
+        func = self.bv.get_function_at(address)
+        if not func:
+            return False
+
+        dh = DockHandler.getActiveDockHandler()
+        vf = dh.getViewFrame()
+        vi = vf.getCurrentViewInterface()
+
+        return vi.navigateToFunction(func, address)
+
     @BinjaCoreAPI.execute_write
     def set_function_name_at(self, function_address, new_name):
         func = self.bv.get_function_at(function_address)

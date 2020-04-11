@@ -261,9 +261,16 @@ class DisassemblerContextAPI(object):
         pass
 
     @abc.abstractmethod
-    def navigate(self, address):
+    def navigate(self, address, function_address=None):
         """
         Jump the disassembler UI to the given address.
+        """
+        pass
+
+    @abc.abstractmethod
+    def navigate_to_function(self, function_address, address):
+        """
+        Jump the disassembler UI to the given address, within a function.
         """
         pass
 
