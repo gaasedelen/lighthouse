@@ -7,7 +7,7 @@ import traceback
 import collections
 
 from lighthouse.util.misc import *
-from lighthouse.util.debug import catch_errors
+from lighthouse.util.debug import *
 from lighthouse.util.python import *
 from lighthouse.util.qt import await_future, await_lock, flush_qt_events
 from lighthouse.util.disassembler import disassembler
@@ -74,7 +74,7 @@ class CoverageDirector(object):
         # a map of loaded or composed database coverages
         self._database_coverage = collections.OrderedDict()
 
-        # TODO
+        # TODO/COMMENT
         self.owners = collections.defaultdict(set)
 
         #
@@ -538,7 +538,7 @@ class CoverageDirector(object):
 
         try:
             coverage_blocks = coverage_file.get_offset_blocks(module_name)
-            coverage_addresses = [imagebase+offset for s, n in coverage_blocks for offset in xrange(s, s+n)]
+            coverage_addresses = [imagebase+offset for bb_start, bb_len in coverage_blocks for offset in xrange(bb_start, bb_start+bb_len)]
             return coverage_addresses
         except NotImplementedError:
             pass
@@ -549,7 +549,7 @@ class CoverageDirector(object):
 
         try:
             coverage_offsets = coverage_file.get_offsets(module_name)
-            coverage_addresses = [imagebase+x for x in coverage_offsets]
+            coverage_addresses = [imagebase+offset for offset in coverage_offsets]
             return coverage_addresses
         except NotImplementedError:
             pass
@@ -592,8 +592,8 @@ class CoverageDirector(object):
                 misaligned.append(address)
 
         #
-        # TODO: what if there are no defined instructions?
-        # TODO: display undefined/misaligned data somehow
+        # TODO/LOADING: what if there are no defined instructions?
+        # TODO/LOADING: display undefined/misaligned data somehow
         #
 
         if not instructions:
@@ -1334,8 +1334,31 @@ class CoverageDirector(object):
         Internal refresh routine, wrapped to help catch bugs for now.
         """
 
+        #
         # (re) build our metadata cache of the underlying database
-        self.metadata.refresh(metadata_progress)
+        #
+
+        if not is_mainthread():
+            self.metadata.refresh(metadata_progress)
+
+        #
+        # NOTE: optionally, we call the async vesrion here so that we do not pin
+        # the mainthread for disassemblers that will primarily read from the
+        # database in a background thread (eg, Binja)
+        #
+        # for example, this refresh action may be called from a UI event or
+        # clicking 'Open Coverage Overview' (eg, the mainthread). if we pin
+        # the mainthread while doing database reads from a background thread,
+        # we cannot post UI updates such as progress updates to the user
+        #
+        # using an async refresh allows us to 'softly' spin the main (UI)
+        # thread and get UI updates while the refresh runs
+        #
+
+        else:
+            future = self.metadata.refresh_async(metadata_progress)
+            self.metadata.go_synchronous()
+            await_future(future)
 
         # (re) map each set of loaded coverage data to the database
         self._refresh_database_coverage()

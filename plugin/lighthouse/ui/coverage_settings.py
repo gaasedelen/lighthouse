@@ -82,18 +82,18 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_hide_zero.setCheckable(True)
         self.addAction(self._action_hide_zero)
 
-    def connect_signals(self, controller, core):
+    def connect_signals(self, controller, lctx):
         """
         Connect UI signals.
         """
-        self._action_change_theme.triggered.connect(core.palette.interactive_change_theme)
-        self._action_refresh_metadata.triggered.connect(core.director.refresh)
+        self._action_change_theme.triggered.connect(lctx.core.palette.interactive_change_theme)
+        self._action_refresh_metadata.triggered.connect(lctx.director.refresh)
         self._action_hide_zero.triggered[bool].connect(controller._model.filter_zero_coverage)
-        self._action_pause_paint.triggered[bool].connect(lambda x: core.painter.set_enabled(not x))
-        self._action_clear_paint.triggered.connect(core.painter.clear_paint)
+        self._action_pause_paint.triggered[bool].connect(lambda x: lctx.painter.set_enabled(not x))
+        self._action_clear_paint.triggered.connect(lctx.painter.clear_paint)
         self._action_export_html.triggered.connect(controller.export_to_html)
-        self._action_dump_unmapped.triggered.connect(core.director.dump_unmapped)
-        core.painter.status_changed(self._ui_painter_changed_status)
+        self._action_dump_unmapped.triggered.connect(lctx.director.dump_unmapped)
+        lctx.painter.status_changed(self._ui_painter_changed_status)
 
     #--------------------------------------------------------------------------
     # Signal Handlers

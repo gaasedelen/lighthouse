@@ -117,7 +117,7 @@ class IDAPainter(DatabasePainter):
     Asynchronous IDA database painter.
     """
 
-    def __init__(self, director, palette):
+    def __init__(self, lctx, director, palette):
 
         #----------------------------------------------------------------------
         # HexRays Hooking
@@ -135,7 +135,7 @@ class IDAPainter(DatabasePainter):
         self._signal = ToMainthread()
 
         # continue normal painter initialization
-        super(IDAPainter, self).__init__(director, palette)
+        super(IDAPainter, self).__init__(lctx, director, palette)
 
     def repaint(self):
         """
@@ -218,7 +218,7 @@ class IDAPainter(DatabasePainter):
         """
         Paint node level coverage defined by the current database mappings.
         """
-        db_metadata = self._director.metadata
+        db_metadata = self.director.metadata
 
         # create a node info object as our vehicle for setting the node color
         node_info = idaapi.node_info_t()
@@ -235,12 +235,15 @@ class IDAPainter(DatabasePainter):
             if node_coverage.instructions_executed != node_metadata.instruction_count:
                 continue
 
+            # get the function address for this node (there should only be one...)
+            function_metadata = db_metadata.get_functions_by_node(node_coverage.address)[0]
+
             # assign the background color we would like to paint to this node
             node_info.bg_color = self.palette.coverage_paint
 
             # do the *actual* painting of a single node instance
             idaapi.set_node_info(
-                node_metadata.function.address,
+                function_metadata.address,
                 node_metadata.id,
                 node_info,
                 idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
@@ -252,6 +255,7 @@ class IDAPainter(DatabasePainter):
         """
         Clear paint from the given graph nodes.
         """
+        db_metadata = self.director.metadata
 
         # create a node info object as our vehicle for resetting the node color
         node_info = idaapi.node_info_t()
@@ -264,9 +268,12 @@ class IDAPainter(DatabasePainter):
 
         for node_metadata in nodes_metadata:
 
+            # get the function address for this node (there should only be one...)
+            function_metadata = db_metadata.get_functions_by_node(node_metadata.address)[0]
+
             # do the *actual* painting of a single node instance
             idaapi.set_node_info(
-                node_metadata.function.address,
+                function_metadata.address,
                 node_metadata.id,
                 node_info,
                 idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
@@ -386,11 +393,11 @@ class IDAPainter(DatabasePainter):
             cfunc = vdui.cfunc
 
             # if there's no coverage data for this function, there's nothing to do
-            if not cfunc.entry_ea in self._director.coverage.functions:
+            if not cfunc.entry_ea in self.director.coverage.functions:
                 return 0
 
             # paint the decompilation text for this function
-            self.paint_hexrays(cfunc, self._director.coverage)
+            self.paint_hexrays(cfunc, self.director.coverage)
 
         return 0
 
@@ -424,8 +431,8 @@ class IDAPainter(DatabasePainter):
 
         This will paint both the instructions & graph nodes of defined functions.
         """
-        db_metadata = self._director.metadata
-        db_coverage = self._director.coverage
+        db_metadata = self.director.metadata
+        db_coverage = self.director.coverage
 
         # the number of functions before and after the cursor to paint
         FUNCTION_BUFFER = 1
@@ -469,8 +476,8 @@ class IDAPainter(DatabasePainter):
         """
         Paint instructions in the immediate vicinity of the given address.
         """
-        db_metadata = self._director.metadata
-        db_coverage = self._director.coverage
+        db_metadata = self.director.metadata
+        db_coverage = self.director.coverage
 
         # the number of instruction bytes before and after the cursor to paint
         INSTRUCTION_BUFFER = 200

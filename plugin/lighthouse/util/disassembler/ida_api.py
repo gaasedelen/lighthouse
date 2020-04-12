@@ -11,7 +11,7 @@ if int(idaapi.get_kernel_version()[0]) < 7:
     idaapi.warning("Lighthouse has deprecated support for IDA 6, please upgrade.")
     raise ImportError
 
-from .api import DisassemblerAPI, DockableShim
+from .api import DisassemblerCoreAPI, DisassemblerContextAPI
 from ..qt import *
 from ..misc import is_mainthread
 
@@ -52,17 +52,19 @@ def execute_sync(function, sync_type):
     return wrapper
 
 #------------------------------------------------------------------------------
-# Disassembler API
+# Disassembler Core API (universal)
 #------------------------------------------------------------------------------
 
-class IDAAPI(DisassemblerAPI):
+class IDACoreAPI(DisassemblerCoreAPI):
     """
     The IDA implementation of the disassembler API abstraction.
     """
     NAME = "IDA"
 
     def __init__(self):
-        super(IDAAPI, self).__init__()
+        super(IDACoreAPI, self).__init__()
+        self._dockable_factory = {}
+        self._dockable_widgets = {}
         self._init_version()
 
     def _init_version(self):
@@ -84,10 +86,6 @@ class IDAAPI(DisassemblerAPI):
     def headless(self):
         return False
 
-    @property
-    def busy(self):
-        return not(idaapi.auto_is_ok())
-
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------
@@ -108,45 +106,8 @@ class IDAAPI(DisassemblerAPI):
     # API Shims
     #--------------------------------------------------------------------------
 
-    def create_rename_hooks(self):
-        class RenameHooks(idaapi.IDB_Hooks):
-            def renamed(self, a, b, c): # temporary, required for IDA 7.3/py3?
-                return 0
-        return RenameHooks()
-
-    def get_database_directory(self):
-        return idautils.GetIdbDir()
-
     def get_disassembler_user_directory(self):
         return idaapi.get_user_idadir()
-
-    def get_function_addresses(self):
-        return list(idautils.Functions())
-
-    def get_function_name_at(self, address):
-        return idaapi.get_short_name(address)
-
-    def get_function_raw_name_at(self, function_address):
-        return idaapi.get_name(function_address)
-
-    def get_imagebase(self):
-        return idaapi.get_imagebase()
-
-    def get_root_filename(self):
-        return idaapi.get_root_filename()
-
-    def navigate(self, address):
-        return idaapi.jumpto(address)
-
-    def set_function_name_at(self, function_address, new_name):
-        idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
-
-    def message(self, message):
-        print(message)
-
-    #--------------------------------------------------------------------------
-    # UI API Shims
-    #--------------------------------------------------------------------------
 
     def get_disassembly_background_color(self):
         """
@@ -165,11 +126,63 @@ class IDAAPI(DisassemblerAPI):
     def warning(self, text):
         idaapi.warning(text)
 
-    #------------------------------------------------------------------------------
-    # Function Prefix API
-    #------------------------------------------------------------------------------
+    def message(self, message):
+        print(message)
 
-    PREFIX_SEPARATOR = "%"
+    #--------------------------------------------------------------------------
+    # UI API Shims
+    #--------------------------------------------------------------------------
+
+    def register_dockable(self, dockable_name, create_widget_callback):
+        self._dockable_factory[dockable_name] = create_widget_callback
+
+    def create_dockable_widget(self, parent, dockable_name):
+        import sip
+
+        # create a dockable widget, and save a reference to it for later use
+        twidget = idaapi.create_empty_widget(dockable_name)
+        self._dockable_widgets[dockable_name] = twidget
+
+        # cast the IDA 'twidget' as a Qt widget for use
+        widget = sip.wrapinstance(int(twidget), QtWidgets.QWidget)
+        widget.name = dockable_name
+        widget.visible = False
+
+        # return the dockable QtWidget / container
+        return widget
+
+    def show_dockable(self, dockable_name):
+        try:
+            make_dockable = self._dockable_factory[dockable_name]
+        except KeyError:
+            return False
+
+        # TODO/IDA remove try/cacth after cleanup
+        try:
+            parent, dctx = None, None # not used for IDA's integration
+            widget = make_dockable(dockable_name, parent, dctx)
+        except Exception:
+            logger.exception("Error showing dockable...")
+            return False
+
+        # get the original twidget, so we can use it with the IDA API's
+        #twidget = idaapi.TWidget__from_ptrval__(widget) NOTE: IDA 7.2+ only...
+        twidget = self._dockable_widgets.pop(dockable_name)
+        if not twidget:
+            self.warning("Could not open dockable window, because its reference is gone?!?")
+            return
+
+        # show the dockable widget
+        flags = idaapi.PluginForm.WOPN_TAB | idaapi.PluginForm.WOPN_RESTORE | idaapi.PluginForm.WOPN_PERSIST
+        idaapi.display_widget(twidget, flags)
+        widget.visible = True
+
+        # attempt to 'dock' the widget in a reasonable location
+        for target in ["IDA View-A", "Pseudocode-A"]:
+            dwidget = idaapi.find_widget(target)
+            if dwidget:
+                idaapi.set_dock_pos(dockable_name, 'IDA View-A', idaapi.DP_RIGHT)
+                break
 
     #--------------------------------------------------------------------------
     # Theme Prediction Helpers (Internal)
@@ -179,6 +192,7 @@ class IDAAPI(DisassemblerAPI):
         """
         Get the background color of the IDA disassembly view. (IDA 7+)
         """
+        return QtGui.QColor(0,0,0) # TODO/IDA
         names  = ["Enums", "Structures"]
         names += ["Hex View-%u" % i for i in range(5)]
         names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
@@ -236,34 +250,94 @@ class IDAAPI(DisassemblerAPI):
         flush_qt_events()
 
 #------------------------------------------------------------------------------
-# Dockable Window
+# Disassembler Context API (database-specific)
 #------------------------------------------------------------------------------
 
-class DockableWindow(DockableShim):
+class IDAContextAPI(DisassemblerContextAPI):
     """
-    A Dockable Qt widget for IDA 7.0 and above.
+    TODO/COMMENT
     """
 
-    def __init__(self, window_title, icon_path):
-        super(DockableWindow, self).__init__(window_title, icon_path)
+    def __init__(self, dctx):
+        super(IDAContextAPI, self).__init__(dctx)
 
-        import sip
-        self._form = idaapi.create_empty_widget(self._window_title)
-        self._widget = sip.wrapinstance(int(self._form), QtWidgets.QWidget)
+    @property
+    def busy(self):
+        return not(idaapi.auto_is_ok())
 
+    #--------------------------------------------------------------------------
+    # API Shims
+    #--------------------------------------------------------------------------
 
-        # set the window icon
-        self._widget.setWindowIcon(self._window_icon)
+    def get_current_address(self):
+        return idaapi.get_screen_ea()
 
-    def show(self):
+    def get_database_directory(self):
+        return idautils.GetIdbDir()
+
+    def get_function_addresses(self):
+        return list(idautils.Functions())
+
+    def get_function_name_at(self, address):
+        return idaapi.get_short_name(address)
+
+    def get_function_raw_name_at(self, function_address):
+        return idaapi.get_name(function_address)
+
+    def get_imagebase(self):
+        return idaapi.get_imagebase()
+
+    def get_root_filename(self):
+        return idaapi.get_root_filename()
+
+    def navigate(self, address):
+        return idaapi.jumpto(address)
+
+    def navigate_to_function(self, function_address, address):
+        return self.navigate(function_address)
+
+    def set_function_name_at(self, function_address, new_name):
+        idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+    #--------------------------------------------------------------------------
+    # Hooks API
+    #--------------------------------------------------------------------------
+
+    def create_rename_hooks(self):
+        return RenameHooks()
+
+    #------------------------------------------------------------------------------
+    # Function Prefix API
+    #------------------------------------------------------------------------------
+
+    PREFIX_SEPARATOR = "%"
+
+#------------------------------------------------------------------------------
+# Hooking
+#------------------------------------------------------------------------------
+
+class RenameHooks(idaapi.IDB_Hooks):
+
+    def renamed(self, address, new_name, local_name):
         """
-        Show the dockable widget.
+        Capture all IDA rename events.
         """
-        flags = idaapi.PluginForm.WOPN_TAB     | \
-                idaapi.PluginForm.WOPN_MENU    | \
-                idaapi.PluginForm.WOPN_RESTORE | \
-                idaapi.PluginForm.WOPN_PERSIST
-        idaapi.display_widget(self._form, flags)
+
+        # we should never care about local renames (eg, loc_40804b), ignore
+        if local_name or new_name.startswith("loc_"):
+            return 0
+
+        # call the 'renamed' callback, that will get hooked by a listener
+        self.name_changed(address, new_name)
+
+        # must return 0 to keep IDA happy...
+        return 0
+
+    def name_changed(self, address, new_name):
+        """
+        A placeholder callback, which will get hooked / replaced once live.
+        """
+        pass
 
 #------------------------------------------------------------------------------
 # HexRays Util

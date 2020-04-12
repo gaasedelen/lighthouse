@@ -424,10 +424,11 @@ class CoverageTableController(object):
         """
         Interactive rename of a database function via the coverage table.
         """
+        lctx = self._model._director.metadata.lctx # TODO dirty
 
         # retrieve details about the function targeted for rename
         function_address = self._model.row2func[row]
-        original_name = disassembler.get_function_raw_name_at(function_address)
+        original_name = disassembler[lctx].get_function_raw_name_at(function_address)
 
         # prompt the user for a new function name
         ok, new_name = prompt_string(
@@ -445,13 +446,14 @@ class CoverageTableController(object):
             return
 
         # rename the function
-        disassembler.set_function_name_at(function_address, new_name)
+        disassembler[lctx].set_function_name_at(function_address, new_name)
 
     @mainthread
     def prefix_table_functions(self, rows):
         """
         Interactive prefixing of database functions via the coverage table.
         """
+        lctx = self._model._director.metadata.lctx # TODO dirty
 
         # prompt the user for a new function name
         ok, prefix = prompt_string(
@@ -466,15 +468,16 @@ class CoverageTableController(object):
 
         # apply the user prefix to the functions depicted in the given rows
         function_addresses = self._get_function_addresses(rows)
-        disassembler.prefix_functions(function_addresses, prefix)
+        disassembler[lctx].prefix_functions(function_addresses, prefix)
 
     @mainthread
     def clear_function_prefixes(self, rows):
         """
         Clear prefixes of database functions via the coverage table.
         """
+        lctx = self._model._director.metadata.lctx # TODO dirty
         function_addresses = self._get_function_addresses(rows)
-        disassembler.clear_prefixes(function_addresses)
+        disassembler[lctx].clear_prefixes(function_addresses)
 
     #---------------------------------------------------------------------------
     # Copy-to-Clipboard
@@ -533,7 +536,9 @@ class CoverageTableController(object):
         """
         Navigate to the function depicted by the given row.
         """
-        disassembler.navigate(self._model.row2func[row])
+        lctx = self._model._director.metadata.lctx # TODO dirty
+        function_address = self._model.row2func[row]
+        disassembler[lctx].navigate_to_function(function_address, function_address)
 
     def toggle_column_alignment(self, column):
         """
@@ -551,28 +556,13 @@ class CoverageTableController(object):
         # send the new alignment to the model
         self._model.set_column_alignment(column, new_alignment)
 
-    def refresh_metadata(self):
-        """
-        Hard refresh of the director and table metadata layers.
-
-        TODO: remove
-        """
-        disassembler.show_wait_box("Building database metadata...")
-        self._model._director.refresh()
-
-        # ensure the table's model gets refreshed
-        disassembler.replace_wait_box("Refreshing Coverage Overview...")
-        self._model.refresh()
-
-        # all done
-        disassembler.hide_wait_box()
-
     def export_to_html(self):
         """
         Export the coverage table to an HTML report.
         """
+        lctx = self._model._director.metadata.lctx # TODO dirty
         if not self._last_directory:
-            self._last_directory = disassembler.get_database_directory()
+            self._last_directory = disassembler[lctx].get_database_directory()
 
         # build filename for the coverage report based off the coverage name
         name, _ = os.path.splitext(self._model._director.coverage_name)

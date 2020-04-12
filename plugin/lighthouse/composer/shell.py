@@ -474,9 +474,9 @@ class ComposingShell(QtWidgets.QWidget):
         except ValueError:
             pass
         else:
-            function_metadata = self._director.metadata.get_function(address)
-            if function_metadata:
-                return function_metadata.address
+            functions = self._director.metadata.get_functions_containing(address)
+            if functions:
+                return functions[0].address
 
         #
         # the user string did not translate to a parsable hex number (address)
@@ -488,16 +488,29 @@ class ComposingShell(QtWidgets.QWidget):
 
         # special case to make 'sub_*' prefixed user inputs case insensitive
         if text.lower().startswith("sub_"):
-            text = "sub_" + text[4:].upper()
 
-        # look up the text function name within the director's metadata
+            # attempt uppercase hex (IDA...)
+            function_metadata = self._director.metadata.get_function_by_name("sub_" + text[4:].upper())
+            if function_metadata:
+                return function_metadata.address
+
+            # attempt lowercase hex (Binja...)
+            function_metadata = self._director.metadata.get_function_by_name("sub_" + text[4:].lower())
+            if function_metadata:
+                return function_metadata.address
+
+        #
+        # no luck yet, let's just throw the user's raw text at the lookup. this
+        # would probably be a function they renamed, such as 'foobar'
+        #
+
         function_metadata = self._director.metadata.get_function_by_name(text)
         if function_metadata:
             return function_metadata.address
 
         #
         # the user string did not translate to a function name that could
-        # be found in the director.
+        # be found in the director. so I guess they're not trying to jump...
         #
 
         # failure, the user input (text) isn't a jump ...

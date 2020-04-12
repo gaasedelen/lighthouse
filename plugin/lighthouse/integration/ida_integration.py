@@ -2,8 +2,10 @@ import os
 import logging
 
 import idaapi
-from lighthouse.core import Lighthouse
+
+from lighthouse.context import LighthouseContext
 from lighthouse.util.misc import plugin_resource
+from lighthouse.integration.core import LighthouseCore
 
 logger = logging.getLogger("Lighthouse.IDA.Integration")
 
@@ -11,7 +13,7 @@ logger = logging.getLogger("Lighthouse.IDA.Integration")
 # Lighthouse IDA Integration
 #------------------------------------------------------------------------------
 
-class LighthouseIDA(Lighthouse):
+class LighthouseIDA(LighthouseCore):
     """
     Lighthouse UI Integration for IDA Pro.
     """
@@ -29,6 +31,18 @@ class LighthouseIDA(Lighthouse):
 
         # run initialization
         super(LighthouseIDA, self).__init__()
+
+    def get_context(self, dctx):
+        """
+        TODO
+        """
+
+        # create a new LighthouseContext if this is a new disassembler ctx / bv
+        if dctx not in self.lighthouse_contexts:
+            self.lighthouse_contexts[dctx] = LighthouseContext(self, dctx)
+
+        # return the lighthouse context object for this disassembler ctx / bv
+        return self.lighthouse_contexts[dctx]
 
     #--------------------------------------------------------------------------
     # IDA Actions
@@ -137,7 +151,7 @@ class LighthouseIDA(Lighthouse):
             RuntimeError("Failed to register coverage_xref action with IDA")
 
         self._ui_hooks.hook()
-        logger.info("Installed the 'Code coverage batch' menu entry")
+        logger.info("Installed the 'Coverage Xref' menu entry")
 
     def _install_open_coverage_overview(self):
         """
@@ -335,7 +349,21 @@ class UIHooks(idaapi.UI_Hooks):
         """
         A right click menu is about to be shown. (IDA 7.0+)
         """
-        if self.integration.director.aggregate.instruction_percent:
+
+        #
+        # if lighthouse hasn't been used yet, there's nothing to do. we also
+        # don't want this event to trigger the creation of a lighthouse
+        # context! so we should bail early in this case...
+        #
+
+        if not self.integration.lighthouse_contexts:
+            return 0
+
+        # inject any of lighthouse's right click context menu's into IDA
+        lctx = self.integration.get_context(None)
+        if lctx.director.aggregate.instruction_percent:
             self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
+
+        # must return 0 for ida...
         return 0
 

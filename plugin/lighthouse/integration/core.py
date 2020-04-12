@@ -2,16 +2,11 @@ import os
 import abc
 import logging
 
-import lighthouse
-
 from lighthouse.ui import *
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
-from lighthouse.util.disassembler import disassembler
+from lighthouse.util.disassembler import disassembler, DisassemblerContextAPI
 
-from lighthouse.painting import CoveragePainter
-from lighthouse.director import CoverageDirector
-from lighthouse.coverage import DatabaseCoverage
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.exceptions import *
 
@@ -29,7 +24,7 @@ DATE           = "2020"
 # Lighthouse Plugin Core
 #------------------------------------------------------------------------------
 
-class Lighthouse(object):
+class LighthouseCore(object):
     __metaclass__ = abc.ABCMeta
 
     #--------------------------------------------------------------------------
@@ -40,45 +35,46 @@ class Lighthouse(object):
         """
         Load the plugin, and integrate its UI into the disassembler.
         """
-        self._init()
+        self.lighthouse_contexts = {}
+
+        # the plugin color palette
+        self.palette = LighthousePalette()
+        self.palette.theme_changed(self.refresh_theme)
+
+        def create_coverage_overview(name, parent, dctx):
+            widget = disassembler.create_dockable_widget(parent, name)
+            overview = CoverageOverview(self, dctx, widget)
+            return widget
+
+        # the coverage overview widget
+        disassembler.register_dockable("Coverage Overview", create_coverage_overview)
+
+        # install disassembler UI
         self._install_ui()
 
         # plugin loaded successfully, print the plugin banner
         self.print_banner()
         logger.info("Successfully loaded plugin")
 
-    def _init(self):
+    def unload(self):
         """
-        Initialize the core components of the plugin.
+        Unload the plugin, and remove any UI integrations.
         """
+        self._uninstall_ui()
 
-        # the database metadata cache
-        self.metadata = DatabaseMetadata()
+        # spin donw any active contexts (stop threads, cleanup qt state, etc)
+        for lctx in self.lighthouse_contexts.values():
+            lctx.terminate()
 
-        # the plugin color palette
-        self.palette = LighthousePalette()
-        self.palette.theme_changed(self.refresh_theme)
+        logger.info("-"*75)
+        logger.info("Plugin terminated")
 
-        # the coverage engine
-        self.director = CoverageDirector(self.metadata, self.palette)
-
-        # the coverage painter
-        self.painter = CoveragePainter(self.director, self.palette)
-
-        # the coverage overview widget
-        self._ui_coverage_overview = None
-
-        # the directory to start the coverage file dialog in
-        self._last_directory = None
-
-        # a timed callback for lighthouse to check for certain state changes
-        self._scheduled = QtCore.QTimer()
-        self._scheduled.timeout.connect(self.scheduled)
-        #self._scheduled.start(1000) # TODO: re-enable once more testing is done...
-
-        # expose the live CoverageDirector object instance for external scripts
-        lighthouse.coverage_director = self.director
-
+    @abc.abstractmethod
+    def get_context(self, dctx):
+        """
+        Get the LighthouseContext object for a given disassembler context.
+        """
+        pass
 
     def print_banner(self):
         """
@@ -95,34 +91,6 @@ class Lighthouse(object):
         lmsg("---[ %s" % banner_title)
         lmsg("-"*75)
         lmsg("")
-
-    #--------------------------------------------------------------------------
-    # Termination
-    #--------------------------------------------------------------------------
-
-    def unload(self):
-        """
-        Unload the plugin, and remove any UI integrations.
-        """
-        self._uninstall_ui()
-        self._cleanup()
-
-        logger.info("-"*75)
-        logger.info("Plugin terminated")
-
-    def _cleanup(self):
-        """
-        Spin down any lingering core components before plugin unload.
-        """
-
-        # remove access to the exposed CoverageDirector
-        lighthouse.coverage_director = None
-
-        # spin down the rest of the core subsystems
-        self._scheduled.stop()
-        self.painter.terminate()
-        self.director.terminate()
-        self.metadata.terminate()
 
     #--------------------------------------------------------------------------
     # UI Integration (Internal)
@@ -210,44 +178,44 @@ class Lighthouse(object):
         """
         Refresh UI facing elements to reflect the current theme.
         """
-        self.director.refresh_theme()
-        if self._ui_coverage_overview:
-            self._ui_coverage_overview.refresh_theme()
-        self.painter.repaint()
+        for lctx in self.lighthouse_contexts.values():
+            lctx.director.refresh_theme()
+            lctx.coverage_overview.refresh_theme()
+            lctx.painter.repaint()
 
-    def open_coverage_overview(self):
+    def open_coverage_overview(self, dctx=None):
         """
         Open the dockable 'Coverage Overview' dialog.
         """
         self.palette.warmup()
+        lctx = self.get_context(dctx)
 
-        # the coverage overview is already open & visible, simply refresh it
-        if self._ui_coverage_overview and self._ui_coverage_overview.isVisible():
-            self._ui_coverage_overview.refresh()
+        # the coverage overview is already open & visible, nothing to do
+        if lctx.coverage_overview and lctx.coverage_overview.visible:
             return
 
-        # create a new coverage overview if there is not one visible
-        self._ui_coverage_overview = CoverageOverview(self)
-        self._ui_coverage_overview.show()
+        # show the coverage overview
+        disassembler.show_dockable("Coverage Overview")
 
-    def open_coverage_xref(self, address):
+    def open_coverage_xref(self, address, dctx=None):
         """
         Open the 'Coverage Xref' dialog for a given address.
         """
+        lctx = self.get_context(dctx)
 
         # show the coverage xref dialog
-        dialog = CoverageXref(self.director, address)
+        dialog = CoverageXref(lctx.director, address)
         if not dialog.exec_():
             return
 
         # activate the user selected xref (if one was double clicked)
         if dialog.selected_coverage:
-            self.director.select_coverage(dialog.selected_coverage)
+            lctx.director.select_coverage(dialog.selected_coverage)
             return
 
         # load a coverage file from disk
         disassembler.show_wait_box("Loading coverage from disk...")
-        created_coverage, errors = self.director.load_coverage_files(
+        created_coverage, errors = lctx.director.load_coverage_files(
             [dialog.selected_filepath],
             disassembler.replace_wait_box
         )
@@ -259,34 +227,35 @@ class Lighthouse(object):
             return
 
         disassembler.replace_wait_box("Selecting coverage...")
-        self.director.select_coverage(created_coverage[0].name)
+        lctx.director.select_coverage(created_coverage[0].name)
         disassembler.hide_wait_box()
 
-    def interactive_load_batch(self):
+    def interactive_load_batch(self, dctx=None):
         """
         Perform the user-interactive loading of a coverage batch.
         """
         self.palette.warmup()
+        lctx = self.get_context(dctx)
 
         #
         # kick off an asynchronous metadata refresh. this will run in the
         # background while the user is selecting which coverage files to load
         #
 
-        future = self.metadata.refresh_async(progress_callback=metadata_progress)
+        future = lctx.metadata.refresh_async(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
         # can select the coverage files they would like to load from disk
         #
 
-        filepaths = self._select_coverage_files()
+        filepaths = lctx.select_coverage_files()
         if not filepaths:
-            self.director.metadata.abort_refresh()
+            lctx.director.metadata.abort_refresh()
             return
 
         # prompt the user to name the new coverage aggregate
-        default_name = "BATCH_%s" % self.director.peek_shorthand()
+        default_name = "BATCH_%s" % lctx.director.peek_shorthand()
         ok, batch_name = prompt_string(
             "Batch Name:",
             "Please enter a name for this coverage",
@@ -300,7 +269,7 @@ class Lighthouse(object):
 
         if not (ok and batch_name):
             lmsg("User failed to enter a name for the batch coverage...")
-            self.director.metadata.abort_refresh()
+            lctx.director.metadata.abort_refresh()
             return
 
         #
@@ -312,7 +281,7 @@ class Lighthouse(object):
         #
 
         disassembler.show_wait_box("Building database metadata...")
-        self.metadata.go_synchronous()
+        lctx.metadata.go_synchronous()
         await_future(future)
 
         #
@@ -321,7 +290,7 @@ class Lighthouse(object):
         #
 
         disassembler.replace_wait_box("Loading coverage from disk...")
-        batch_coverage, errors = self.director.load_coverage_batch(
+        batch_coverage, errors = lctx.director.load_coverage_batch(
             filepaths,
             batch_name,
             disassembler.replace_wait_box
@@ -336,37 +305,38 @@ class Lighthouse(object):
 
         # select the newly created batch coverage
         disassembler.replace_wait_box("Selecting coverage...")
-        self.director.select_coverage(batch_name)
+        lctx.director.select_coverage(batch_name)
 
         # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()
         lmsg("Successfully loaded batch %s..." % batch_name)
-        self.open_coverage_overview()
+        self.open_coverage_overview(lctx.dctx)
 
         # finally, emit any notable issues that occurred during load
         warn_errors(errors)
 
-    def interactive_load_file(self):
+    def interactive_load_file(self, dctx=None):
         """
         Perform the user-interactive loading of individual coverage files.
         """
         self.palette.warmup()
+        lctx = self.get_context(dctx)
 
         #
         # kick off an asynchronous metadata refresh. this will run in the
         # background while the user is selecting which coverage files to load
         #
 
-        future = self.metadata.refresh_async(progress_callback=metadata_progress)
+        future = lctx.metadata.refresh_async(progress_callback=metadata_progress)
 
         #
         # we will now prompt the user with an interactive file dialog so they
         # can select the coverage files they would like to load from disk
         #
 
-        filenames = self._select_coverage_files()
+        filenames = lctx.select_coverage_files()
         if not filenames:
-            self.director.metadata.abort_refresh()
+            lctx.metadata.abort_refresh()
             return
 
         #
@@ -378,7 +348,7 @@ class Lighthouse(object):
         #
 
         disassembler.show_wait_box("Building database metadata...")
-        self.metadata.go_synchronous()
+        lctx.metadata.go_synchronous()
         await_future(future)
 
         #
@@ -387,7 +357,7 @@ class Lighthouse(object):
         #
 
         disassembler.replace_wait_box("Loading coverage from disk...")
-        created_coverage, errors = self.director.load_coverage_files(filenames, disassembler.replace_wait_box)
+        created_coverage, errors = lctx.director.load_coverage_files(filenames, disassembler.replace_wait_box)
 
         #
         # if the director failed to map any coverage, the user probably
@@ -406,57 +376,21 @@ class Lighthouse(object):
         #
 
         disassembler.replace_wait_box("Selecting coverage...")
-        self.director.select_coverage(created_coverage[0].name)
+        lctx.director.select_coverage(created_coverage[0].name)
 
         # all done! pop the coverage overview to show the user their results
         disassembler.hide_wait_box()
         lmsg("Successfully loaded %u coverage file(s)..." % len(created_coverage))
-        self.open_coverage_overview()
+        self.open_coverage_overview(lctx.dctx)
 
         # finally, emit any notable issues that occurred during load
         warn_errors(errors)
-
-    def _select_coverage_files(self):
-        """
-        Prompt a file selection dialog, returning file selections.
-
-        NOTE: This saves & reuses the last known directory for subsequent uses.
-        """
-        if not self._last_directory:
-            self._last_directory = disassembler.get_database_directory()
-
-        # create & configure a Qt File Dialog for immediate use
-        file_dialog = QtWidgets.QFileDialog(
-            None,
-            'Open code coverage file',
-            self._last_directory,
-            'All Files (*.*)'
-        )
-        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
-
-        # prompt the user with the file dialog, and await filename(s)
-        filenames, _ = file_dialog.getOpenFileNames()
-
-        #
-        # remember the last directory we were in (parsed from a selected file)
-        # for the next time the user comes to load coverage files
-        #
-
-        if filenames:
-            self._last_directory = os.path.dirname(filenames[0]) + os.sep
-
-        # log the captured (selected) filenames from the dialog
-        logger.debug("Captured filenames from file dialog:")
-        for name in filenames:
-            logger.debug(" - %s" % name)
-
-        # return the captured filenames
-        return filenames
 
     #--------------------------------------------------------------------------
     # Scheduled
     #--------------------------------------------------------------------------
 
+    # TODO/REBASING
     @disassembler.execute_read
     def scheduled(self):
         metadata = self.director.metadata

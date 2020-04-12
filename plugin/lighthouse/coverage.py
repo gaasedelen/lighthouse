@@ -3,6 +3,7 @@ import time
 import logging
 import weakref
 import datetime
+import itertools
 import collections
 
 from lighthouse.util import *
@@ -166,6 +167,7 @@ class DatabaseCoverage(object):
         self.functions = {}
         self.instruction_percent = 0.0
         self.partial_nodes = set()
+        self.partial_instructions = set()
 
         #
         # we instantiate a single weakref of ourself (the DatbaseCoverage
@@ -336,6 +338,12 @@ class DatabaseCoverage(object):
                 self.partial_nodes.add(address)
             else:
                 self.partial_nodes.discard(address)
+
+        # finalize the set of instructions executed in partially executed nodes
+        instructions = []
+        for node_address in self.partial_nodes:
+            instructions.append(self.nodes[node_address].executed_instructions)
+        self.partial_instructions = set(itertools.chain.from_iterable(instructions))
 
     def _finalize_functions(self, dirty_functions):
         """
@@ -557,7 +565,7 @@ class DatabaseCoverage(object):
                 ## address range, but doesn't line up with the known
                 ## instructions, log it as 'misaligned' / suspicious
                 ##
-                ## TODO / XXX: This will need to be moved as instruction to
+                ## TODO/COV: This will need to be moved as instruction to
                 ## node mapping is now guaranteed
                 ##
 
@@ -607,28 +615,31 @@ class DatabaseCoverage(object):
             # (parent) metadata.
             #
 
-            function_metadata = self._metadata.nodes[node_coverage.address].function
+            functions = self._metadata.get_functions_by_node(node_coverage.address)
 
             #
-            # now we will attempt to retrieve the the FunctionCoverage object
+            # now we will attempt to retrieve the FunctionCoverage objects
             # that we need to parent the given NodeCoverage object to
             #
 
-            function_coverage = self.functions.get(function_metadata.address, None)
+            for function_metadata in functions:
+                function_coverage = self.functions.get(function_metadata.address, None)
 
-            #
-            # if we failed to locate a FunctionCoverage for this node, it means
-            # that this is the first time we have seen coverage for this
-            # function. create a new coverage function object and use it now.
-            #
+                #
+                # if we failed to locate the FunctionCoverage for a function
+                # that references this node, then it is the first time we have
+                # seen coverage for it.
+                #
+                # create a new coverage function object and use it now.
+                #
 
-            if not function_coverage:
-                function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
-                self.functions[function_metadata.address] = function_coverage
+                if not function_coverage:
+                    function_coverage = FunctionCoverage(function_metadata.address, self._weak_self)
+                    self.functions[function_metadata.address] = function_coverage
 
-            # add the NodeCoverage object to its parent FunctionCoverage
-            function_coverage.mark_node(node_coverage)
-            dirty_functions[function_metadata.address] = function_coverage
+                # add the NodeCoverage object to its parent FunctionCoverage
+                function_coverage.mark_node(node_coverage)
+                dirty_functions[function_metadata.address] = function_coverage
 
         # done, return a map of FunctionCoverage objects that were modified
         return dirty_functions
@@ -642,6 +653,7 @@ class DatabaseCoverage(object):
         self.nodes = {}
         self.functions = {}
         self.partial_nodes = set()
+        self.partial_instructions = set()
         self._misaligned_data = set()
 
         # dump the source coverage data back into an 'unmapped' state

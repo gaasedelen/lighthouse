@@ -14,7 +14,7 @@ MODULES_DIRECTORY = os.path.join(os.path.dirname(os.path.realpath(__file__)), "p
 
 class CoverageReader(object):
     """
-    TODO
+    TODO/COMMENT
     """
 
     def __init__(self):

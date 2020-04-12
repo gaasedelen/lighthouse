@@ -1,7 +1,7 @@
 import logging
 
 from lighthouse.util.log import lmsg
-from lighthouse.binja_integration import LighthouseBinja
+from lighthouse.integration.binja_integration import LighthouseBinja
 
 logger = logging.getLogger("Lighthouse.Binja.Loader")
 
@@ -22,8 +22,6 @@ logger = logging.getLogger("Lighthouse.Binja.Loader")
 #    In practice, lighthouse_plugin.py will import the contents of this file,
 #    when Binary Ninja is starting up. As such, this is our only opportunity
 #    to load & integrate Lighthouse.
-#
-#    TODO/V35: it would be nice load/unload plugins with BNDB's like IDA
 #
 
 try:

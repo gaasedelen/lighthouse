@@ -2,7 +2,7 @@ import logging
 
 import idaapi
 from lighthouse.util.log import lmsg
-from lighthouse.ida_integration import LighthouseIDA
+from lighthouse.integration.ida_integration import LighthouseIDA
 
 logger = logging.getLogger("Lighthouse.IDA.Loader")
 
