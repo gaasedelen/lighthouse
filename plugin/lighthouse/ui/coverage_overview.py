@@ -4,7 +4,7 @@ import weakref
 
 from lighthouse.util.qt import *
 from lighthouse.util.misc import plugin_resource
-from lighthouse.util.disassembler import disassembler, DockableChild
+from lighthouse.util.disassembler import disassembler
 from lighthouse.composer import ComposingShell
 from lighthouse.ui.coverage_table import CoverageTableView, CoverageTableModel, CoverageTableController
 from lighthouse.ui.coverage_combobox import CoverageComboBox
@@ -16,24 +16,25 @@ logger = logging.getLogger("Lighthouse.UI.Overview")
 # Coverage Overview
 #------------------------------------------------------------------------------
 
-class CoverageOverview(DockableChild):
+class CoverageOverview(object):
     """
     The Coverage Overview Widget.
     """
 
-    def __init__(self, core, parent, name, dctx=None):
-        super(CoverageOverview, self).__init__(parent, name)
+    def __init__(self, core, dctx, widget):
+        #super(CoverageOverview, self).__init__(parent, name)
         #    plugin_resource(os.path.join("icons", "overview.png"))
         self._core = core
         self.dctx = dctx
+        self.widget = widget
 
         self.lctx = self._core.get_context(self.dctx)
         self.lctx.coverage_overview = self
         self.director = self.lctx.director
 
         # see the EventProxy class below for more details
-        #self._events = EventProxy(self)
-        #self._widget.installEventFilter(self._events)
+        self._events = EventProxy(self)
+        self.widget.installEventFilter(self._events)
 
         # initialize the plugin UI
         self._ui_init()
@@ -48,36 +49,17 @@ class CoverageOverview(DockableChild):
     # Pseudo Widget Functions
     #--------------------------------------------------------------------------
 
-    #def showEvent(self, e):
-    #    """
-    #    Test
-    #    """
-    #    super(CoverageOverview, self).showEvent(e)
-    #    print("Becoming visible says qt!!")
-    #    print(self._visible)
-    #    if not self._visible:
-    #        return
-    #    self.refresh()
-    #    if not self.director.metadata.cached:
-    #        self.director.refresh()
-    #    return super(CoverageOverview, self).showEvent(e)
+    @property
+    def name(self):
+        if not self.widget:
+            return "Coverage Overview"
+        return self.widget.name
 
-    #def show(self):
-    #    """
-    #    Show the CoverageOverview UI / widget.
-    #    """
-    #    self.refresh()
-    #    super(CoverageOverview, self).show()
-    #    self._visible = True
-
-    #    #
-    #    # if no metadata had been collected prior to showing the coverage
-    #    # overview (eg, through loading coverage), we should do that now
-    #    # before the user can interact with the view...
-    #    #
-
-    #    if not self._core.director.metadata.cached:
-    #        self._core.director.refresh()
+    @property
+    def visible(self):
+        if not self.widget:
+            return False
+        return self.widget.visible
 
     def terminate(self):
         """
@@ -88,6 +70,7 @@ class CoverageOverview(DockableChild):
         self._table_view = None
         self._table_controller = None
         self._table_model = None
+        self.widget = None
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -110,9 +93,9 @@ class CoverageOverview(DockableChild):
         """
         Initialize the coverage table.
         """
-        self._table_model = CoverageTableModel(self.director, self)
+        self._table_model = CoverageTableModel(self.director, self.widget)
         self._table_controller = CoverageTableController(self._table_model)
-        self._table_view = CoverageTableView(self._table_controller, self._table_model, self)
+        self._table_view = CoverageTableView(self._table_controller, self._table_model, self.widget)
 
     def _ui_init_toolbar(self):
         """
@@ -195,7 +178,7 @@ class CoverageOverview(DockableChild):
         self._settings_button.setStyleSheet("QToolButton::menu-indicator{image: none;}")
 
         # settings menu
-        self._settings_menu = TableSettingsMenu(self)
+        self._settings_menu = TableSettingsMenu(self.widget)
 
     def _ui_init_signals(self):
         """
@@ -216,7 +199,7 @@ class CoverageOverview(DockableChild):
         layout.addWidget(self._toolbar)
 
         # apply the layout to the containing form
-        self.setLayout(layout)
+        self.widget.setLayout(layout)
 
     #--------------------------------------------------------------------------
     # Signal Handlers

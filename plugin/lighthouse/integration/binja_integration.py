@@ -65,8 +65,8 @@ class LighthouseBinja(LighthouseCore):
             return
         super(LighthouseBinja, self).interactive_load_batch(dctx)
 
-    def _open_coverage_xref(self, bv, addr):
-        super(LighthouseBinja, self).open_coverage_xref(bv, addr)
+    def _open_coverage_xref(self, dctx, addr):
+        super(LighthouseBinja, self).open_coverage_xref(addr, dctx)
 
     #--------------------------------------------------------------------------
     # Binja Actions

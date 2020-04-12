@@ -16,8 +16,9 @@ disassembler = None
 
 if disassembler == None:
     try:
-        from .ida_api import IDAAPI, DockableWindow
-        disassembler = IDAAPI()
+        from .ida_api import IDACoreAPI, IDAContextAPI
+        disassembler = IDACoreAPI()
+        DisassemblerContextAPI = IDAContextAPI
     except ImportError:
         pass
 
@@ -27,7 +28,7 @@ if disassembler == None:
 
 if disassembler == None:
     try:
-        from .binja_api import BinjaCoreAPI, BinjaContextAPI, DockableChild
+        from .binja_api import BinjaCoreAPI, BinjaContextAPI
         disassembler = BinjaCoreAPI()
         DisassemblerContextAPI = BinjaContextAPI
     except ImportError:

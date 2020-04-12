@@ -82,13 +82,6 @@ class DisassemblerCoreAPI(object):
         """
         pass
 
-    @abc.abstractproperty
-    def busy(self):
-        """
-        Return a bool indicating if the disassembler is busy / processing.
-        """
-        pass
-
     #--------------------------------------------------------------------------
     # Synchronization Decorators
     #--------------------------------------------------------------------------
@@ -158,6 +151,31 @@ class DisassemblerCoreAPI(object):
         """
         pass
 
+    #--------------------------------------------------------------------------
+    # UI APIs
+    #--------------------------------------------------------------------------
+
+    @abc.abstractmethod
+    def register_dockable(self, dockable_name, create_widget_callback):
+        """
+        TODO/COMMENT
+        """
+        pass
+
+    @abc.abstractmethod
+    def create_dockable_widget(self, parent, dockable_name):
+        """
+        TODO/COMMENT
+        """
+        pass
+
+    @abc.abstractmethod
+    def show_dockable(self, dockable_name):
+        """
+        TODO/COMMENT
+        """
+        pass
+
     #------------------------------------------------------------------------------
     # WaitBox API
     #------------------------------------------------------------------------------
@@ -197,6 +215,17 @@ class DisassemblerContextAPI(object):
     @abc.abstractmethod
     def __init__(self, dctx):
         self.dctx = dctx
+
+    #--------------------------------------------------------------------------
+    # Properties
+    #--------------------------------------------------------------------------
+
+    @abc.abstractproperty
+    def busy(self):
+        """
+        Return a bool indicating if the disassembler is busy / processing.
+        """
+        pass
 
     #--------------------------------------------------------------------------
     # API Shims
@@ -385,170 +414,3 @@ class RenameHooks(object):
         This will be hooked by Lighthouse at runtime to capture rename events.
         """
         pass
-
-#------------------------------------------------------------------------------
-# Dockable Window
-#------------------------------------------------------------------------------
-
-class DockableShim(object):
-    """
-    A minimal template of the DockableWindow.
-
-    this class is only to demonstrate the minimal set of attributes and
-    functions that a disassembler's DockableWindow class should contain.
-
-    show/hide can be overridden entirely depending on your needs, but the
-    self._widget field should contain a reference to a blank widget that has
-    been installed into a QDockWidget in the disassembler interface.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, window_title, icon_path):
-        self._window_title = window_title
-        self._window_icon = QtGui.QIcon(icon_path)
-        self._widget = None
-
-    def show(self):
-        """
-        Show the dockable widget.
-        """
-        self._widget.show()
-
-    def hide(self):
-        """
-        Show the dockable widget.
-        """
-        self._widget.hide()
-
-
-    #--------------------------------------------------------------------------
-    # Function Prefix API
-    #--------------------------------------------------------------------------
-
-    #
-    # the following APIs are used to apply or clear prefixes to multiple
-    # functions in the disassembly database. the only thing you're expected
-    # to do here is select an appropriate PREFIX_SEPARATOR.
-    #
-    # your prefix separator is expected to be something unique, that a user
-    # would probably *never* put into their function name themselves but
-    # looks somewhat normal.
-    #
-    # in IDA, putting '%' in a function name appears as '_' in the function
-    # list, so we use that as a prefix separator. in Binary Ninja, we use a
-    # unicode character that looks like an underscore character.
-    #
-    # it is probably safe to steal the unicode char we use with binja for
-    # your own implementation.
-    #
-
-    PREFIX_SEPARATOR = NotImplemented
-
-    def prefix_function(self, function_address, prefix):
-        """
-        Prefix a function name with the given string.
-        """
-        original_name = self.get_function_raw_name_at(function_address)
-        new_name = str(prefix) + self.PREFIX_SEPARATOR + str(original_name)
-
-        # rename the function with the newly prefixed name
-        self.set_function_name_at(function_address, new_name)
-
-    def prefix_functions(self, function_addresses, prefix):
-        """
-        Prefix a list of functions with the given string.
-        """
-        for function_address in function_addresses:
-            self.prefix_function(function_address, prefix)
-
-    def clear_prefix(self, function_address):
-        """
-        Clear the prefix from a given function.
-        """
-        prefixed_name = self.get_function_raw_name_at(function_address)
-
-        #
-        # split the function name on the last prefix separator, saving
-        # everything that comes after (eg, the original func name)
-        #
-
-        new_name = prefixed_name.rsplit(self.PREFIX_SEPARATOR)[-1]
-
-        # the name doesn't appear to have had a prefix, nothing to do...
-        if new_name == prefixed_name:
-            return
-
-        # rename the function with the prefix(s) now stripped
-        self.set_function_name_at(function_address, new_name)
-
-    def clear_prefixes(self, function_addresses):
-        """
-        Clear the prefix from a list of given functions.
-        """
-        for function_address in function_addresses:
-            self.clear_prefix(function_address)
-
-#------------------------------------------------------------------------------
-# Hooking
-#------------------------------------------------------------------------------
-
-class RenameHooks(object):
-    """
-    An abstract implementation of disassembler hooks to capture rename events.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    @abc.abstractmethod
-    def hook(self):
-        """
-        Install hooks into the disassembler that capture rename events.
-        """
-        pass
-
-    @abc.abstractmethod
-    def unhook(self):
-        """
-        Remove hooks used to capture rename events.
-        """
-        pass
-
-    def renamed(self, address, new_name):
-        """
-        This will be hooked by Lighthouse at runtime to capture rename events.
-        """
-        pass
-
-#------------------------------------------------------------------------------
-# Dockable Window
-#------------------------------------------------------------------------------
-
-class DockableShim(object):
-    """
-    A minimal template of the DockableWindow.
-
-    this class is only to demonstrate the minimal set of attributes and
-    functions that a disassembler's DockableWindow class should contain.
-
-    show/hide can be overridden entirely depending on your needs, but the
-    self._widget field should contain a reference to a blank widget that has
-    been installed into a QDockWidget in the disassembler interface.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, window_title, icon_path):
-        self._window_title = window_title
-        self._window_icon = QtGui.QIcon(icon_path)
-        self._widget = None
-
-    def show(self):
-        """
-        Show the dockable widget.
-        """
-        self._widget.show()
-
-    def hide(self):
-        """
-        Show the dockable widget.
-        """
-        self._widget.hide()
-

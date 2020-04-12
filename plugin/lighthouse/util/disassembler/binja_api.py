@@ -109,13 +109,7 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
 
     @property
     def headless(self):
-        ret = None
-        # Compatibility for Binary Ninja Stable & Dev channels (Jan 2019)
-        try:
-            ret = binaryninja.core_ui_enabled()
-        except TypeError:
-            ret = binaryninja.core_ui_enabled
-        return not ret
+        return not(binaryninja.core_ui_enabled())
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
@@ -153,7 +147,7 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
     def get_disassembler_user_directory(self):
         return os.path.split(binaryninja.user_plugin_path())[0]
 
-    def get_disassembly_background_color(self):
+    def get_disassembly_background_color(self): # TODO/BINJA - use theme apis...
         palette = QtGui.QPalette()
         return palette.color(QtGui.QPalette.Button)
 
@@ -170,11 +164,14 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
     # UI API Shims
     #--------------------------------------------------------------------------
 
-    def create_dockable_widget(self, dockable_name, create_widget_callback):
+    def register_dockable(self, dockable_name, create_widget_callback):
         dock_handler = DockHandler.getActiveDockHandler()
         dock_handler.addDockWidget(dockable_name, create_widget_callback, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, False)
 
-    def show_dockable_widget(self, dockable_name):
+    def create_dockable_widget(self, parent, dockable_name):
+        return DockableWidget(parent, dockable_name)
+
+    def show_dockable(self, dockable_name):
         dock_handler = DockHandler.getActiveDockHandler()
         dock_handler.setVisible(dockable_name, True)
 
@@ -201,6 +198,10 @@ class BinjaContextAPI(DisassemblerContextAPI):
     def __init__(self, dctx):
         super(BinjaContextAPI, self).__init__(dctx)
         self.bv = dctx
+
+    #--------------------------------------------------------------------------
+    # Properties
+    #--------------------------------------------------------------------------
 
     @property
     def busy(self):
@@ -332,39 +333,20 @@ class RenameHooks(binaryview.BinaryDataNotification):
 # UI
 #------------------------------------------------------------------------------
 
-class DockableChild(QtWidgets.QWidget, DockContextHandler):
+class DockableWidget(QtWidgets.QWidget, DockContextHandler):
     """
     A dockable Qt widget for Binary Ninja.
     """
 
     def __init__(self, parent, name):
-
         QtWidgets.QWidget.__init__(self, parent)
         DockContextHandler.__init__(self, self, name)
-
-        self.name = name
 
         self.actionHandler = UIActionHandler()
         self.actionHandler.setupActionHandler(self)
 
         self._active_view = None
         self._visible_for_view = collections.defaultdict(lambda: False)
-
-        #self._widget.setSizePolicy(
-        #    QtWidgets.QSizePolicy.Expanding,
-        #    QtWidgets.QSizePolicy.Expanding
-        #)
-
-        ## dock the widget on the right side of Binja
-        #self._dock_handler.addDockWidget(self._widget, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, True, False)
-        #self._dockable = self._dock_handler.getDockWidget(self._window_title)
-
-        #self._dockable = QtWidgets.QDockWidget(window_title, self._main_window)
-        #self._dockable.setWindowIcon(self._window_icon)
-        #self._dockable.setSizePolicy(
-        #    QtWidgets.QSizePolicy.Expanding,
-        #    QtWidgets.QSizePolicy.Expanding
-        #)
 
     @property
     def visible(self):
@@ -394,4 +376,4 @@ class DockableChild(QtWidgets.QWidget, DockContextHandler):
         self._active_view = shiboken.getCppPointer(view_frame)[0]
         if self.visible:
             dock_handler = DockHandler.getActiveDockHandler()
-            dock_handler.setVisible(self.m_name, True)
+            dock_handler.setVisible(self.name, True)

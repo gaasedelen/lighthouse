@@ -41,15 +41,17 @@ class LighthouseCore(object):
         self.palette = LighthousePalette()
         self.palette.theme_changed(self.refresh_theme)
 
-        def create_overview_instance(name, parent, data = None):
+        def create_coverage_overview(name, parent, dctx):
             print("Creating CoverageOverview instance ...") # TODO remove try/catch
             try:
-                return CoverageOverview(self, parent, name, data)
+                widget = disassembler.create_dockable_widget(parent, name)
+                overview = CoverageOverview(self, dctx, widget)
+                return widget
             except Exception as e:
                 logger.exception("Wid failed")
 
         # the coverage overview widget
-        disassembler.create_dockable_widget("Coverage Overview", create_overview_instance)
+        disassembler.register_dockable("Coverage Overview", create_coverage_overview)
 
         # install disassembler UI
         self._install_ui()
@@ -65,7 +67,7 @@ class LighthouseCore(object):
         self._uninstall_ui()
 
         # spin donw any active contexts (stop threads, cleanup qt state, etc)
-        for lctx in self.lighthouse_contexts:
+        for lctx in self.lighthouse_contexts.values():
             lctx.terminate()
 
         logger.info("-"*75)
@@ -76,13 +78,7 @@ class LighthouseCore(object):
         """
         Get the LighthouseContext object for a given disassembler context.
         """
-
-        # create a new LighthouseContext if this is a new disassembler ctx / bv
-        if id(dctx) not in self.lighthouse_contexts:
-            self.lighthouse_contexts[id(dctx)] = LighthouseContext(self, dctx)
-
-        # return the lighthouse context object for this disassembler ctx / bv
-        return self.lighthouse_contexts[id(dctx)]
+        pass
 
     def print_banner(self):
         """
@@ -191,21 +187,22 @@ class LighthouseCore(object):
             lctx.coverage_overview.refresh_theme()
             lctx.painter.repaint()
 
-    def open_coverage_overview(self, dctx):
+    def open_coverage_overview(self, dctx=None):
         """
         Open the dockable 'Coverage Overview' dialog.
         """
         self.palette.warmup()
         lctx = self.get_context(dctx)
 
-        # the coverage overview is already open & visible, simply refresh it
-        if lctx.coverage_overview.visible:
-            lctx.coverage_overview.refresh()
+        # the coverage overview is already open & visible, nothing to do
+        if lctx.coverage_overview and lctx.coverage_overview.visible:
+            print(lctx.coverage_overview.widget.sizeHint())
             return
 
-        disassembler.show_dockable_widget(lctx.coverage_overview.m_name)
+        # show the coverage overview
+        disassembler.show_dockable("Coverage Overview")
 
-    def open_coverage_xref(self, dctx, address):
+    def open_coverage_xref(self, address, dctx=None):
         """
         Open the 'Coverage Xref' dialog for a given address.
         """
@@ -238,7 +235,7 @@ class LighthouseCore(object):
         lctx.director.select_coverage(created_coverage[0].name)
         disassembler.hide_wait_box()
 
-    def interactive_load_batch(self, ctx):
+    def interactive_load_batch(self, dctx=None):
         """
         Perform the user-interactive loading of a coverage batch.
         """
@@ -323,7 +320,7 @@ class LighthouseCore(object):
         # finally, emit any notable issues that occurred during load
         warn_errors(errors)
 
-    def interactive_load_file(self, dctx):
+    def interactive_load_file(self, dctx=None):
         """
         Perform the user-interactive loading of individual coverage files.
         """

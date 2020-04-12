@@ -10,6 +10,8 @@ from lighthouse.util.misc import *
 from lighthouse.util.python import *
 from lighthouse.util.disassembler import disassembler
 
+from lighthouse.util.debug import catch_errors
+
 logger = logging.getLogger("Lighthouse.Metadata")
 
 #------------------------------------------------------------------------------
@@ -89,8 +91,7 @@ class DatabaseMetadata(object):
         # create the disassembler hooks to listen for rename events
         if lctx:
             self._rename_hooks = disassembler[lctx].create_rename_hooks()
-            self._rename_hooks.renamed = self._name_changed
-            self._rename_hooks.metadata = weakref.proxy(self)
+            self._rename_hooks.name_changed = self._name_changed
         else:
             self._rename_hooks = None
 
@@ -580,13 +581,16 @@ class DatabaseMetadata(object):
                 function_addresses.clear()
                 CHUNK_SIZE = len(addresses_chunk)
 
+
             # collect metadata from the database
             self._async_cache_functions(addresses_chunk)
+
 
             # report incremental progress to an optional progress_callback
             if progress_callback:
                 completed += CHUNK_SIZE
                 progress_callback(completed, total)
+
 
             # if the refresh was canceled, stop collecting metadata and bail
             if self._stop_threads:
@@ -610,6 +614,7 @@ class DatabaseMetadata(object):
         """
         self._cache_functions(addresses_chunk)
 
+    @catch_errors
     def _cache_functions(self, addresses_chunk):
         """
         Lift and cache function metadata for the given list of function addresses.
@@ -645,39 +650,17 @@ class DatabaseMetadata(object):
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    #@mainthread # TODO update fore IDA
-    def _name_changed(self, address, new_name, local_name=None):
+    def _name_changed(self, address, new_name):
         """
-        Handler for rename event in IDA.
-
-        TODO/FUTURE: refactor this to not be so IDA-specific
+        Handle function rename event.
         """
-
-        # we should never care about local renames (eg, loc_40804b), ignore
-        if local_name or new_name.startswith("loc_"):
-            return 0
-
-        # get the function that this address falls within
         function = self.get_function(address)
-
-        # if the address does not fall within a function (might happen?), ignore
-        if not function:
-            return 0
-
-        #
-        # ensure the renamed address matches the function start before
-        # renaming the function in our metadata cache.
-        #
-        # I am not sure when this would not be the case (globals? maybe)
-        # but I'd rather not find out.
-        #
-
-        if address != function.address:
-            return 0
+        if not (function and function.address == address):
+            return
 
         # if the name isn't actually changing (misfire?) nothing to do
         if new_name == function.name:
-            return 0
+            return
 
         logger.debug("Name changing @ 0x%X" % address)
         logger.debug("  Old name: %s" % function.name.encode("utf-8"))
@@ -689,9 +672,6 @@ class DatabaseMetadata(object):
 
         # notify metadata listeners of the rename event
         self._notify_function_renamed()
-
-        # necessary for IDP/IDB_Hooks
-        return 0
 
     #--------------------------------------------------------------------------
     # Callbacks
@@ -762,8 +742,7 @@ class FunctionMetadata(object):
         self.cyclomatic_complexity = 0
 
         # collect metdata from the underlying database
-        if disassembler_ctx:
-            self._cache(disassembler_ctx)
+        self._cache_function(disassembler_ctx)
 
     #--------------------------------------------------------------------------
     # Properties
@@ -787,7 +766,7 @@ class FunctionMetadata(object):
     # Metadata Population
     #--------------------------------------------------------------------------
 
-    def _cache(self, disassembler_ctx):
+    def _cache_function(self, disassembler_ctx):
         """
         Collect function metadata from the underlying database.
         """
@@ -803,7 +782,7 @@ class FunctionMetadata(object):
         """
         raise RuntimeError("This function should have been monkey patched...")
 
-    def _ida_refresh_nodes(self):
+    def _ida_refresh_nodes(self, _):
         """
         Refresh function node metadata against an open IDA database.
         """
@@ -1003,13 +982,13 @@ class NodeMetadata(object):
         #----------------------------------------------------------------------
 
         # collect metadata from the underlying database
-        self._cache(disassembler_ctx)
+        self._cache_node(disassembler_ctx)
 
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
 
-    def _cache(self, disassembler_ctx):
+    def _cache_node(self, disassembler_ctx):
         """
         This will be replaced with a disassembler-specific function at runtime.
 
@@ -1017,7 +996,7 @@ class NodeMetadata(object):
         """
         raise RuntimeError("This function should have been monkey patched...")
 
-    def _ida_build_metadata(self):
+    def _ida_cache_node(self, _):
         """
         Collect node metadata from the underlying database.
         """
@@ -1041,7 +1020,7 @@ class NodeMetadata(object):
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
 
-    def _binja_cache(self, disassembler_ctx):
+    def _binja_cache_node(self, disassembler_ctx):
         """
         Collect node metadata from the underlying database.
         """
@@ -1138,14 +1117,14 @@ if disassembler.NAME == "IDA":
     import idaapi
     import idautils
     FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
-    NodeMetadata._build_metadata = NodeMetadata._ida_build_metadata
+    NodeMetadata._cache_node = NodeMetadata._ida_cache_node
 
 elif disassembler.NAME == "BINJA":
     import ctypes
     import binaryninja
     from binaryninja import core
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
-    NodeMetadata._cache = NodeMetadata._binja_cache
+    NodeMetadata._cache_node = NodeMetadata._binja_cache_node
 
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

@@ -7,7 +7,7 @@ import traceback
 import collections
 
 from lighthouse.util.misc import *
-from lighthouse.util.debug import catch_errors
+from lighthouse.util.debug import *
 from lighthouse.util.python import *
 from lighthouse.util.qt import await_future, await_lock, flush_qt_events
 from lighthouse.util.disassembler import disassembler

@@ -427,6 +427,12 @@ class DatabasePainter(object):
     #--------------------------------------------------------------------------
 
     def _async_database_painter(self):
+        try:
+            self._async_database_painter2()
+        except:
+            logger.exception("Painter crashed...")
+
+    def _async_database_painter2(self):
         """
         Asynchronous database painting worker loop.
         """

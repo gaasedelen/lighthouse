@@ -2,8 +2,10 @@ import os
 import logging
 
 import idaapi
-from lighthouse.core import Lighthouse
+
+from lighthouse.context import LighthouseContext
 from lighthouse.util.misc import plugin_resource
+from lighthouse.integration.core import LighthouseCore
 
 logger = logging.getLogger("Lighthouse.IDA.Integration")
 
@@ -11,7 +13,7 @@ logger = logging.getLogger("Lighthouse.IDA.Integration")
 # Lighthouse IDA Integration
 #------------------------------------------------------------------------------
 
-class LighthouseIDA(Lighthouse):
+class LighthouseIDA(LighthouseCore):
     """
     Lighthouse UI Integration for IDA Pro.
     """
@@ -29,6 +31,18 @@ class LighthouseIDA(Lighthouse):
 
         # run initialization
         super(LighthouseIDA, self).__init__()
+
+    def get_context(self, dctx):
+        """
+        TODO
+        """
+
+        # create a new LighthouseContext if this is a new disassembler ctx / bv
+        if dctx not in self.lighthouse_contexts:
+            self.lighthouse_contexts[dctx] = LighthouseContext(self, dctx)
+
+        # return the lighthouse context object for this disassembler ctx / bv
+        return self.lighthouse_contexts[dctx]
 
     #--------------------------------------------------------------------------
     # IDA Actions
@@ -335,6 +349,7 @@ class UIHooks(idaapi.UI_Hooks):
         """
         A right click menu is about to be shown. (IDA 7.0+)
         """
+        # TODO/IDA
         if self.integration.director.aggregate.instruction_percent:
             self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
         return 0
