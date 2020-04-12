@@ -315,7 +315,9 @@ class DatabasePainter(object):
             return False # a repaint was requested
 
         # compute the painted instructions that will not get painted over
+        stale_partial_inst = self._painted_instructions - db_coverage.partial_instructions
         stale_inst = self._painted_instructions - db_coverage.coverage
+        stale_inst |= stale_partial_inst
 
         # compute the painted nodes that will not get painted over
         stale_nodes_ea = self._painted_nodes - viewkeys(db_coverage.nodes)

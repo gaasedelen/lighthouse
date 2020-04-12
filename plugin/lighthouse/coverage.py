@@ -3,6 +3,7 @@ import time
 import logging
 import weakref
 import datetime
+import itertools
 import collections
 
 from lighthouse.util import *
@@ -166,6 +167,7 @@ class DatabaseCoverage(object):
         self.functions = {}
         self.instruction_percent = 0.0
         self.partial_nodes = set()
+        self.partial_instructions = set()
 
         #
         # we instantiate a single weakref of ourself (the DatbaseCoverage
@@ -336,6 +338,12 @@ class DatabaseCoverage(object):
                 self.partial_nodes.add(address)
             else:
                 self.partial_nodes.discard(address)
+
+        # finalize the set of instructions executed in partially executed nodes
+        instructions = []
+        for node_address in self.partial_nodes:
+            instructions.append(self.nodes[node_address].executed_instructions)
+        self.partial_instructions = set(itertools.chain.from_iterable(instructions))
 
     def _finalize_functions(self, dirty_functions):
         """
@@ -645,6 +653,7 @@ class DatabaseCoverage(object):
         self.nodes = {}
         self.functions = {}
         self.partial_nodes = set()
+        self.partial_instructions = set()
         self._misaligned_data = set()
 
         # dump the source coverage data back into an 'unmapped' state
