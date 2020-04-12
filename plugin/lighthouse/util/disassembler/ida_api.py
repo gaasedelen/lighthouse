@@ -146,6 +146,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
         # cast the IDA 'twidget' as a Qt widget for use
         widget = sip.wrapinstance(int(twidget), QtWidgets.QWidget)
         widget.name = dockable_name
+        widget.visible = False
 
         # return the dockable QtWidget / container
         return widget
@@ -174,6 +175,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
         # show the dockable widget
         flags = idaapi.PluginForm.WOPN_TAB | idaapi.PluginForm.WOPN_RESTORE | idaapi.PluginForm.WOPN_PERSIST
         idaapi.display_widget(twidget, flags)
+        widget.visible = True
 
         # attempt to 'dock' the widget in a reasonable location
         for target in ["IDA View-A", "Pseudocode-A"]:

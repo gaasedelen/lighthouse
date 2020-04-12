@@ -349,8 +349,21 @@ class UIHooks(idaapi.UI_Hooks):
         """
         A right click menu is about to be shown. (IDA 7.0+)
         """
-        # TODO/IDA
-        if self.integration.director.aggregate.instruction_percent:
+
+        #
+        # if lighthouse hasn't been used yet, there's nothing to do. we also
+        # don't want this event to trigger the creation of a lighthouse
+        # context! so we should bail early in this case...
+        #
+
+        if not self.integration.lighthouse_contexts:
+            return 0
+
+        # inject any of lighthouse's right click context menu's into IDA
+        lctx = self.integration.get_context(None)
+        if lctx.director.aggregate.instruction_percent:
             self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
+
+        # must return 0 for ida...
         return 0
 

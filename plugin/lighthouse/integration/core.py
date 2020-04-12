@@ -42,13 +42,9 @@ class LighthouseCore(object):
         self.palette.theme_changed(self.refresh_theme)
 
         def create_coverage_overview(name, parent, dctx):
-            print("Creating CoverageOverview instance ...") # TODO remove try/catch
-            try:
-                widget = disassembler.create_dockable_widget(parent, name)
-                overview = CoverageOverview(self, dctx, widget)
-                return widget
-            except Exception as e:
-                logger.exception("Wid failed")
+            widget = disassembler.create_dockable_widget(parent, name)
+            overview = CoverageOverview(self, dctx, widget)
+            return widget
 
         # the coverage overview widget
         disassembler.register_dockable("Coverage Overview", create_coverage_overview)
@@ -196,7 +192,6 @@ class LighthouseCore(object):
 
         # the coverage overview is already open & visible, nothing to do
         if lctx.coverage_overview and lctx.coverage_overview.visible:
-            print(lctx.coverage_overview.widget.sizeHint())
             return
 
         # show the coverage overview
