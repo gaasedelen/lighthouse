@@ -1,7 +1,9 @@
+import os
 import sys
 import time
 import logging
 import binascii
+import tempfile
 import functools
 
 import idaapi
@@ -13,7 +15,7 @@ if int(idaapi.get_kernel_version()[0]) < 7:
 
 from .api import DisassemblerCoreAPI, DisassemblerContextAPI
 from ..qt import *
-from ..misc import is_mainthread
+from ..misc import is_mainthread, get_string_between
 
 logger = logging.getLogger("Lighthouse.API.IDA")
 
@@ -118,7 +120,19 @@ class IDACoreAPI(DisassemblerCoreAPI):
         disassembly view, and take a screenshot of said widget. It will then
         attempt to extract the color of a single background pixel (hopefully).
         """
-        return self._get_ida_bg_color_ida7()
+
+        # method one
+        color = self._get_ida_bg_color_from_file()
+        if color:
+            return color
+
+        # method two, fallback
+        color = self._get_ida_bg_color_from_view()
+        if not color:
+            return None
+
+        # return the found background color
+        return color
 
     def is_msg_inited(self):
         return idaapi.is_msg_inited()
@@ -188,11 +202,64 @@ class IDACoreAPI(DisassemblerCoreAPI):
     # Theme Prediction Helpers (Internal)
     #--------------------------------------------------------------------------
 
-    def _get_ida_bg_color_ida7(self):
+    def _get_ida_bg_color_from_file(self):
         """
-        Get the background color of the IDA disassembly view. (IDA 7+)
+        Get the background color of the IDA disassembly views via HTML export.
         """
-        return QtGui.QColor(0,0,0) # TODO/IDA
+        logger.debug("Attempting to get IDA disassembly background color from HTML...")
+
+        #
+        # TODO/IDA: we need better early detection for if IDA is fully ready,
+        # this isn't effective and this func theme func can crash IDA if
+        # called too early (eg, during db load...)
+        #
+
+        imagebase = idaapi.get_imagebase()
+        #if imagebase == idaapi.BADADDR:
+        #    logger.debug(" - No imagebase...")
+        #    return None
+
+        # create a temp file that we can write to
+        handle, path = tempfile.mkstemp()
+        os.close(handle)
+
+        # attempt to generate an 'html' dump of the first 0x20 bytes (instructions)
+        ida_fd = idaapi.fopenWT(path)
+        idaapi.gen_file(idaapi.OFILE_LST, ida_fd, imagebase, imagebase+0x20, idaapi.GENFLG_GENHTML)
+        idaapi.eclose(ida_fd)
+
+        # read the dumped text
+        with open(path, "r") as fd:
+            html = fd.read()
+
+        # delete the temp file from disk
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+        # attempt to parse the user's disassembly background color from the html
+        bg_color_text = get_string_between(html, '<body bgcolor="', '">')
+        if bg_color_text:
+            logger.debug(" - Extracted bgcolor '%s' from regex!" % bg_color_text)
+            return QtGui.QColor(bg_color_text)
+
+        # sometimes the above one isn't present... so try this one
+        bg_color_text = get_string_between(html, '.c1 \{ background-color: ', ';')
+        if bg_color_text:
+            logger.debug(" - Extracted background-color '%s' from regex!" % bg_color_text)
+            return QtGui.QColor(bg_color_text)
+
+        logger.debug(" - HTML color regex failed...")
+        logger.debug(html)
+        return None
+
+    def _get_ida_bg_color_from_view(self):
+        """
+        Get the background color of the IDA disassembly views via widget inspection.
+        """
+        logger.debug("Attempting to get IDA disassembly background color from view...")
+
         names  = ["Enums", "Structures"]
         names += ["Hex View-%u" % i for i in range(5)]
         names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
@@ -203,7 +270,8 @@ class IDACoreAPI(DisassemblerCoreAPI):
             if twidget:
                 break
         else:
-            raise RuntimeError("Failed to find donor view")
+            logger.debug(" - Failed to find donor view...")
+            return None
 
         # touch the target form so we know it is populated
         self._touch_ida_window(twidget)

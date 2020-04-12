@@ -103,7 +103,9 @@ class LighthousePalette(object):
         # initialize the user theme directory
         self._populate_user_theme_dir()
 
-        self.warmup()
+        # load a placeholder theme (unhinted) for inital Lighthoue bring-up
+        self._load_preferred_theme(True)
+        self._initialized = False
 
     #----------------------------------------------------------------------
     # Properties
@@ -162,6 +164,8 @@ class LighthousePalette(object):
         if self._initialized:
             return
 
+        logger.debug("Warming up theme subsystem...")
+
         #
         # attempt to load the user's preferred (or hinted) theme. if we are
         # successful, then there's nothing else to do!
@@ -170,6 +174,7 @@ class LighthousePalette(object):
         self._refresh_theme_hints()
         if self._load_preferred_theme():
             self._initialized = True
+            logger.debug(" - warmup complete, using preferred theme!")
             return
 
         #
@@ -197,6 +202,7 @@ class LighthousePalette(object):
             lmsg("Could not load Lighthouse fallback theme!") # this is a bad place to be...
             return
 
+        logger.debug(" - warmup complete, using hint-recommended theme!")
         self._initialized = True
 
     def interactive_change_theme(self):
@@ -249,15 +255,17 @@ class LighthousePalette(object):
 
         self._refresh_theme_hints()
 
-        # load & apply theme from disk
-        if self._load_theme(filename):
+        # if the selected theme fails to load, throw a visible warning
+        if not self._load_theme(filename):
+            disassembler.warning(
+                "Failed to load Lighthouse user theme!\n\n"
+                "Please check the console for more information..."
+            )
             return
 
-        # if the selected theme failed to load, throw a visible warning
-        disassembler.warning(
-            "Failed to load Lighthouse user theme!\n\n"
-            "Please check the console for more information..."
-        )
+        # since everthing looks like it loaded okay, save this as the preferred theme
+        with open(os.path.join(get_user_theme_dir(), ".active_theme"), "w") as f:
+            f.write(filename)
 
     def refresh_theme(self):
         """
@@ -311,6 +319,7 @@ class LighthousePalette(object):
         """
         Load the required theme fields from a donor in-box theme.
         """
+        logger.debug("Loading required theme fields from disk...")
 
         # load a known-good theme from the plugin's in-box themes
         filepath = os.path.join(get_plugin_theme_dir(), self._default_themes["dark"])
@@ -327,13 +336,14 @@ class LighthousePalette(object):
         """
         Load the user's preferred theme, or the one hinted at by the theme subsystem.
         """
+        logger.debug("Loading preferred theme from disk...")
         user_theme_dir = get_user_theme_dir()
 
         # attempt te read the name of the user's active / preferred theme name
         active_filepath = os.path.join(user_theme_dir, ".active_theme")
         try:
             theme_name = open(active_filepath).read().strip()
-            logger.debug("Got '%s' from .active_theme" % theme_name)
+            logger.debug(" - Got '%s' from .active_theme" % theme_name)
         except (OSError, IOError):
             theme_name = None
 
@@ -354,7 +364,7 @@ class LighthousePalette(object):
 
             if self._user_qt_hint == self._user_disassembly_hint:
                 theme_name = self._default_themes[self._user_qt_hint]
-                logger.debug("No preferred theme, hints suggest theme '%s'" % theme_name)
+                logger.debug(" - No preferred theme, hints suggest theme '%s'" % theme_name)
 
             #
             # the UI hints don't match, so the user is using some ... weird
@@ -383,6 +393,7 @@ class LighthousePalette(object):
         """
         Pefrom rudimentary theme validation.
         """
+        logger.debug(" - Validating theme fields for '%s'..." % theme["name"])
         user_fields = theme.get("fields", None)
         if not user_fields:
             lmsg("Could not find theme 'fields' definition")
@@ -428,10 +439,6 @@ class LighthousePalette(object):
             lmsg("Failed to load Lighthouse user theme\n%s" % e)
             return False
 
-        # since everthing looks like it loaded okay, save this as the preferred theme
-        with open(os.path.join(get_user_theme_dir(), ".active_theme"), "w") as f:
-            f.write(filepath)
-
         # return success
         self._notify_theme_changed()
         return True
@@ -440,7 +447,7 @@ class LighthousePalette(object):
         """
         Parse the Lighthouse theme file from the given filepath.
         """
-        logging.debug("Opening theme '%s'..." % filepath)
+        logger.debug(" - Reading theme file '%s'..." % filepath)
 
         # attempt to load the theme file contents from disk
         raw_theme = open(filepath, "r").read()
@@ -455,7 +462,7 @@ class LighthousePalette(object):
         """
         Apply the given theme definition to Lighthouse.
         """
-        logging.debug("Applying theme '%s'..." % theme["name"])
+        logger.debug(" - Applying theme '%s'..." % theme["name"])
         colors = theme["colors"]
 
         for field_name, color_entry in theme["fields"].items():
@@ -500,6 +507,7 @@ class LighthousePalette(object):
         # the rest of the fields should be considered 'qt' fields
         if self._user_qt_hint == "dark":
             return dark
+
         return light
 
     #--------------------------------------------------------------------------
@@ -511,7 +519,7 @@ class LighthousePalette(object):
         Peek at the UI context to infer what kind of theme the user might be using.
         """
         self._user_qt_hint = self._qt_theme_hint()
-        self._user_disassembly_hint = self._disassembly_theme_hint()
+        self._user_disassembly_hint = self._disassembly_theme_hint() or "dark"
 
     def _disassembly_theme_hint(self):
         """
@@ -529,6 +537,9 @@ class LighthousePalette(object):
         #
 
         bg_color = disassembler.get_disassembly_background_color()
+        if not bg_color:
+            logger.debug(" - Failed to get hint for disassembly background...")
+            return None
 
         # return 'dark' or 'light'
         return test_color_brightness(bg_color)

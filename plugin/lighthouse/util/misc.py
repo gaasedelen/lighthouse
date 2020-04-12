@@ -1,4 +1,5 @@
 import os
+import re
 import weakref
 import datetime
 import threading
@@ -80,6 +81,16 @@ def human_timestamp(timestamp):
     """
     dt = datetime.datetime.fromtimestamp(timestamp)
     return dt.strftime("%b %d %Y %H:%M:%S")
+
+def get_string_between(text, before, after):
+    """
+    Get the string between two strings.
+    """
+    pattern = "%s(.*)%s" % (before, after)
+    result = re.search(pattern, text)
+    if not result:
+        return None
+    return result.group(1)
 
 #------------------------------------------------------------------------------
 # Python Callback / Signals
