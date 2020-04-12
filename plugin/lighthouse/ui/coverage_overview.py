@@ -22,8 +22,6 @@ class CoverageOverview(object):
     """
 
     def __init__(self, core, dctx, widget):
-        #super(CoverageOverview, self).__init__(parent, name)
-        #    plugin_resource(os.path.join("icons", "overview.png"))
         self._core = core
         self.dctx = dctx
         self.widget = widget
@@ -31,10 +29,12 @@ class CoverageOverview(object):
         self.lctx = self._core.get_context(self.dctx)
         self.lctx.coverage_overview = self
         self.director = self.lctx.director
+        self.initialized = False
 
         # see the EventProxy class below for more details
         self._events = EventProxy(self)
         self.widget.installEventFilter(self._events)
+        #    plugin_resource(os.path.join("icons", "overview.png"))
 
         # initialize the plugin UI
         self._ui_init()
@@ -251,6 +251,15 @@ debugger_docked = False
 
 class EventProxy(QtCore.QObject):
 
+    #
+    # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7? Just gonna ship our own...
+    # - https://doc.qt.io/qt-5/qevent.html#Type-enum
+    #
+
+    EventShow = 17
+    EventDestroy = 16
+    EventLayoutRequest = 76
+
     def __init__(self, target):
         super(EventProxy, self).__init__()
         self._target = weakref.proxy(target)
@@ -262,20 +271,48 @@ class EventProxy(QtCore.QObject):
         # cleanup after ourselves in the interest of stability
         #
 
-        if int(event.type()) == 16: # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7?
+        if int(event.type()) == self.EventDestroy:
             source.removeEventFilter(self)
             self._target.terminate()
 
         #
+        # this seems to be 'roughly' the last event triggered after the widget
+        # is done initializing in both IDA and Binja, but prior to the first
+        # user-triggered 'show' events.
+        #
+        # this is mostly to account for the fact that binja 'shows' the widget
+        # when it is initially created (outside of our control). this was
+        # causing lighthouse to automatically cache database metadata when
+        # every database was opened ...
+        #
+
+        elif int(event.type()) == self.EventLayoutRequest and not self._target.initialized:
+            self._target.initialized = True
+
+        #
+        # this is used to hook the 'show' event of the coverage overview. in
+        # particular, we use this event to ensure the metadata cache is built
+        # and available for use.
+        #
+        # this should only ever kick off a run if the user attempts to open the
+        # coverage overview before loading a coverage file. this is useful,
+        # because the overview does have some utility even without coverage...
+        #
+
+        elif int(event.type()) == self.EventShow and self._target.initialized:
+            if not self._target.director.metadata.cached:
+                self._target.director.refresh()
+
+        #
         # this is an unknown event, but it seems to fire when the widget is
-        # being saved/restored by a QMainWidget. we use this to try and ensure
-        # the Coverage Overview stays docked when flipping between Reversing
-        # and Debugging states in IDA.
+        # being saved/restored by a QMainWidget (in IDA). we use this to try
+        # and ensure the Coverage Overview stays docked when flipping between
+        # Reversing and Debugging states in IDA.
         #
         # See issue #16 on github for more information.
         #
 
-        if int(event.type()) == 2002 and disassembler.NAME == "IDA":
+        elif int(event.type()) == 2002 and disassembler.NAME == "IDA":
             import idaapi
 
             #

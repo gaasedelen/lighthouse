@@ -1334,8 +1334,31 @@ class CoverageDirector(object):
         Internal refresh routine, wrapped to help catch bugs for now.
         """
 
+        #
         # (re) build our metadata cache of the underlying database
-        self.metadata.refresh(metadata_progress)
+        #
+
+        if not is_mainthread():
+            self.metadata.refresh(metadata_progress)
+
+        #
+        # NOTE: optionally, we call the async vesrion here so that we do not pin
+        # the mainthread for disassemblers that will primarily read from the
+        # database in a background thread (eg, Binja)
+        #
+        # for example, this refresh action may be called from a UI event or
+        # clicking 'Open Coverage Overview' (eg, the mainthread). if we pin
+        # the mainthread while doing database reads from a background thread,
+        # we cannot post UI updates such as progress updates to the user
+        #
+        # using an async refresh allows us to 'softly' spin the main (UI)
+        # thread and get UI updates while the refresh runs
+        #
+
+        else:
+            future = self.metadata.refresh_async(metadata_progress)
+            self.metadata.go_synchronous()
+            await_future(future)
 
         # (re) map each set of loaded coverage data to the database
         self._refresh_database_coverage()
