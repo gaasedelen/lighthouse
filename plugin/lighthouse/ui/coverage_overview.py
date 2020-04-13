@@ -4,7 +4,9 @@ import weakref
 
 from lighthouse.util.qt import *
 from lighthouse.util.misc import plugin_resource
+from lighthouse.util.update import check_for_update
 from lighthouse.util.disassembler import disassembler
+
 from lighthouse.composer import ComposingShell
 from lighthouse.ui.coverage_table import CoverageTableView, CoverageTableModel, CoverageTableController
 from lighthouse.ui.coverage_combobox import CoverageComboBox
@@ -292,17 +294,36 @@ class EventProxy(QtCore.QObject):
 
         #
         # this is used to hook a little bit after the 'show' event of the
-        # coverage overview. in particular, we use this event to ensure the
-        # metadata cache is built and available for use.
+        # coverage overview. this is the most universal signal that the
+        # user is *actually* trying to use lighthouse in a meaningful way...
         #
-        # this should only ever kick off a run if the user attempts to open the
-        # coverage overview before loading a coverage file. this is useful,
-        # because the overview does have some utility even without coverage...
+        # we will use this moment first to check if they skipped straight to
+        # 'go' and opened the coverage overview without the metadata cache
+        # getting built.
+        #
+        # we also want to send off a one-time (per session) update check to
+        # see if lighthoue has a plugin update available...
         #
 
         elif int(event.type()) == self.EventUpdateLater:
-            if self._target.visible not self._target.director.metadata.cached:
-                self._target.director.refresh()
+
+            # we should only care to attempt these actions if the UI is visible
+            if self._target.visible:
+
+                # simple async request to github to see if we're up to date
+                check_for_update(self._target._core.PLUGIN_VERSION, disassembler.warning)
+
+                #
+                # this should only ever kick off a run if the user attempts to open the
+                # coverage overview before loading a coverage file. this is useful,
+                # because the overview does have some utility even without coverage...
+                #
+                # this case should only happen if the user does 'Show Coverage
+                # Overview' from the binja-controlled Window menu entry...
+                #
+
+                if not self._target.director.metadata.cached:
+                    self._target.director.refresh()
 
         #
         # this is an unknown event, but it seems to fire when the widget is

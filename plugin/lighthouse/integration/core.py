@@ -13,19 +13,19 @@ from lighthouse.exceptions import *
 logger = logging.getLogger("Lighthouse.Core")
 
 #------------------------------------------------------------------------------
-# Plugin Metadata
-#------------------------------------------------------------------------------
-
-PLUGIN_VERSION = "0.9.0-DEV"
-AUTHORS        = "Markus Gaasedelen"
-DATE           = "2020"
-
-#------------------------------------------------------------------------------
 # Lighthouse Plugin Core
 #------------------------------------------------------------------------------
 
 class LighthouseCore(object):
     __metaclass__ = abc.ABCMeta
+
+    #--------------------------------------------------------------------------
+    # Plugin Metadata
+    #--------------------------------------------------------------------------
+
+    PLUGIN_VERSION = "0.9.0-DEV"
+    AUTHORS        = "Markus Gaasedelen"
+    DATE           = "2020"
 
     #--------------------------------------------------------------------------
     # Initialization
@@ -63,19 +63,12 @@ class LighthouseCore(object):
         """
         self._uninstall_ui()
 
-        # spin donw any active contexts (stop threads, cleanup qt state, etc)
+        # spin down any active contexts (stop threads, cleanup qt state, etc)
         for lctx in self.lighthouse_contexts.values():
             lctx.terminate()
 
         logger.info("-"*75)
         logger.info("Plugin terminated")
-
-    @abc.abstractmethod
-    def get_context(self, dctx):
-        """
-        Get the LighthouseContext object for a given disassembler context.
-        """
-        pass
 
     def print_banner(self):
         """
@@ -83,7 +76,7 @@ class LighthouseCore(object):
         """
 
         # build the main banner title
-        banner_params = (PLUGIN_VERSION, AUTHORS, DATE)
+        banner_params = (self.PLUGIN_VERSION, self.AUTHORS, self.DATE)
         banner_title  = "Lighthouse v%s - (c) %s - %s" % banner_params
 
         # print plugin banner
@@ -92,6 +85,17 @@ class LighthouseCore(object):
         lmsg("---[ %s" % banner_title)
         lmsg("-"*75)
         lmsg("")
+
+    #--------------------------------------------------------------------------
+    # Disassembler / Database Context Selector
+    #--------------------------------------------------------------------------
+
+    @abc.abstractmethod
+    def get_context(self, dctx):
+        """
+        Get the LighthouseContext object for a given disassembler context.
+        """
+        pass
 
     #--------------------------------------------------------------------------
     # UI Integration (Internal)
