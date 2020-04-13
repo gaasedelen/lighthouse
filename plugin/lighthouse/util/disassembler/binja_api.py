@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+
 import logging
 import functools
 import threading
 import collections
 
-
 import binaryninja
+import binaryninjaui
 from binaryninja import PythonScriptingInstance, binaryview
 from binaryninjaui import DockHandler, DockContextHandler, UIContext, UIActionHandler
 from binaryninja.plugin import BackgroundTaskThread
@@ -147,9 +148,8 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
     def get_disassembler_user_directory(self):
         return os.path.split(binaryninja.user_plugin_path())[0]
 
-    def get_disassembly_background_color(self): # TODO/BINJA - use theme apis...
-        palette = QtGui.QPalette()
-        return palette.color(QtGui.QPalette.Button)
+    def get_disassembly_background_color(self):
+        return binaryninjaui.getThemeColor(binaryninjaui.ThemeColor.LinearDisassemblyBlockColor)
 
     def is_msg_inited(self):
         return True

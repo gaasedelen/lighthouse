@@ -42,6 +42,7 @@ class LighthouseCore(object):
         self.palette.theme_changed(self.refresh_theme)
 
         def create_coverage_overview(name, parent, dctx):
+            self.palette.warmup()
             widget = disassembler.create_dockable_widget(parent, name)
             overview = CoverageOverview(self, dctx, widget)
             return widget

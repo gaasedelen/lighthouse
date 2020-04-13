@@ -259,6 +259,7 @@ class EventProxy(QtCore.QObject):
     EventShow = 17
     EventDestroy = 16
     EventLayoutRequest = 76
+    EventUpdateLater = 78
 
     def __init__(self, target):
         super(EventProxy, self).__init__()
@@ -286,21 +287,21 @@ class EventProxy(QtCore.QObject):
         # every database was opened ...
         #
 
-        elif int(event.type()) == self.EventLayoutRequest and not self._target.initialized:
+        elif int(event.type()) == self.EventLayoutRequest:
             self._target.initialized = True
 
         #
-        # this is used to hook the 'show' event of the coverage overview. in
-        # particular, we use this event to ensure the metadata cache is built
-        # and available for use.
+        # this is used to hook a little bit after the 'show' event of the
+        # coverage overview. in particular, we use this event to ensure the
+        # metadata cache is built and available for use.
         #
         # this should only ever kick off a run if the user attempts to open the
         # coverage overview before loading a coverage file. this is useful,
         # because the overview does have some utility even without coverage...
         #
 
-        elif int(event.type()) == self.EventShow and self._target.initialized:
-            if not self._target.director.metadata.cached:
+        elif int(event.type()) == self.EventUpdateLater:
+            if self._target.visible not self._target.director.metadata.cached:
                 self._target.director.refresh()
 
         #
