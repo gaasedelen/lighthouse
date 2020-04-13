@@ -376,4 +376,4 @@ class DockableWidget(QtWidgets.QWidget, DockContextHandler):
         self._active_view = shiboken.getCppPointer(view_frame)[0]
         if self.visible:
             dock_handler = DockHandler.getActiveDockHandler()
-            dock_handler.setVisible(self.name, True)
+            dock_handler.setVisible(self.m_name, True)

@@ -115,6 +115,8 @@ def warn_errors(errors):
     """
     Warn the user of any encountered errors with a messagebox.
     """
+    if not errors:
+        return
 
     for error_type, error_list in iteritems(errors):
 
