@@ -4,7 +4,6 @@ import weakref
 
 from lighthouse.util.qt import *
 from lighthouse.util.misc import plugin_resource
-from lighthouse.util.update import check_for_update
 from lighthouse.util.disassembler import disassembler
 
 from lighthouse.composer import ComposingShell
@@ -23,14 +22,12 @@ class CoverageOverview(object):
     The Coverage Overview Widget.
     """
 
-    def __init__(self, core, dctx, widget):
-        self._core = core
-        self.dctx = dctx
+    def __init__(self, lctx, widget):
+        self.lctx = lctx
         self.widget = widget
-
-        self.lctx = self._core.get_context(self.dctx)
-        self.lctx.coverage_overview = self
         self.director = self.lctx.director
+
+        self.lctx.coverage_overview = self
         self.initialized = False
 
         # see the EventProxy class below for more details
@@ -301,29 +298,13 @@ class EventProxy(QtCore.QObject):
         # 'go' and opened the coverage overview without the metadata cache
         # getting built.
         #
-        # we also want to send off a one-time (per session) update check to
-        # see if lighthoue has a plugin update available...
+        # this case should only happen if the user does 'Show Coverage
+        # Overview' from the binja-controlled Window menu entry...
         #
 
         elif int(event.type()) == self.EventUpdateLater:
-
-            # we should only care to attempt these actions if the UI is visible
-            if self._target.visible:
-
-                # simple async request to github to see if we're up to date
-                check_for_update(self._target._core.PLUGIN_VERSION, disassembler.warning)
-
-                #
-                # this should only ever kick off a run if the user attempts to open the
-                # coverage overview before loading a coverage file. this is useful,
-                # because the overview does have some utility even without coverage...
-                #
-                # this case should only happen if the user does 'Show Coverage
-                # Overview' from the binja-controlled Window menu entry...
-                #
-
-                if not self._target.director.metadata.cached:
-                    self._target.director.refresh()
+            if self._target.visible and not self._target.director.metadata.cached:
+                self._target.director.refresh()
 
         #
         # this is an unknown event, but it seems to fire when the widget is

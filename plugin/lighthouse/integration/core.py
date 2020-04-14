@@ -2,11 +2,12 @@ import os
 import abc
 import logging
 
-from lighthouse.ui import *
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
+from lighthouse.util.update import check_for_update
 from lighthouse.util.disassembler import disassembler, DisassemblerContextAPI
 
+from lighthouse.ui import *
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.exceptions import *
 
@@ -35,6 +36,7 @@ class LighthouseCore(object):
         """
         Load the plugin, and integrate its UI into the disassembler.
         """
+        self._update_checked = False
         self.lighthouse_contexts = {}
 
         # the plugin color palette
@@ -43,8 +45,9 @@ class LighthouseCore(object):
 
         def create_coverage_overview(name, parent, dctx):
             self.palette.warmup()
+            lctx = self.get_context(dctx)
             widget = disassembler.create_dockable_widget(parent, name)
-            overview = CoverageOverview(self, dctx, widget)
+            overview = CoverageOverview(lctx, widget)
             return widget
 
         # the coverage overview widget
@@ -201,6 +204,9 @@ class LighthouseCore(object):
 
         # show the coverage overview
         disassembler.show_dockable("Coverage Overview")
+
+        # trigger an update check (this should only ever really 'check' once)
+        self.check_for_update()
 
     def open_coverage_xref(self, address, dctx=None):
         """
@@ -390,6 +396,20 @@ class LighthouseCore(object):
 
         # finally, emit any notable issues that occurred during load
         warn_errors(errors)
+
+    def check_for_update(self):
+        """
+        Check if there is an update available for Lighthouse.
+        """
+        if self._update_checked:
+            return
+
+        # wrap the callback (a popup) to ensure it gets called from the UI
+        callback = disassembler.execute_ui(disassembler.warning)
+
+        # kick off the async update check
+        check_for_update(self.PLUGIN_VERSION, callback)
+        self._update_checked = True
 
     #--------------------------------------------------------------------------
     # Scheduled

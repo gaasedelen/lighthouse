@@ -2,32 +2,30 @@ import re
 import json
 import logging
 import threading
-import urllib.request
+
+try:
+    from urllib2 import urlopen # Py2
+except ImportError:
+    from urllib.request import urlopen # Py3
 
 logger = logging.getLogger("Lighthouse.Util.Update")
 
+#------------------------------------------------------------------------------
+# Update Checking
+#------------------------------------------------------------------------------
+
 UPDATE_URL = "https://api.github.com/repos/gaasedelen/lighthouse/releases/latest"
-update_checked = False
 
 def check_for_update(current_version, callback):
     """
     Perform a plugin update check.
     """
-    global update_checked
-
-    # only ever perform the update check once per session...
-    if update_checked:
-        return
-
     update_thread = threading.Thread(
         target=async_update_check,
         args=(current_version, callback,),
         name="UpdateChecker"
     )
     update_thread.start()
-
-    # burn the update checking code
-    update_checked = True
 
 def async_update_check(current_version, callback):
     """
@@ -36,7 +34,7 @@ def async_update_check(current_version, callback):
     logger.debug("Checking for update...")
 
     try:
-        response = urllib.request.urlopen(UPDATE_URL, timeout=5.0)
+        response = urlopen(UPDATE_URL, timeout=5.0)
         html = response.read()
         info = json.loads(html)
         remote_version = info["tag_name"]
@@ -45,12 +43,12 @@ def async_update_check(current_version, callback):
         return
 
     # convert vesrion #'s to integer for easy compare...
-    version_remote = int(re.findall('\d+', remote_version)[0])
-    version_local = int(re.findall('\d+', current_version)[0])
+    version_remote = int(''.join(re.findall('\d+', remote_version)))
+    version_local = int(''.join(re.findall('\d+', current_version)))
 
     # no updates available...
     logger.debug(" - Local: '%s' vs Remote: '%s'" % (current_version, remote_version))
-    if version_remote <= version_local:
+    if version_local >= version_remote:
         logger.debug(" - No update needed...")
         return
 

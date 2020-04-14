@@ -22,8 +22,8 @@ class LighthouseContext(object):
 
     def __init__(self, core, dctx):
         disassembler[self] = DisassemblerContextAPI(dctx)
-        self.dctx = dctx
         self.core = core
+        self.dctx = dctx
 
         # the database metadata cache
         self.metadata = DatabaseMetadata(self)
