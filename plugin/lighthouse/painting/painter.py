@@ -294,6 +294,7 @@ class DatabasePainter(object):
         """
         Repaint the current database based on the current state.
         """
+        lmsg("Painting database...")
 
         # more code-friendly, readable aliases (db_XX == database_XX)
         db_coverage = self.director.coverage
@@ -342,7 +343,7 @@ class DatabasePainter(object):
 
         #------------------------------------------------------------------
         end = time.time()
-        logger.debug("Full Paint took %s seconds" % (end - start))
+        lmsg(" - Painting took %.2f seconds" % (end - start))
         logger.debug(" stale_inst:   %s" % "{:,}".format(len(stale_inst)))
         logger.debug(" fresh inst:   %s" % "{:,}".format(len(db_coverage.coverage)))
         logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
@@ -355,6 +356,9 @@ class DatabasePainter(object):
         """
         Clear all paint from the current database.
         """
+        lmsg("Clearing database paint...")
+        start = time.time()
+
         db_metadata = self.director.metadata
         instructions = db_metadata.instructions
         nodes = viewvalues(db_metadata.nodes)
@@ -366,6 +370,9 @@ class DatabasePainter(object):
         # clear all nodes
         if not self._async_action(self._clear_nodes, nodes):
             return False # a repaint was requested
+
+        end = time.time()
+        lmsg(" - Database paint cleared in %.2f seconds..." % (end-start))
 
         # paint finished successfully
         return True
@@ -432,6 +439,7 @@ class DatabasePainter(object):
         try:
             self._async_database_painter2()
         except:
+            lmsg("PAINTER THREAD CRASHED :'(")
             logger.exception("Painter crashed...")
 
     def _async_database_painter2(self):
