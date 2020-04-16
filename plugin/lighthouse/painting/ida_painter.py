@@ -1,8 +1,10 @@
+import struct
 import logging
 import functools
 
 import idc
 import idaapi
+from idaapi import clr_abits, set_abits, netnode
 
 from lighthouse.util import *
 from lighthouse.util.disassembler import disassembler
@@ -172,13 +174,13 @@ class IDAPainter(DatabasePainter):
         self._action_complete.set()
 
     @execute_paint
-    def _paint_nodes(self, nodes_coverage):
-        self.paint_nodes(nodes_coverage)
+    def _paint_nodes(self, node_addresses):
+        self.paint_nodes(node_addresses)
         self._action_complete.set()
 
     @execute_paint
-    def _clear_nodes(self, nodes_metadata):
-        self.clear_nodes(nodes_metadata)
+    def _clear_nodes(self, node_addresses):
+        self.clear_nodes(node_addresses)
         self._action_complete.set()
 
     @execute_paint
@@ -202,8 +204,11 @@ class IDAPainter(DatabasePainter):
         """
         Paint instruction level coverage defined by the current database mapping.
         """
+        color = struct.pack("I", self.palette.coverage_paint+1)
         for address in instructions:
-            idaapi.set_item_color(address, self.palette.coverage_paint)
+            set_abits(address, 0x40000)
+            nn = netnode(address)
+            nn.supset(20, color, 'A')
         self._painted_instructions |= set(instructions)
 
     def clear_instructions(self, instructions):
@@ -211,47 +216,48 @@ class IDAPainter(DatabasePainter):
         Clear paint from the given instructions.
         """
         for address in instructions:
-            idaapi.set_item_color(address, idc.DEFCOLOR)
+            clr_abits(address, 0x40000)
         self._painted_instructions -= set(instructions)
 
-    def paint_nodes(self, nodes_coverage):
+    def paint_nodes(self, node_addresses):
         """
         Paint node level coverage defined by the current database mappings.
         """
+        db_coverage = self.director.coverage
         db_metadata = self.director.metadata
 
         # create a node info object as our vehicle for setting the node color
         node_info = idaapi.node_info_t()
+        node_info.bg_color = self.palette.coverage_paint
+        node_flags = idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
 
         #
         # loop through every node that we have coverage data for, painting them
         # in the IDA graph view as applicable.
         #
 
-        for node_coverage in nodes_coverage:
-            node_metadata = db_metadata.nodes[node_coverage.address]
+        for node_address in node_addresses:
+            node_coverage = db_coverage.nodes[node_address]
+            node_metadata = db_metadata.nodes[node_address]
 
             # ignore nodes that are only partially executed
             if node_coverage.instructions_executed != node_metadata.instruction_count:
                 continue
 
             # get the function address for this node (there should only be one...)
-            function_metadata = db_metadata.get_functions_by_node(node_coverage.address)[0]
-
-            # assign the background color we would like to paint to this node
-            node_info.bg_color = self.palette.coverage_paint
+            function_metadata = db_metadata.get_functions_by_node(node_address)[0]
 
             # do the *actual* painting of a single node instance
-            idaapi.set_node_info(
+            set_node_info(
                 function_metadata.address,
                 node_metadata.id,
                 node_info,
-                idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
+                node_flags
             )
 
-            self._painted_nodes.add(node_metadata.address)
+        self._painted_nodes |= set(node_addresses)
 
-    def clear_nodes(self, nodes_metadata):
+    def clear_nodes(self, node_addresses):
         """
         Clear paint from the given graph nodes.
         """
@@ -260,26 +266,28 @@ class IDAPainter(DatabasePainter):
         # create a node info object as our vehicle for resetting the node color
         node_info = idaapi.node_info_t()
         node_info.bg_color = idc.DEFCOLOR
+        node_flags = idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
 
         #
         # loop through every node that we have metadata data for, clearing
         # their paint (color) in the IDA graph view as applicable.
         #
 
-        for node_metadata in nodes_metadata:
+        for node_address in node_addresses:
+            node_metadata = db_metadata.nodes[node_address]
 
             # get the function address for this node (there should only be one...)
-            function_metadata = db_metadata.get_functions_by_node(node_metadata.address)[0]
+            function_metadata = db_metadata.get_functions_by_node(node_address)[0]
 
             # do the *actual* painting of a single node instance
-            idaapi.set_node_info(
+            set_node_info(
                 function_metadata.address,
                 node_metadata.id,
                 node_info,
-                idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
+                node_flags
             )
 
-            self._painted_nodes.discard(node_metadata.address)
+        self._painted_nodes -= set(node_addresses)
 
     #------------------------------------------------------------------------------
     # Painting - HexRays (Decompilation / Source)

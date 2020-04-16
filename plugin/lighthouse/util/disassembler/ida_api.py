@@ -140,6 +140,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
     def warning(self, text):
         idaapi.warning(text)
 
+    @execute_ui.__func__
     def message(self, message):
         print(message)
 

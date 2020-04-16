@@ -13,7 +13,7 @@ class DatabasePainter(object):
     """
     __metaclass__ = abc.ABCMeta
 
-    PAINTER_SLEEP = 0.001
+    PAINTER_SLEEP = 0.01
 
     MSG_TERMINATE = 0
     MSG_REPAINT = 1
@@ -316,38 +316,39 @@ class DatabasePainter(object):
             return False # a repaint was requested
 
         # compute the painted instructions that will not get painted over
-        stale_partial_inst = self._painted_instructions - db_coverage.partial_instructions
-        stale_inst = self._painted_instructions - db_coverage.coverage
-        stale_inst |= stale_partial_inst
-
-        # compute the painted nodes that will not get painted over
-        stale_nodes_ea = self._painted_nodes - viewkeys(db_coverage.nodes)
-        stale_nodes_ea |= db_coverage.partial_nodes
-        stale_nodes = [db_metadata.nodes[ea] for ea in stale_nodes_ea]
+        stale_partial_inst = self._painted_instructions & db_coverage.partial_instructions
+        stale_instr = self._painted_instructions - db_coverage.coverage
+        stale_instr |= stale_partial_inst
 
         # clear old instruction paint
-        if not self._async_action(self._clear_instructions, stale_inst):
+        if not self._async_action(self._clear_instructions, stale_instr):
             return False # a repaint was requested
+
+        # compute the painted nodes that will not get painted over
+        stale_nodes = self._painted_nodes - viewkeys(db_coverage.nodes)
+        stale_nodes |= db_coverage.partial_nodes
 
         # clear old node paint
         if not self._async_action(self._clear_nodes, stale_nodes):
             return False # a repaint was requested
 
         # paint new instructions
-        if not self._async_action(self._paint_instructions, db_coverage.coverage):
+        new_instr = sorted(db_coverage.coverage - self._paint_instructions)
+        if not self._async_action(self._paint_instructions, new_instr):
             return False # a repaint was requested
 
         # paint new nodes
-        if not self._async_action(self._paint_nodes, itervalues(db_coverage.nodes)):
+        new_nodev = sorted(viewkeys(db_coverage.nodes) - self._paint_nodes)
+        if not self._async_action(self._paint_nodes, new_nodes):
             return False # a repaint was requested
 
         #------------------------------------------------------------------
         end = time.time()
         lmsg(" - Painting took %.2f seconds" % (end - start))
-        logger.debug(" stale_inst:   %s" % "{:,}".format(len(stale_inst)))
-        logger.debug(" fresh inst:   %s" % "{:,}".format(len(db_coverage.coverage)))
+        logger.debug(" stale_instr:  %s" % "{:,}".format(len(stale_instr)))
+        logger.debug(" fresh instr:  %s" % "{:,}".format(len(new_instr)))
         logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
-        logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(db_coverage.nodes)))
+        logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(new_nodes)))
 
         # paint finished successfully
         return True
@@ -360,8 +361,8 @@ class DatabasePainter(object):
         start = time.time()
 
         db_metadata = self.director.metadata
-        instructions = db_metadata.instructions
-        nodes = viewvalues(db_metadata.nodes)
+        instructions = sorted(db_metadata.instructions)
+        nodes = sorted(db_metadata.nodes.keys())
 
         # clear all instructions
         if not self._async_action(self._clear_instructions, instructions):
@@ -490,7 +491,7 @@ class DatabasePainter(object):
 
         Internal routine for asynchrnous painting.
         """
-        CHUNK_SIZE = 800 # somewhat arbitrary
+        CHUNK_SIZE = 1500 # somewhat arbitrary
 
         # split the given nodes into multiple paints
         for work_chunk in chunks(list(work_iterable), CHUNK_SIZE):
@@ -515,7 +516,7 @@ class DatabasePainter(object):
             # we should end this thread (via end_threads)
             #
 
-            while not (self._action_complete.wait(timeout=0.1) or self._end_threads):
+            while not (self._action_complete.wait(timeout=0.2) or self._end_threads):
                 continue
 
             #
@@ -538,12 +539,6 @@ class DatabasePainter(object):
 
             if not self._msg_queue.empty():
                 return False
-
-            #
-            # sleep some so we don't choke the main IDA thread
-            #
-
-            time.sleep(self.PAINTER_SLEEP)
 
         # operation completed successfully
         return True
