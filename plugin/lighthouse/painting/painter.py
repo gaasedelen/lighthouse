@@ -156,6 +156,11 @@ class DatabasePainter(object):
         except RuntimeError: # thread was never started...
             pass
 
+        # best effort to free up resources & improve interpreter spindown
+        del self._painted_nodes
+        del self._painted_instructions
+        del self._status_changed_callbacks
+
     def repaint(self):
         """
         Paint coverage defined by the current database mappings.

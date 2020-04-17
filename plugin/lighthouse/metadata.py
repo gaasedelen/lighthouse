@@ -126,6 +126,12 @@ class DatabaseMetadata(object):
         if self._rename_hooks:
             self._rename_hooks.unhook()
 
+        # best effort to free up resources & improve interpreter spindown
+        del self._metadata_modified_callbacks
+        del self._function_renamed_callbacks
+        del self._rebased_callbacks
+        self._clear_cache()
+
     #--------------------------------------------------------------------------
     # Providers
     #--------------------------------------------------------------------------

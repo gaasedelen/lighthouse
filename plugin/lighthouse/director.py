@@ -226,6 +226,15 @@ class CoverageDirector(object):
         except RuntimeError:
             pass
 
+        # best effort to free up resources & improve interpreter spindown
+        del self._special_coverage
+        del self._database_coverage
+        del self._coverage_switched_callbacks
+        del self._coverage_modified_callbacks
+        del self._coverage_created_callbacks
+        del self._coverage_deleted_callbacks
+        del self._composition_cache
+
     #--------------------------------------------------------------------------
     # Properties
     #--------------------------------------------------------------------------
