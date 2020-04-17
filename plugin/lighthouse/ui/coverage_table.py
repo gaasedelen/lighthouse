@@ -537,8 +537,32 @@ class CoverageTableController(object):
         Navigate to the function depicted by the given row.
         """
         lctx = self._model._director.metadata.lctx # TODO dirty
+
+        # get the clicked function address
         function_address = self._model.row2func[row]
-        disassembler[lctx].navigate_to_function(function_address, function_address)
+
+        #
+        # if there is actually coverage in the function, attempt to locate the
+        # first block (or any block) with coverage and set that as our target
+        #
+
+        function_coverage = lctx.director.coverage.functions.get(function_address, None)
+        if function_coverage:
+            if function_address in function_coverage.nodes:
+                target_address = function_address
+            else:
+                target_address = sorted(function_coverage.nodes)[0]
+
+        #
+        # if the user clicked a function with no coverage, we should just
+        # navigate to the top of the function... nothing fancy
+        #
+
+        else:
+            target_address = function_address
+
+        # navigate to the target function + block
+        disassembler[lctx].navigate_to_function(function_address, target_address)
 
     def toggle_column_alignment(self, column):
         """

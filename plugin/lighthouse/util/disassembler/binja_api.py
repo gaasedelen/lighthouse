@@ -270,8 +270,21 @@ class BinjaContextAPI(DisassemblerContextAPI):
         # an address/node that is shared between two functions
         #
 
-        func = self.bv.get_function_at(address)
-        if not func:
+        funcs = self.bv.get_functions_containing(address)
+        if not funcs:
+            return False
+
+        #
+        # try to find the function that contains our target (address) and has
+        # a matching function start...
+        #
+
+        for func in funcs:
+            if func.start == function_address:
+                break
+
+        # no matching function ???
+        else:
             return False
 
         dh = DockHandler.getActiveDockHandler()

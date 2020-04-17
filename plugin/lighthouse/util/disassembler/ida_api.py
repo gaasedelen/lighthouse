@@ -364,7 +364,7 @@ class IDAContextAPI(DisassemblerContextAPI):
         return idaapi.jumpto(address)
 
     def navigate_to_function(self, function_address, address):
-        return self.navigate(function_address)
+        return self.navigate(address)
 
     def set_function_name_at(self, function_address, new_name):
         idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
