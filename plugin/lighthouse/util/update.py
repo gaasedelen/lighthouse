@@ -38,8 +38,8 @@ def async_update_check(current_version, callback):
         html = response.read()
         info = json.loads(html)
         remote_version = info["tag_name"]
-    except Exception as e:
-        logger.exception(" - Failed to reach GitHub for update check...")
+    except Exception:
+        logger.debug(" - Failed to reach GitHub for update check...")
         return
 
     # convert vesrion #'s to integer for easy compare...

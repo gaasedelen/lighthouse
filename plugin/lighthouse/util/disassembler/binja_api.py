@@ -327,7 +327,13 @@ class RenameHooks(binaryview.BinaryDataNotification):
         func = self._bv.get_function_at(symbol.address)
         if not func.start == symbol.address:
             return
-        self.renamed(symbol.address, symbol.name)
+        self.name_changed(symbol.address, symbol.name)
+
+    def name_changed(self, address, name):
+        """
+        A placeholder callback, which will get hooked / replaced once live.
+        """
+        pass
 
 #------------------------------------------------------------------------------
 # UI

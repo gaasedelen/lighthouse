@@ -338,6 +338,7 @@ class IDAContextAPI(DisassemblerContextAPI):
     # API Shims
     #--------------------------------------------------------------------------
 
+    @IDACoreAPI.execute_read
     def get_current_address(self):
         return idaapi.get_screen_ea()
 
