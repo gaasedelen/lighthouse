@@ -304,6 +304,8 @@ class EventProxy(QtCore.QObject):
 
         elif int(event.type()) == self.EventUpdateLater:
             if self._target.visible and not self._target.director.metadata.cached:
+                if disassembler.NAME == "BINJA":
+                    self._target.lctx.start()
                 self._target.director.refresh()
 
         #

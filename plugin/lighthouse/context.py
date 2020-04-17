@@ -24,6 +24,7 @@ class LighthouseContext(object):
         disassembler[self] = DisassemblerContextAPI(dctx)
         self.core = core
         self.dctx = dctx
+        self._started = False
 
         # the database metadata cache
         self.metadata = DatabaseMetadata(self)
@@ -43,6 +44,18 @@ class LighthouseContext(object):
         # TODO/HEADLESS: re-enable
         # expose the live CoverageDirector object instance for external scripts
         #lighthouse.coverage_director = self.director
+
+    def start(self):
+        """
+        One-time activation a Lighthouse context and its subsystems.
+        """
+        if self._started:
+            return
+        self.core.palette.warmup()
+        self.metadata.start()
+        self.director.start()
+        self.painter.start()
+        self._started = True
 
     def terminate(self):
         """

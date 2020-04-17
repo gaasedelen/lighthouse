@@ -182,7 +182,6 @@ class CoverageDirector(object):
             target=self._async_evaluate_ast,
             name="EvaluateAST"
         )
-        self._composition_worker.start()
 
         #----------------------------------------------------------------------
         # Callbacks
@@ -207,12 +206,25 @@ class CoverageDirector(object):
         # director callbacks
         self._refreshed_callbacks  = []
 
+    #--------------------------------------------------------------------------
+    # Subsystem Lifetime
+    #--------------------------------------------------------------------------
+
+    def start(self):
+        """
+        Start the metadata subsystem.
+        """
+        self._composition_worker.start()
+
     def terminate(self):
         """
         Cleanup & terminate the director.
         """
         self._ast_queue.put(None)
-        self._composition_worker.join()
+        try:
+            self._composition_worker.join()
+        except RuntimeError:
+            pass
 
     #--------------------------------------------------------------------------
     # Properties

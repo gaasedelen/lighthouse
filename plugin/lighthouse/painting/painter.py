@@ -29,7 +29,8 @@ class DatabasePainter(object):
         self.lctx = lctx
         self.palette = palette
         self.director = director
-        self._enabled = True
+        self._enabled = False
+        self._started = False
 
         #----------------------------------------------------------------------
         # Painted State
@@ -66,7 +67,6 @@ class DatabasePainter(object):
             target=self._async_database_painter,
             name="DatabasePainter"
         )
-        self._painting_worker.start()
 
         #----------------------------------------------------------------------
         # Callbacks
@@ -80,6 +80,20 @@ class DatabasePainter(object):
         self.director.coverage_modified(self.repaint)
         self.director.refreshed(self.check_rebase)
 
+    def start(self):
+        """
+        Start the painter.
+        """
+        if self._started:
+            return
+
+        # start the painter thread
+        self._painting_worker.start()
+
+        # all done
+        self._started = True
+        self.set_enabled(True)
+
     #--------------------------------------------------------------------------
     # Status
     #--------------------------------------------------------------------------
@@ -91,21 +105,26 @@ class DatabasePainter(object):
         """
         return self._enabled
 
-    def set_enabled(self, status):
+    def set_enabled(self, enabled):
         """
         Enable or disable the painter.
         """
 
         # enabled/disabled status is not changing, ignore...
-        if status == self._enabled:
+        if enabled == self._enabled:
             return
 
-        lmsg("%s painting..." % ("Enabling" if status else "Disabling"))
-        self._enabled = status
-        self.repaint()
+        lmsg("%s painting..." % ("Enabling" if enabled else "Disabling"))
+        self._enabled = enabled
+
+        # paint or clear the database based on the change of status...
+        if enabled:
+            self._send_message(self.MSG_REPAINT)
+        else:
+            self._send_message(self.MSG_CLEAR)
 
         # notify listeners that the painter has been enabled/disabled
-        self._notify_status_changed(status)
+        self._notify_status_changed(enabled)
 
     #--------------------------------------------------------------------------
     # Commands
@@ -117,7 +136,10 @@ class DatabasePainter(object):
         """
         self._end_threads = True
         self._msg_queue.put(self.MSG_TERMINATE)
-        self._painting_worker.join()
+        try:
+            self._painting_worker.join()
+        except RuntimeError: # thread was never started...
+            pass
 
     def repaint(self):
         """

@@ -44,8 +44,7 @@ class LighthouseCore(object):
         self.palette.theme_changed(self.refresh_theme)
 
         def create_coverage_overview(name, parent, dctx):
-            self.palette.warmup()
-            lctx = self.get_context(dctx)
+            lctx = self.get_context(dctx, startup=False)
             widget = disassembler.create_dockable_widget(parent, name)
             overview = CoverageOverview(lctx, widget)
             return widget
@@ -94,7 +93,7 @@ class LighthouseCore(object):
     #--------------------------------------------------------------------------
 
     @abc.abstractmethod
-    def get_context(self, dctx):
+    def get_context(self, dctx, startup=True):
         """
         Get the LighthouseContext object for a given disassembler context.
         """
@@ -195,7 +194,6 @@ class LighthouseCore(object):
         """
         Open the dockable 'Coverage Overview' dialog.
         """
-        self.palette.warmup()
         lctx = self.get_context(dctx)
 
         # the coverage overview is already open & visible, nothing to do
@@ -245,7 +243,6 @@ class LighthouseCore(object):
         """
         Perform the user-interactive loading of a coverage batch.
         """
-        self.palette.warmup()
         lctx = self.get_context(dctx)
 
         #
@@ -330,7 +327,6 @@ class LighthouseCore(object):
         """
         Perform the user-interactive loading of individual coverage files.
         """
-        self.palette.warmup()
         lctx = self.get_context(dctx)
 
         #

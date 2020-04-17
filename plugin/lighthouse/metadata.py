@@ -108,6 +108,16 @@ class DatabaseMetadata(object):
         self._function_renamed_callbacks = []
         self._rebased_callbacks = []
 
+    #--------------------------------------------------------------------------
+    # Subsystem Lifetime
+    #--------------------------------------------------------------------------
+
+    def start(self):
+        """
+        Start the metadata subsystem.
+        """
+        pass # TODO: rebase scheduled task
+
     def terminate(self):
         """
         Cleanup & terminate the metadata object.

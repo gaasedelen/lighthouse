@@ -32,16 +32,29 @@ class LighthouseIDA(LighthouseCore):
         # run initialization
         super(LighthouseIDA, self).__init__()
 
-    def get_context(self, dctx):
+    def get_context(self, dctx, startup=True):
         """
         TODO
         """
+        self.palette.warmup()
 
-        # create a new LighthouseContext if this is a new disassembler ctx / bv
+        #
+        # there should only ever be 'one' disassembler / IDB context at any
+        # time for IDA. but if one does not exist yet, that means this is the
+        # first time the user has interacted with Lighthouse for this session
+        #
+
         if dctx not in self.lighthouse_contexts:
-            self.lighthouse_contexts[dctx] = LighthouseContext(self, dctx)
 
-        # return the lighthouse context object for this disassembler ctx / bv
+            # create a new 'context' representing this IDB
+            lctx = LighthouseContext(self, dctx)
+            if startup:
+                lctx.start()
+
+            # save the created ctx for future calls
+            self.lighthouse_contexts[dctx] = lctx
+
+        # return the lighthouse context object for this IDB
         return self.lighthouse_contexts[dctx]
 
     #--------------------------------------------------------------------------
@@ -361,7 +374,7 @@ class UIHooks(idaapi.UI_Hooks):
 
         # inject any of lighthouse's right click context menu's into IDA
         lctx = self.integration.get_context(None)
-        if lctx.director.aggregate.instruction_percent:
+        if lctx.director.coverage_names:
             self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
 
         # must return 0 for ida...

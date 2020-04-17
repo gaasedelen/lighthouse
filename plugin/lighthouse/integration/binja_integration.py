@@ -22,18 +22,48 @@ class LighthouseBinja(LighthouseCore):
     def __init__(self):
         super(LighthouseBinja, self).__init__()
 
-    def get_context(self, dctx):
+    def get_context(self, dctx, startup=True):
         """
         Get the LighthouseContext object for a given disassembler context.
         """
         dctx_id = ctypes.addressof(dctx.handle.contents)
 
-        # create a new LighthouseContext if this is a new disassembler ctx / bv
+        #
+        # create a new LighthouseContext if this is the first time a context
+        # has been requested for this BNDB / bv
+        #
+
         if dctx_id not in self.lighthouse_contexts:
-            self.lighthouse_contexts[dctx_id] = LighthouseContext(self, dctx)
+
+            # create a new 'context' representing this BNDB / bv
+            lctx = LighthouseContext(self, dctx)
+            if startup:
+                lctx.start()
+
+            # save the created ctx for future calls
+            self.lighthouse_contexts[dctx_id] = lctx
+
+        #
+        # for binja, we basically *never* want to start the lighthouse ctx
+        # when it is first created. this is because binja will *immediately*
+        # create a coverage overview widget for every database when it is
+        # first opened.
+        #
+        # this is annoying, because we don't want to actually start up all
+        # of the lighthouse threads and subsystems unless the user actually
+        # starts trying to use lighthouse for their session.
+        #
+        # so we initialize the lighthouse context (with start()) on the
+        # second context request which will go throught the else block
+        # below... any subsequent call to start() is effectively a nop!
+        #
+
+        else:
+            lctx = self.lighthouse_contexts[dctx_id]
+            lctx.start()
 
         # return the lighthouse context object for this disassembler ctx / bv
-        return self.lighthouse_contexts[dctx_id]
+        return lctx
 
     #--------------------------------------------------------------------------
     # UI Integration (Internal)
@@ -68,6 +98,34 @@ class LighthouseBinja(LighthouseCore):
     def _open_coverage_xref(self, dctx, addr):
         super(LighthouseBinja, self).open_coverage_xref(addr, dctx)
 
+    def _is_xref_valid(self, dctx, addr):
+
+        #
+        # this is a special case where we check if the ctx exists rather than
+        # blindly creating a new one. again, this is because binja may call
+        # this function at random times to decide whether it should display the
+        # XREF menu option.
+        #
+        # but asking whether or not the xref menu option should be shown is not
+        # a good indidication of 'is the user actually using lighthouse' so we
+        # do not want this to be one that creates lighthouse contexts
+        #
+
+        dctx_id = ctypes.addressof(dctx.handle.contents)
+        lctx = self.lighthouse_contexts.get(dctx_id, None)
+        if not lctx:
+            return False
+
+        # return True if there appears to be coverage loaded...
+        return bool(lctx.director.coverage_names)
+
+    def _open_coverage_overview(self, context):
+        dctx = disassembler.binja_get_bv_from_dock()
+        if not dctx:
+            disassembler.warning("Lighthouse requires an open BNDB to open the overview.")
+            return
+        super(LighthouseBinja, self).open_coverage_overview(dctx)
+
     #--------------------------------------------------------------------------
     # Binja Actions
     #--------------------------------------------------------------------------
@@ -97,12 +155,16 @@ class LighthouseBinja(LighthouseCore):
             self.ACTION_COVERAGE_XREF,
             "Open the coverage xref window",
             self._open_coverage_xref,
-            lambda bv, addr: bool(self.get_context(bv).director.aggregate.instruction_percent)
+            self._is_xref_valid
         )
 
     # NOTE/V35: Binja automatically creates View --> Show Coverage Overview
     def _install_open_coverage_overview(self):
-        pass
+        action = self.ACTION_COVERAGE_OVERVIEW
+        UIAction.registerAction(action)
+        UIActionHandler.globalActions().bindAction(action, UIAction(self._open_coverage_overview))
+        Menu.mainMenu("Tools").addAction(action, "Windows", 0)
+        logger.info("Installed the 'Open Coverage Overview' menu entry")
 
     # NOTE/V35: Binja doesn't really 'unload' plugins, so whatever...
     def _uninstall_load_file(self):
