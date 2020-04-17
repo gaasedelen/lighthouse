@@ -7,64 +7,10 @@ import traceback
 
 from lighthouse.util.qt import *
 from lighthouse.util.log import lmsg
+from lighthouse.util.misc import *
 from lighthouse.util.disassembler import disassembler
-from lighthouse.util.misc import plugin_resource, register_callback, notify_callback
 
 logger = logging.getLogger("Lighthouse.UI.Palette")
-
-#------------------------------------------------------------------------------
-# Theme Util
-#------------------------------------------------------------------------------
-
-def swap_rgb(i):
-    """
-    Swap RRGGBB (integer) to BBGGRR.
-    """
-    return struct.unpack("<I", struct.pack(">I", i))[0] >> 8
-
-def test_color_brightness(color):
-    """
-    Test the brightness of a color.
-    """
-    if color.lightness() > 255.0/2:
-        return "light"
-    else:
-        return "dark"
-
-def compute_color_on_gradiant(percent, color1, color2):
-    """
-    Compute the color specified by a percent between two colors.
-
-    TODO/PERF: This is silly, heavy, and can be refactored.
-    """
-
-    # dump the rgb values from QColor objects
-    r1, g1, b1, _ = color1.getRgb()
-    r2, g2, b2, _ = color2.getRgb()
-
-    # compute the new color across the gradiant of color1 -> color 2
-    r = r1 + percent * (r2 - r1)
-    g = g1 + percent * (g2 - g1)
-    b = b1 + percent * (b2 - b1)
-
-    # return the new color
-    return QtGui.QColor(r,g,b)
-
-def get_plugin_theme_dir():
-    """
-    Return the Lighthouse plugin theme directory.
-    """
-    return plugin_resource("themes")
-
-def get_user_theme_dir():
-    """
-    Return the Lighthouse user theme directory.
-    """
-    theme_directory = os.path.join(
-        disassembler.get_disassembler_user_directory(),
-        "lighthouse_themes"
-    )
-    return theme_directory
 
 #------------------------------------------------------------------------------
 # Plugin Color Palette
@@ -106,6 +52,24 @@ class LighthousePalette(object):
         # load a placeholder theme (unhinted) for inital Lighthoue bring-up
         self._load_preferred_theme(True)
         self._initialized = False
+
+    @staticmethod
+    def get_plugin_theme_dir():
+        """
+        Return the Lighthouse plugin theme directory.
+        """
+        return plugin_resource("themes")
+
+    @staticmethod
+    def get_user_theme_dir():
+        """
+        Return the Lighthouse user theme directory.
+        """
+        theme_directory = os.path.join(
+            disassembler.get_disassembler_user_directory(),
+            "lighthouse_themes"
+        )
+        return theme_directory
 
     #----------------------------------------------------------------------
     # Properties
@@ -183,7 +147,7 @@ class LighthousePalette(object):
         #
 
         try:
-            os.remove(os.path.join(get_user_theme_dir(), ".active_theme"))
+            os.remove(os.path.join(self.get_user_theme_dir(), ".active_theme"))
         except:
             pass
 
@@ -230,7 +194,7 @@ class LighthousePalette(object):
         #
 
         file_dir = os.path.abspath(os.path.dirname(filename))
-        user_dir = os.path.abspath(get_user_theme_dir())
+        user_dir = os.path.abspath(self.get_user_theme_dir())
         if file_dir != user_dir:
             text = "Please install your Lighthouse theme into the user theme directory:\n\n" + user_dir
             disassembler.warning(text)
@@ -264,7 +228,7 @@ class LighthousePalette(object):
             return
 
         # since everthing looks like it loaded okay, save this as the preferred theme
-        with open(os.path.join(get_user_theme_dir(), ".active_theme"), "w") as f:
+        with open(os.path.join(self.get_user_theme_dir(), ".active_theme"), "w") as f:
             f.write(filename)
 
     def refresh_theme(self):
@@ -287,7 +251,7 @@ class LighthousePalette(object):
         """
 
         # create the user theme directory if it does not exist
-        user_theme_dir = get_user_theme_dir()
+        user_theme_dir = self.get_user_theme_dir()
         if not os.path.exists(user_theme_dir):
             os.makedirs(user_theme_dir)
 
@@ -305,7 +269,7 @@ class LighthousePalette(object):
                 continue
 
             # copy the in-box themes to the user theme directory
-            plugin_theme_file = os.path.join(get_plugin_theme_dir(), theme_name)
+            plugin_theme_file = os.path.join(self.get_plugin_theme_dir(), theme_name)
             shutil.copy(plugin_theme_file, user_theme_file)
 
         #
@@ -322,7 +286,7 @@ class LighthousePalette(object):
         logger.debug("Loading required theme fields from disk...")
 
         # load a known-good theme from the plugin's in-box themes
-        filepath = os.path.join(get_plugin_theme_dir(), self._default_themes["dark"])
+        filepath = os.path.join(self.get_plugin_theme_dir(), self._default_themes["dark"])
         theme = self._read_theme(filepath)
 
         #
@@ -337,7 +301,7 @@ class LighthousePalette(object):
         Load the user's preferred theme, or the one hinted at by the theme subsystem.
         """
         logger.debug("Loading preferred theme from disk...")
-        user_theme_dir = get_user_theme_dir()
+        user_theme_dir = self.get_user_theme_dir()
 
         # attempt te read the name of the user's active / preferred theme name
         active_filepath = os.path.join(user_theme_dir, ".active_theme")
@@ -382,9 +346,9 @@ class LighthousePalette(object):
         #
 
         if fallback:
-            theme_path = os.path.join(get_plugin_theme_dir(), theme_name)
+            theme_path = os.path.join(self.get_plugin_theme_dir(), theme_name)
         else:
-            theme_path = os.path.join(get_user_theme_dir(), theme_name)
+            theme_path = os.path.join(self.get_user_theme_dir(), theme_name)
 
         # finally, attempt to load & apply the theme -- return True/False
         return self._load_theme(theme_path)

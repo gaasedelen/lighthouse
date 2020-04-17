@@ -7,8 +7,8 @@ import itertools
 import collections
 
 from lighthouse.util import *
+from lighthouse.util.qt import compute_color_on_gradiant
 from lighthouse.metadata import DatabaseMetadata
-from lighthouse.ui.palette import compute_color_on_gradiant
 
 logger = logging.getLogger("Lighthouse.Coverage")
 

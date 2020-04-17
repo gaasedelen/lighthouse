@@ -1,5 +1,6 @@
 import os
 import re
+import struct
 import weakref
 import datetime
 import threading
@@ -53,6 +54,25 @@ def not_mainthread(f):
         assert not is_mainthread()
         return f(*args, **kwargs)
     return wrapper
+
+#------------------------------------------------------------------------------
+# Theme Util
+#------------------------------------------------------------------------------
+
+def swap_rgb(i):
+    """
+    Swap RRGGBB (integer) to BBGGRR.
+    """
+    return struct.unpack("<I", struct.pack(">I", i))[0] >> 8
+
+def test_color_brightness(color):
+    """
+    Test the brightness of a color.
+    """
+    if color.lightness() > 255.0/2:
+        return "light"
+    else:
+        return "dark"
 
 #------------------------------------------------------------------------------
 # Python Util

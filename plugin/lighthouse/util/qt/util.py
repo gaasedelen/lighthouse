@@ -71,6 +71,25 @@ def get_dpi_scale():
     # xHeight is expected to be 40.0 at normal DPI
     return fm.height() / 173.0
 
+def compute_color_on_gradiant(percent, color1, color2):
+    """
+    Compute the color specified by a percent between two colors.
+
+    TODO/PERF: This is silly, heavy, and can be refactored.
+    """
+
+    # dump the rgb values from QColor objects
+    r1, g1, b1, _ = color1.getRgb()
+    r2, g2, b2, _ = color2.getRgb()
+
+    # compute the new color across the gradiant of color1 -> color 2
+    r = r1 + percent * (r2 - r1)
+    g = g1 + percent * (g2 - g1)
+    b = b1 + percent * (b2 - b1)
+
+    # return the new color
+    return QtGui.QColor(r,g,b)
+
 def move_mouse_event(mouse_event, position):
     """
     Move the given mouse event to a different position.
