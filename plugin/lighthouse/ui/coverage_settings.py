@@ -53,29 +53,28 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self.addSeparator()
 
         # painting
-        self._action_pause_paint = QtWidgets.QAction("Pause painting", None)
-        self._action_pause_paint.setCheckable(True)
-        self._action_pause_paint.setToolTip("Disable the coverage painting subsystem")
-        self.addAction(self._action_pause_paint)
+        self._action_force_clear = QtWidgets.QAction("Force clear paint (slow!)", None)
+        self._action_force_clear.setToolTip("Attempt to forcefully clear stuck paint from the database")
+        self.addAction(self._action_force_clear)
 
-        # misc
-        self._action_clear_paint = QtWidgets.QAction("Clear database paint", None)
-        self._action_clear_paint.setToolTip("Forcefully clear all paint from the database")
-        self.addAction(self._action_clear_paint)
+        self._action_disable_paint = QtWidgets.QAction("Disable painting", None)
+        self._action_disable_paint.setCheckable(True)
+        self._action_disable_paint.setToolTip("Disable the coverage painting subsystem")
+        self.addAction(self._action_disable_paint)
         self.addSeparator()
 
         # table actions
-        self._action_refresh_metadata = QtWidgets.QAction("Full table refresh", None)
+        self._action_refresh_metadata = QtWidgets.QAction("Rebuild coverage mappings", None)
         self._action_refresh_metadata.setToolTip("Refresh the database metadata and coverage mapping")
         self.addAction(self._action_refresh_metadata)
-
-        self._action_export_html = QtWidgets.QAction("Generate HTML report", None)
-        self._action_export_html.setToolTip("Export the coverage table to HTML")
-        self.addAction(self._action_export_html)
 
         self._action_dump_unmapped = QtWidgets.QAction("Dump unmapped coverage", None)
         self._action_dump_unmapped.setToolTip("Print all coverage data not mapped to a function")
         self.addAction(self._action_dump_unmapped)
+
+        self._action_export_html = QtWidgets.QAction("Generate HTML report", None)
+        self._action_export_html.setToolTip("Export the coverage table to HTML")
+        self.addAction(self._action_export_html)
 
         self._action_hide_zero = QtWidgets.QAction("Hide 0% coverage", None)
         self._action_hide_zero.setToolTip("Hide table entries with no coverage data")
@@ -89,8 +88,8 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_change_theme.triggered.connect(lctx.core.palette.interactive_change_theme)
         self._action_refresh_metadata.triggered.connect(lctx.director.refresh)
         self._action_hide_zero.triggered[bool].connect(controller._model.filter_zero_coverage)
-        self._action_pause_paint.triggered[bool].connect(lambda x: lctx.painter.set_enabled(not x))
-        self._action_clear_paint.triggered.connect(lctx.painter.clear_paint)
+        self._action_disable_paint.triggered[bool].connect(lambda x: lctx.painter.set_enabled(not x))
+        self._action_force_clear.triggered.connect(lctx.painter.force_clear)
         self._action_export_html.triggered.connect(controller.export_to_html)
         self._action_dump_unmapped.triggered.connect(lctx.director.dump_unmapped)
         lctx.painter.status_changed(self._ui_painter_changed_status)
@@ -104,4 +103,4 @@ class TableSettingsMenu(QtWidgets.QMenu):
         """
         Handle an event from the painter being enabled/disabled.
         """
-        self._action_pause_paint.setChecked(not painter_enabled)
+        self._action_disable_paint.setChecked(not painter_enabled)

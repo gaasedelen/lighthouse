@@ -17,7 +17,6 @@ class BinjaPainter(DatabasePainter):
     """
     Asynchronous Binary Ninja database painter.
     """
-    PAINTER_SLEEP = 0.01
 
     def __init__(self, lctx, director, palette):
         super(BinjaPainter, self).__init__(lctx, director, palette)
@@ -51,32 +50,39 @@ class BinjaPainter(DatabasePainter):
                 func.set_auto_instr_highlight(address, color)
         self._painted_instructions |= set(instructions)
 
-    def _paint_nodes(self, nodes_coverage):
+    def _paint_nodes(self, node_addresses):
         bv = disassembler[self.lctx].bv
+        db_coverage = self.director.coverage
+        db_metadata = self.director.metadata
 
         r, g, b, _ = self.palette.coverage_paint.getRgb()
         color = HighlightColor(red=r, green=g, blue=b)
 
-        for node_coverage in nodes_coverage:
-            node_metadata = node_coverage.database._metadata.nodes[node_coverage.address]
+        for node_address in node_addresses:
+            node_metadata = db_metadata.nodes[node_address]
+            node_coverage = db_coverage.nodes[node_address]
 
             # special case for nodes that are only partially executed...
             if node_coverage.instructions_executed != node_metadata.instruction_count:
                 self._partial_paint(bv, node_coverage.executed_instructions.keys(), color)
                 continue
 
-            for node in bv.get_basic_blocks_starting_at(node_metadata.address):
+            for node in bv.get_basic_blocks_starting_at(node_address):
                 node.highlight = color
 
-            self._painted_nodes.add(node_metadata.address)
+        self._painted_nodes |= set(node_addresses)
         self._action_complete.set()
 
-    def _clear_nodes(self, nodes_metadata):
+    def _clear_nodes(self, node_addresses):
         bv = disassembler[self.lctx].bv
-        for node_metadata in nodes_metadata:
-            for node in bv.get_basic_blocks_starting_at(node_metadata.address):
+        db_metadata = self.director.metadata
+
+        for node_address in node_addresses:
+            node_metadata = db_metadata.nodes[node_address]
+            for node in bv.get_basic_blocks_starting_at(node_address):
                 node.highlight = HighlightStandardColor.NoHighlightColor
-            self._painted_nodes.discard(node_metadata.address)
+
+        self._painted_nodes -= set(node_addresses)
         self._action_complete.set()
 
     def _refresh_ui(self):
@@ -84,21 +90,4 @@ class BinjaPainter(DatabasePainter):
 
     def _cancel_action(self, job):
         pass
-
-    #--------------------------------------------------------------------------
-    # Priority Painting
-    #--------------------------------------------------------------------------
-
-    def _priority_paint(self):
-        disassembler_ctx = disassembler[self.lctx]
-        db_metadata = self.director.metadata
-
-        current_address = disassembler_ctx.get_current_address()
-        current_function = disassembler_ctx.bv.get_function_at(current_address)
-        function_metadata = db_metadata.get_closest_function(current_address)
-
-        if current_function and function_metadata:
-            self._paint_function(current_function.start)
-
-        return True
 

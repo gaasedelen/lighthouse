@@ -4,6 +4,7 @@ import logging
 import threading
 
 from lighthouse.util import *
+from lighthouse.coverage import FunctionCoverage
 
 logger = logging.getLogger("Lighthouse.Painting")
 
@@ -13,12 +14,11 @@ class DatabasePainter(object):
     """
     __metaclass__ = abc.ABCMeta
 
-    PAINTER_SLEEP = 0.01
-
     MSG_TERMINATE = 0
     MSG_REPAINT = 1
     MSG_CLEAR = 2
-    MSG_REBASE = 3
+    MSG_FORCE_CLEAR = 3
+    MSG_REBASE = 4
 
     def __init__(self, lctx, director, palette):
 
@@ -44,6 +44,21 @@ class DatabasePainter(object):
         self._imagebase = BADADDR
         self._painted_nodes = set()
         self._painted_instructions = set()
+
+        #
+        # these toggles will let the core painter (this class) know that it
+        # does not have to order explicit paints of instructions or nodes.
+        #
+        # this is because a disassembler-specific painter may be able to hook
+        # unique callbacks for painting graphs nodes or instructions
+        # 'on-the-fly' as they are rendered.
+        #
+        # these types of paints are ephermal and the most performant, they
+        # also will not need to be tracked by the painter.
+        #
+
+        self._streaming_nodes = False
+        self._streaming_instructions = False
 
         #----------------------------------------------------------------------
         # Async
@@ -145,33 +160,29 @@ class DatabasePainter(object):
         """
         Paint coverage defined by the current database mappings.
         """
-        if not self.enabled:
-            return
-        self._msg_queue.put(self.MSG_REPAINT)
+        self._send_message(self.MSG_REPAINT)
 
-    def clear_paint(self):
+    def force_clear(self):
         """
         Clear all paint from the current database (based on metadata)
         """
-
-        #
-        # we should only disable the painter (as a result of clear_paint()) if
-        # the user has coverage open & in use. for example, there is no reason
-        # to *preemptively* disable painting if no other coverage is loaded.
-        #
-
-        if self.enabled and len(self.director.coverage_names):
-            self.set_enabled(False)
-
-        # trigger the database clear
-        self._msg_queue.put(self.MSG_CLEAR)
+        self._send_message(self.MSG_FORCE_CLEAR)
+        self.set_enabled(False)
 
     def check_rebase(self):
         """
         Perform a rebase on the painted data cache (if necessary).
         """
-        self._msg_queue.put(self.MSG_REBASE)
-        self._msg_queue.put(self.MSG_REPAINT)
+        self._send_message(self.MSG_REBASE)
+        self._send_message(self.MSG_REPAINT)
+
+    def _send_message(self, message):
+        """
+        Queue a painter command for execution.
+        """
+        if not self._started:
+            return
+        self._msg_queue.put(message)
 
     #--------------------------------------------------------------------------
     # Commands
@@ -239,75 +250,86 @@ class DatabasePainter(object):
     # Painting - High Level
     #------------------------------------------------------------------------------
 
-    def _paint_function(self, address):
+    def _priority_paint(self):
         """
-        Paint function instructions & nodes with the current database mappings.
+        Immediately repaint regions of the database visible to the user.
+
+        Return True upon completion, or False if interrupted.
         """
-        function_metadata = self.director.metadata.functions[address]
-        function_coverage = self.director.coverage.functions.get(address, None)
-        if not function_coverage:
+        if self._streaming_instructions and self._streaming_nodes:
+            return True
+
+        # get current function / user location in the database
+        cursor_address = disassembler[self.lctx].get_current_address()
+
+        # attempt to paint the functions in the immediate cursor vicinity
+        result = self._priority_paint_functions(cursor_address)
+
+        # force a refresh *now* as this is a prority painting
+        self._refresh_ui()
+
+        # all done
+        return result
+
+    def _priority_paint_functions(self, target_address, neighbors=1):
+        """
+        Paint functions in the immediate vicinity of the given address.
+
+        This will paint both the instructions & graph nodes of defined functions.
+        """
+        db_metadata = self.director.metadata
+        db_coverage = self.director.coverage
+        blank_coverage = FunctionCoverage(BADADDR)
+
+        # get the function metadata for the function closest to our cursor
+        function_metadata = db_metadata.get_closest_function(target_address)
+        if not function_metadata:
             return False
 
-        #
-        # ~ compute paint job ~
-        #
+        # select the range of functions around us that we would like to paint
+        func_num = db_metadata.get_function_index(function_metadata.address)
+        func_num_start = max(func_num - neighbors, 0)
+        func_num_end   = min(func_num + neighbors + 1, len(db_metadata.functions) - 1)
 
-        # compute the painted instructions within this function
-        painted = self._painted_instructions & function_metadata.instructions
+        # repaint the specified range of functions
+        for current_num in xrange(func_num_start, func_num_end):
 
-        # compute the painted instructions that will not get painted over
-        stale_instructions = painted - function_coverage.instructions
+            # get the next function to paint
+            function_metadata = db_metadata.get_function_by_index(current_num)
+            if not function_metadata:
+                continue
 
-        # compute the painted nodes within this function
-        painted = self._painted_nodes & viewkeys(function_metadata.nodes)
+            # get the function coverage data for the target address
+            function_address = function_metadata.address
+            function_coverage = db_coverage.functions.get(function_address, blank_coverage)
 
-        # compute the painted nodes that will not get painted over
-        stale_nodes_ea = painted - viewkeys(function_coverage.nodes)
-        stale_nodes_ea |= (painted & function_coverage.database.partial_nodes)
-        stale_nodes = [function_metadata.nodes[ea] for ea in stale_nodes_ea]
+            if not self._streaming_nodes:
 
-        # active instructions
-        instructions = function_coverage.instructions
-        nodes = itervalues(function_coverage.nodes)
+                # clear nodes
+                must_clear = sorted(set(function_metadata.nodes) - set(function_coverage.nodes))
+                self._action_complete.clear()
+                self._clear_nodes(must_clear)
+                self._action_complete.wait()
 
-        #
-        # ~ painting ~
-        #
+                # paint nodes
+                must_paint = sorted(function_coverage.nodes)
+                self._action_complete.clear()
+                self._paint_nodes(must_paint)
+                self._action_complete.wait()
 
-        # clear instructions
-        if not self._async_action(self._clear_instructions, stale_instructions):
-            return False # a repaint was requested
+            if not self._streaming_instructions:
 
-        # clear nodes
-        if not self._async_action(self._clear_nodes, stale_nodes):
-            return False # a repaint was requested
+                # clear instructions
+                must_clear = sorted(function_metadata.instructions - function_coverage.instructions)
+                self._action_complete.clear()
+                self._clear_instructions(must_clear)
+                self._action_complete.wait()
 
-        # paint instructions
-        if not self._async_action(self._paint_instructions, instructions):
-            return False # a repaint was requested
-
-        # paint nodes
-        if not self._async_action(self._paint_nodes, nodes):
-            return False # a repaint was requested
-
-        # paint finished successfully
-        return True
-
-    def _clear_function(self, address):
-        """
-        Clear paint from the given function.
-        """
-        function_metadata = self.director.metadata.functions[address]
-        instructions = function_metadata.instructions
-        nodes = itervalues(function_metadata.nodes)
-
-        # clear instructions
-        if not self._async_action(self._clear_instructions, instructions):
-            return False # a repaint was requested
-
-        # clear nodes
-        if not self._async_action(self._clear_nodes, nodes):
-            return False # a repaint was requested
+                # paint instructions
+                must_paint = sorted(function_coverage.instructions)
+                self._action_complete.clear()
+                self._paint_instructions(must_paint)
+                self._action_complete.wait()
 
         # paint finished successfully
         return True
@@ -329,71 +351,108 @@ class DatabasePainter(object):
         if self._imagebase == BADADDR:
             self._imagebase = db_metadata.imagebase
 
-        # abandon painting early if it appears a rebase has occurred
-        elif self._imagebase != db_metadata.imagebase:
-            return False
-
         # immediately paint user-visible regions of the database
         if not self._priority_paint():
             return False # a repaint was requested
 
-        # compute the painted instructions that will not get painted over
-        stale_partial_inst = self._painted_instructions & db_coverage.partial_instructions
-        stale_instr = self._painted_instructions - db_coverage.coverage
-        stale_instr |= stale_partial_inst
+        #
+        # if the painter is not capable of 'streaming' the coverage paint,
+        # then we must explicitly paint the instructions & nodes here
+        #
 
-        # clear old instruction paint
-        if not self._async_action(self._clear_instructions, stale_instr):
-            return False # a repaint was requested
+        if not self._streaming_instructions:
 
-        # compute the painted nodes that will not get painted over
-        stale_nodes = self._painted_nodes - viewkeys(db_coverage.nodes)
-        stale_nodes |= db_coverage.partial_nodes
+            # compute the painted instructions that will not get painted over
+            stale_partial_inst = self._painted_instructions & db_coverage.partial_instructions
+            stale_instr = self._painted_instructions - db_coverage.coverage
+            stale_instr |= stale_partial_inst
 
-        # clear old node paint
-        if not self._async_action(self._clear_nodes, stale_nodes):
-            return False # a repaint was requested
+            # clear old instruction paint
+            if not self._async_action(self._clear_instructions, stale_instr):
+                return False # a repaint was requested
 
-        # paint new instructions
-        new_instr = sorted(db_coverage.coverage - self._paint_instructions)
-        if not self._async_action(self._paint_instructions, new_instr):
-            return False # a repaint was requested
+            # paint new instructions
+            new_instr = sorted(db_coverage.coverage - self._painted_instructions)
+            if not self._async_action(self._paint_instructions, new_instr):
+                return False # a repaint was requested
 
-        # paint new nodes
-        new_nodev = sorted(viewkeys(db_coverage.nodes) - self._paint_nodes)
-        if not self._async_action(self._paint_nodes, new_nodes):
-            return False # a repaint was requested
+        if not self._streaming_nodes:
+
+            # compute the painted nodes that will not get painted over
+            stale_nodes = self._painted_nodes - viewkeys(db_coverage.nodes)
+            stale_nodes |= db_coverage.partial_nodes
+
+            # clear old node paint
+            if not self._async_action(self._clear_nodes, stale_nodes):
+                return False # a repaint was requested
+
+            # paint new nodes
+            new_nodes = sorted(viewkeys(db_coverage.nodes) - self._painted_nodes)
+            if not self._async_action(self._paint_nodes, new_nodes):
+                return False # a repaint was requested
 
         #------------------------------------------------------------------
         end = time.time()
         lmsg(" - Painting took %.2f seconds" % (end - start))
-        logger.debug(" stale_instr:  %s" % "{:,}".format(len(stale_instr)))
-        logger.debug(" fresh instr:  %s" % "{:,}".format(len(new_instr)))
-        logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
-        logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(new_nodes)))
+        #logger.debug(" stale_instr:  %s" % "{:,}".format(len(stale_instr)))
+        #logger.debug(" fresh instr:  %s" % "{:,}".format(len(new_instr)))
+        #logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
+        #logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(new_nodes)))
 
         # paint finished successfully
         return True
 
     def _clear_database(self):
         """
-        Clear all paint from the current database.
+        Clear all paint from the current database using the known paint state.
         """
         lmsg("Clearing database paint...")
         start = time.time()
+        #------------------------------------------------------------------
 
         db_metadata = self.director.metadata
-        instructions = sorted(db_metadata.instructions)
-        nodes = sorted(db_metadata.nodes.keys())
 
         # clear all instructions
-        if not self._async_action(self._clear_instructions, instructions):
-            return False # a repaint was requested
+        if not self._streaming_instructions:
+            if not self._async_action(self._clear_instructions, self._painted_instructions):
+                return False # a repaint was requested
 
         # clear all nodes
-        if not self._async_action(self._clear_nodes, nodes):
-            return False # a repaint was requested
+        if not self._streaming_nodes:
+            if not self._async_action(self._clear_nodes, self._painted_nodes):
+                return False # a repaint was requested
 
+        #------------------------------------------------------------------
+        end = time.time()
+        lmsg(" - Database paint cleared in %.2f seconds..." % (end-start))
+
+        # sanity checks...
+        assert self._painted_nodes == set()
+        assert self._painted_instructions == set()
+
+        # paint finished successfully
+        return True
+
+    @not_mainthread
+    def _force_clear_database(self):
+        """
+        Forcibly clear the paint from all known database addresses.
+        """
+        lmsg("Forcibly clearing all paint from database...")
+        db_metadata = self.director.metadata
+
+        start = time.time()
+        #------------------------------------------------------------------
+
+        self._action_complete.clear()
+        self._clear_instructions(sorted(db_metadata.instructions))
+        self._action_complete.wait()
+
+        self._action_complete.clear()
+        self._clear_nodes(sorted(db_metadata.nodes))
+        self._action_complete.wait()
+
+        #------------------------------------------------------------------
         end = time.time()
         lmsg(" - Database paint cleared in %.2f seconds..." % (end-start))
 
@@ -427,34 +486,6 @@ class DatabasePainter(object):
         return True
 
     #--------------------------------------------------------------------------
-    # Priority Painting
-    #--------------------------------------------------------------------------
-
-    def _priority_paint(self):
-        """
-        Immediately repaint regions of the database visible to the user.
-
-        Return True upon completion, or False if interrupted.
-        """
-        return True # NOTE: optional, but recommended
-
-    def _priority_paint_functions(self, target_address):
-        """
-        Paint functions in the immediate vicinity of the given address.
-
-        This will paint both the instructions & graph nodes of defined functions.
-        """
-        pass # NOTE: optional, organizational
-
-    def _priority_paint_instructions(self, target_address, ignore=set()):
-        """
-        Paint instructions in the immediate vicinity of the given address.
-
-        Optionally, one can provide a set of addresses to ignore while painting.
-        """
-        pass # NOTE: optional, organizational
-
-    #--------------------------------------------------------------------------
     # Asynchronous Painting
     #--------------------------------------------------------------------------
 
@@ -484,9 +515,13 @@ class DatabasePainter(object):
             if action == self.MSG_REPAINT:
                 result = self._paint_database()
 
-            # clear all possible database paint
+            # clear database base on the current state
             elif action == self.MSG_CLEAR:
                 result = self._clear_database()
+
+            # clear all possible database paint
+            elif action == self.MSG_FORCE_CLEAR:
+                result = self._force_clear_database()
 
             # check for a rebase of the painted data
             elif action == self.MSG_REBASE:
