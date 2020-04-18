@@ -1,6 +1,9 @@
 import abc
+import logging
 
 from ..qt import QT_AVAILABLE, QtGui
+
+logger = logging.getLogger("Lighthouse.API")
 
 #------------------------------------------------------------------------------
 # Disassembler API
@@ -180,13 +183,13 @@ class DisassemblerCoreAPI(object):
     # WaitBox API
     #------------------------------------------------------------------------------
 
-    def show_wait_box(self, text):
+    def show_wait_box(self, text, modal=True):
         """
         Show the disassembler universal WaitBox.
         """
         assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
         self._waitbox.set_text(text)
-        self._waitbox.show()
+        self._waitbox.show(modal)
 
     def hide_wait_box(self):
         """

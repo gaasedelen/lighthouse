@@ -343,7 +343,7 @@ class DatabasePainter(object):
         """
         Repaint the current database based on the current state.
         """
-        lmsg("Painting database...")
+        logger.debug("Painting database...")
 
         # more code-friendly, readable aliases (db_XX == database_XX)
         db_coverage = self.director.coverage
@@ -398,11 +398,7 @@ class DatabasePainter(object):
 
         #------------------------------------------------------------------
         end = time.time()
-        lmsg(" - Painting took %.2f seconds" % (end - start))
-        #logger.debug(" stale_instr:  %s" % "{:,}".format(len(stale_instr)))
-        #logger.debug(" fresh instr:  %s" % "{:,}".format(len(new_instr)))
-        #logger.debug(" stale_nodes:  %s" % "{:,}".format(len(stale_nodes)))
-        #logger.debug(" fresh_nodes:  %s" % "{:,}".format(len(new_nodes)))
+        logger.debug(" - Painting took %.2f seconds" % (end - start))
 
         # paint finished successfully
         return True
@@ -411,7 +407,7 @@ class DatabasePainter(object):
         """
         Clear all paint from the current database using the known paint state.
         """
-        lmsg("Clearing database paint...")
+        logger.debug("Clearing database paint...")
         start = time.time()
         #------------------------------------------------------------------
 
@@ -429,7 +425,7 @@ class DatabasePainter(object):
 
         #------------------------------------------------------------------
         end = time.time()
-        lmsg(" - Database paint cleared in %.2f seconds..." % (end-start))
+        logger.debug(" - Database paint cleared in %.2f seconds..." % (end-start))
 
         # sanity checks...
         assert self._painted_nodes == set()
@@ -438,13 +434,32 @@ class DatabasePainter(object):
         # paint finished successfully
         return True
 
-    @not_mainthread
     def _force_clear_database(self):
         """
         Forcibly clear the paint from all known database addresses.
         """
-        lmsg("Forcibly clearing all paint from database...")
         db_metadata = self.director.metadata
+
+        text = "Forcibly clearing all paint from database..."
+        logger.debug(text)
+
+        #
+        # NOTE: forcefully clearing the database of paint can take a long time
+        # in certain cases, so we want to block the user from doing anything
+        # to the database while we're working.
+        #
+        # we will pop up a waitbox to block them, but we have to be careful as
+        # a *modal* waitbox will conflict with IDA's processing of MFF_WRITE
+        # requests, where it waits for the waitbox to close before processing
+        #
+        # therefore, we put in a little bodge wire here to make sure the
+        # waitbox is *not* modal for IDA... but will be in the normal case.
+        # it also helps that IDA will be busy processing our 'write' requests,
+        # so the UI will be mostly frozen to the user anyway!
+        #
+
+        is_modal = bool(disassembler.NAME != "IDA")
+        disassembler.execute_ui(disassembler.show_wait_box)(text, is_modal)
 
         start = time.time()
         #------------------------------------------------------------------
@@ -459,7 +474,9 @@ class DatabasePainter(object):
 
         #------------------------------------------------------------------
         end = time.time()
-        lmsg(" - Database paint cleared in %.2f seconds..." % (end-start))
+
+        logger.debug(" - Database paint cleared in %.2f seconds..." % (end-start))
+        disassembler.execute_ui(disassembler.hide_wait_box)()
 
         # paint finished successfully
         return True
