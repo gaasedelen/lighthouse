@@ -547,26 +547,16 @@ class DatabaseMetadata(object):
         while function_addresses:
 
             # split off a chunk of functions to process metadata for
-            try:
-                addresses_chunk = function_addresses[:CHUNK_SIZE]
-                del function_addresses[:CHUNK_SIZE]
-
-            # reached the end of the function_addresses list... take whatever is left
-            except IndexError:
-                addresses_chunk = function_addresses[:]
-                function_addresses.clear()
-                CHUNK_SIZE = len(addresses_chunk)
+            addresses_chunk = function_addresses[:CHUNK_SIZE]
+            del function_addresses[:CHUNK_SIZE]
 
             # collect metadata from the database
             self._cache_functions(addresses_chunk)
 
             # report incremental progress to an optional progress_callback
             if progress_callback:
-                completed += CHUNK_SIZE
+                completed += CHUNK_SIZE if function_addresses else len(addresses_chunk)
                 progress_callback(completed, total)
-
-            # sleep some so we don't choke the mainthread
-            time.sleep(.001)
 
     @not_mainthread
     def _async_collect_metadata(self, function_addresses, progress_callback):
@@ -587,26 +577,16 @@ class DatabaseMetadata(object):
             # to operate on it if needed
             #
 
-            try:
-                addresses_chunk = function_addresses[:CHUNK_SIZE]
-                del function_addresses[:CHUNK_SIZE]
-
-            # reached the end of the function_addresses list... take whatever is left
-            except IndexError:
-                addresses_chunk = function_addresses[:]
-                function_addresses.clear()
-                CHUNK_SIZE = len(addresses_chunk)
-
+            addresses_chunk = function_addresses[:CHUNK_SIZE]
+            del function_addresses[:CHUNK_SIZE]
 
             # collect metadata from the database
             self._async_cache_functions(addresses_chunk)
 
-
             # report incremental progress to an optional progress_callback
             if progress_callback:
-                completed += CHUNK_SIZE
+                completed += CHUNK_SIZE if function_addresses else len(addresses_chunk)
                 progress_callback(completed, total)
-
 
             # if the refresh was canceled, stop collecting metadata and bail
             if self._stop_threads:
@@ -618,7 +598,7 @@ class DatabaseMetadata(object):
                 break
 
             # sleep some so we don't choke the mainthread
-            time.sleep(.0015)
+            time.sleep(.015)
 
         # the refresh either completed, or it is going synchronous!
         return False
