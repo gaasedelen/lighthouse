@@ -123,23 +123,11 @@ class IDAPainter(DatabasePainter):
     def __init__(self, lctx, director, palette):
         super(IDAPainter, self).__init__(lctx, director, palette)
         self._streaming_instructions = True
+        self._idp_hooks = InstructionPaintHooks(director, palette)
+        self._vduis = {}
 
         # see the MFF_NOWAIT workaround details above
         self._signal = ToMainthread()
-
-        #----------------------------------------------------------------------
-        # HexRays Hooking
-        #----------------------------------------------------------------------
-        #
-        # TODO/COMMENT
-        #
-        # we attempt to hook hexrays the *first* time a repaint request is
-        # made. the assumption being that IDA is fully loaded and if hexrays is
-        # present, it will definitely be available (for hooking) by this time
-        #
-
-        self._idp_hooks = InstructionPaintHooks(director, palette)
-        self._attempted_hook = False
 
     def terminate(self):
 
@@ -160,24 +148,17 @@ class IDAPainter(DatabasePainter):
         # spin down the painter as usual
         super(IDAPainter, self).terminate()
 
-    def repaint(self):
-        """
-        Paint coverage defined by the current database mappings.
-        """
-        if not self._attempted_hook:
-            self._init_ida_hooks()
-            self._attempted_hook = True
-
-        # execute underlying repaint function
-        super(IDAPainter, self).repaint()
-
     def _notify_status_changed(self, status):
 
         # enable / disable hook based on the painter being enabled or disabled
         if status:
             self._idp_hooks.hook()
+            if idaapi.init_hexrays_plugin():
+                idaapi.install_hexrays_callback(self._hxe_callback)
         else:
             self._idp_hooks.unhook()
+            if idaapi.init_hexrays_plugin():
+                idaapi.remove_hexrays_callback(self._hxe_callback)
 
         # send the status changed signal...
         super(IDAPainter, self)._notify_status_changed(status)
@@ -326,6 +307,9 @@ class IDAPainter(DatabasePainter):
         Note that this has been decorated with @execute_paint (vs @execute_ui)
         to help avoid deadlocking on exit.
         """
+        for vdui in self._vduis.values():
+            if vdui.valid():
+                vdui.refresh_ctext(False)
         idaapi.refresh_idaview_anyway()
 
     def _cancel_action(self, job_id):
@@ -336,19 +320,6 @@ class IDAPainter(DatabasePainter):
     #------------------------------------------------------------------------------
     # Painting - HexRays (Decompilation / Source)
     #------------------------------------------------------------------------------
-
-    def _init_ida_hooks(self):
-        """
-        Install IDA-specific painting hooks.
-        """
-        result = False
-
-        # install hexrays hooks (if available)
-        if idaapi.init_hexrays_plugin():
-            logger.debug("HexRays present, installing hooks...")
-            result = idaapi.install_hexrays_callback(self._hxe_callback)
-        logger.debug("HexRays hooked: %r" % result)
-        #self._idp_hooks.hook()
 
     def paint_hexrays(self, cfunc, db_coverage):
         """
@@ -430,9 +401,6 @@ class IDAPainter(DatabasePainter):
             decompilation_text[line_number].bgcolor = self.palette.coverage_paint
             lines_painted += 1
 
-        # finally, refresh the view
-        self._refresh_ui()
-
     def _hxe_callback(self, event, *args):
         """
         HexRays event handler.
@@ -444,6 +412,7 @@ class IDAPainter(DatabasePainter):
             # more code-friendly, readable aliases
             vdui = args[0]
             cfunc = vdui.cfunc
+            self._vduis[vdui.view_idx] = vdui
 
             # if there's no coverage data for this function, there's nothing to do
             if not cfunc.entry_ea in self.director.coverage.functions:
@@ -451,6 +420,11 @@ class IDAPainter(DatabasePainter):
 
             # paint the decompilation text for this function
             self.paint_hexrays(cfunc, self.director.coverage)
+
+        # stop tracking vdui's if they close...
+        elif event == idaapi.hxe_close_pseudocode:
+            vdui = args[0]
+            self._vduis.pop(vdui.view_idx, None)
 
         return 0
 

@@ -133,14 +133,14 @@ class DatabasePainter(object):
         lmsg("%s painting..." % ("Enabling" if enabled else "Disabling"))
         self._enabled = enabled
 
+        # notify listeners that the painter has been enabled/disabled
+        self._notify_status_changed(enabled)
+
         # paint or clear the database based on the change of status...
         if enabled:
             self._send_message(self.MSG_REPAINT)
         else:
             self._send_message(self.MSG_CLEAR)
-
-        # notify listeners that the painter has been enabled/disabled
-        self._notify_status_changed(enabled)
 
     #--------------------------------------------------------------------------
     # Commands
