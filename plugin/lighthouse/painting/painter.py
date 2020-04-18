@@ -14,6 +14,7 @@ class DatabasePainter(object):
     """
     __metaclass__ = abc.ABCMeta
 
+    MSG_ABORT = -1
     MSG_TERMINATE = 0
     MSG_REPAINT = 1
     MSG_CLEAR = 2
@@ -450,7 +451,7 @@ class DatabasePainter(object):
         #
         # we will pop up a waitbox to block them, but we have to be careful as
         # a *modal* waitbox will conflict with IDA's processing of MFF_WRITE
-        # requests, where it waits for the waitbox to close before processing
+        # requests making it wait for the waitbox to close before processing
         #
         # therefore, we put in a little bodge wire here to make sure the
         # waitbox is *not* modal for IDA... but will be in the normal case.
@@ -548,6 +549,10 @@ class DatabasePainter(object):
             # check for a rebase of the painted data
             elif action == self.MSG_REBASE:
                 result = self._rebase_database()
+
+            # thrown internally to escape a stale paint, just ignore
+            elif action == self.MSG_ABORT:
+                continue
 
             # spin down the painting thread (this thread)
             elif action == self.MSG_TERMINATE:

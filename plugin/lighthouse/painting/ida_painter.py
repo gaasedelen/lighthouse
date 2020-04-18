@@ -232,15 +232,36 @@ class IDAPainter(DatabasePainter):
         #
 
         for node_address in node_addresses:
-            node_coverage = db_coverage.nodes[node_address]
-            node_metadata = db_metadata.nodes[node_address]
+
+            # retrieve all the necessary structures to paint this node
+            node_coverage = db_coverage.nodes.get(node_address, None)
+            node_metadata = db_metadata.nodes.get(node_address, None)
+            functions = db_metadata.get_functions_by_node(node_address)
+
+            #
+            # if we did not get *everything* that we needed, then it is
+            # possible the database changesd, or the coverage set changed...
+            #
+            # this is kind of what we get for not using locks :D but that's
+            # okay, just stop painting here and let the painter sort it out
+            #
+
+            if not (node_coverage and node_metadata and functions):
+                self._msg_queue.put(self.MSG_ABORT)
+                node_addresses = node_addresses[:node_addresses.index(node_address)]
+                break
+
+            #
+            # get_functions_by_node() can return multiple functios (eg, a
+            # shared node) but in IDA should only ever return one... so we
+            # can pull it out now
+            #
+
+            function_metadata = functions[0]
 
             # ignore nodes that are only partially executed
             if node_coverage.instructions_executed != node_metadata.instruction_count:
                 continue
-
-            # get the function address for this node (there should only be one...)
-            function_metadata = db_metadata.get_functions_by_node(node_address)[0]
 
             # do the *actual* painting of a single node instance
             set_node_info(
@@ -271,10 +292,22 @@ class IDAPainter(DatabasePainter):
         #
 
         for node_address in node_addresses:
-            node_metadata = db_metadata.nodes[node_address]
 
-            # get the function address for this node (there should only be one...)
-            function_metadata = db_metadata.get_functions_by_node(node_address)[0]
+            # retrieve all the necessary structures to paint this node
+            node_metadata = db_metadata.nodes.get(node_address, None)
+            functions = db_metadata.get_functions_by_node(node_address)
+
+            #
+            # abort if something looks like it changed... read the comments in
+            # self._paint_nodes for more verbose information
+            #
+
+            if not (node_metadata and functions):
+                self._msg_queue.put(self.MSG_ABORT)
+                node_addresses = node_addresses[:node_addresses.index(node_address)]
+                break
+
+            function_metadata = functions[0]
 
             # do the *actual* painting of a single node instance
             set_node_info(
