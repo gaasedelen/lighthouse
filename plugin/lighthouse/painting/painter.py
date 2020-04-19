@@ -44,6 +44,7 @@ class DatabasePainter(object):
 
         self._imagebase = BADADDR
         self._painted_nodes = set()
+        self._painted_partial = set()
         self._painted_instructions = set()
 
         #
@@ -368,10 +369,14 @@ class DatabasePainter(object):
 
         if not self._streaming_instructions:
 
+            #
+            # TODO: 'partially painted nodes' might be a little funny / not
+            # working correctly in IDA if we ever disable instruction streaming...
+            #
+
             # compute the painted instructions that will not get painted over
-            stale_partial_inst = self._painted_instructions & db_coverage.partial_instructions
             stale_instr = self._painted_instructions - db_coverage.coverage
-            stale_instr |= stale_partial_inst
+            stale_instr |= (self._painted_partial - db_coverage.partial_instructions)
 
             # clear old instruction paint
             if not self._async_action(self._clear_instructions, stale_instr):

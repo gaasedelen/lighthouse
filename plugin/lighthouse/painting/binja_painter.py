@@ -41,6 +41,7 @@ class BinjaPainter(DatabasePainter):
         for address in instructions:
             for func in bv.get_functions_containing(address):
                 func.set_auto_instr_highlight(address, HighlightStandardColor.NoHighlightColor)
+        self._painted_partial -= set(instructions)
         self._painted_instructions -= set(instructions)
         self._action_complete.set()
 
@@ -48,6 +49,7 @@ class BinjaPainter(DatabasePainter):
         for address in instructions:
             for func in bv.get_functions_containing(address):
                 func.set_auto_instr_highlight(address, color)
+        self._painted_partial |= set(instructions)
         self._painted_instructions |= set(instructions)
 
     def _paint_nodes(self, node_addresses):
@@ -58,6 +60,7 @@ class BinjaPainter(DatabasePainter):
         r, g, b, _ = self.palette.coverage_paint.getRgb()
         color = HighlightColor(red=r, green=g, blue=b)
 
+        partial_nodes = set()
         for node_address in node_addresses:
             node_metadata = db_metadata.nodes.get(node_address, None)
             node_coverage = db_coverage.nodes.get(node_address, None)
@@ -70,13 +73,14 @@ class BinjaPainter(DatabasePainter):
 
             # special case for nodes that are only partially executed...
             if node_coverage.instructions_executed != node_metadata.instruction_count:
+                partial_nodes.add(node_address)
                 self._partial_paint(bv, node_coverage.executed_instructions.keys(), color)
                 continue
 
             for node in bv.get_basic_blocks_starting_at(node_address):
                 node.highlight = color
 
-        self._painted_nodes |= set(node_addresses)
+        self._painted_nodes |= (set(node_addresses) - partial_nodes)
         self._action_complete.set()
 
     def _clear_nodes(self, node_addresses):
