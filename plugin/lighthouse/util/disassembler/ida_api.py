@@ -389,8 +389,10 @@ class RenameHooks(idaapi.IDB_Hooks):
         if local_name or new_name.startswith("loc_"):
             return 0
 
+        rendered_name = idaapi.get_short_name(address)
+
         # call the 'renamed' callback, that will get hooked by a listener
-        self.name_changed(address, new_name)
+        self.name_changed(address, rendered_name)
 
         # must return 0 to keep IDA happy...
         return 0
