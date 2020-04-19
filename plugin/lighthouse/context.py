@@ -41,10 +41,6 @@ class LighthouseContext(object):
         # the directory to start the coverage file dialog in
         self._last_directory = None
 
-        # TODO/HEADLESS: re-enable
-        # expose the live CoverageDirector object instance for external scripts
-        #lighthouse.coverage_director = self.director
-
     def start(self):
         """
         One-time activation a Lighthouse context and its subsystems.
@@ -61,12 +57,6 @@ class LighthouseContext(object):
         """
         Spin down any session subsystems before the session is deleted.
         """
-
-        # TODO/HEADLESS: re-enable
-        # remove access to the exposed CoverageDirector
-        #lighthouse.coverage_director = None
-
-        # spin down the rest of the session subsystems
         self.painter.terminate()
         self.director.terminate()
         self.metadata.terminate()

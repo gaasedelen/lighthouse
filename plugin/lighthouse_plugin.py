@@ -17,12 +17,10 @@ if disassembler.headless:
 elif disassembler.NAME == "IDA":
     logger.info("Selecting IDA loader...")
     from lighthouse.integration.ida_loader import *
-    #from lighthouse import coverage_director
 
 elif disassembler.NAME == "BINJA":
     logger.info("Selecting Binary Ninja loader...")
     from lighthouse.integration.binja_loader import *
-    #from lighthouse import coverage_director
 
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

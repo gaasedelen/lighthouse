@@ -2,6 +2,7 @@ import os
 import abc
 import logging
 
+import lighthouse
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.update import check_for_update
@@ -55,6 +56,9 @@ class LighthouseCore(object):
         # install disassembler UI
         self._install_ui()
 
+        # install entry point for headless / terminal access...
+        lighthouse.get_context = self.get_context
+
         # plugin loaded successfully, print the plugin banner
         self.print_banner()
         logger.info("Successfully loaded plugin")
@@ -64,6 +68,9 @@ class LighthouseCore(object):
         Unload the plugin, and remove any UI integrations.
         """
         self._uninstall_ui()
+
+        # remove headless entry point
+        lighthouse.get_context = lambda x: None
 
         # spin down any active contexts (stop threads, cleanup qt state, etc)
         for lctx in self.lighthouse_contexts.values():

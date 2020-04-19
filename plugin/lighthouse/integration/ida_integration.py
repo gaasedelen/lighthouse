@@ -32,7 +32,7 @@ class LighthouseIDA(LighthouseCore):
         # run initialization
         super(LighthouseIDA, self).__init__()
 
-    def get_context(self, dctx, startup=True):
+    def get_context(self, dctx=None, startup=True):
         """
         TODO
         """

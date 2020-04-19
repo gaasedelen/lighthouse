@@ -1,1 +1,1 @@
-coverage_director = None
+get_context = lambda x: None
