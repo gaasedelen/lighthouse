@@ -1345,6 +1345,10 @@ class CoverageDirector(object):
         """
         Complete refresh of the director and mapped coverage.
         """
+        if disassembler[self.metadata.lctx].busy:
+            disassembler.warning("Cannot refresh Lighthouse while the disassembler is busy...")
+            return
+
         disassembler.show_wait_box("Refreshing Lighthouse...")
         self._refresh()
         disassembler.hide_wait_box()

@@ -406,24 +406,3 @@ class LighthouseCore(object):
         # kick off the async update check
         check_for_update(self.PLUGIN_VERSION, callback)
         self._update_checked = True
-
-    #--------------------------------------------------------------------------
-    # Scheduled
-    #--------------------------------------------------------------------------
-
-    # TODO/REBASING
-    @disassembler.execute_read
-    def scheduled(self):
-        metadata = self.director.metadata
-
-        # get current imagebase
-        base = disassembler.get_imagebase()
-        lmsg("Imagebase: 0x%08x" % base)
-
-        # detect an image rebase
-        if (metadata.cached and base != metadata.imagebase) and not disassembler.busy:
-            lmsg("Image rebase detected, rebasing Lighthouse metadata...")
-            self.director.refresh()
-
-        # schedule the next update
-        self._scheduled.start(1000)

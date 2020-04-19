@@ -6,6 +6,7 @@ import itertools
 import threading
 import collections
 
+from lighthouse.util.qt import QtCore
 from lighthouse.util.log import lmsg
 from lighthouse.util.misc import *
 from lighthouse.util.python import *
@@ -101,6 +102,13 @@ class DatabaseMetadata(object):
         self._stop_threads = False
         self._go_synchronous = False
 
+        # a scheduled callback to watch for specific database changes
+        self._scheduled_interval = 2000 # ms
+        self._scheduled_timer = QtCore.QTimer()
+        self._scheduled_timer.setInterval(self._scheduled_interval)
+        self._scheduled_timer.setSingleShot(True)
+        self._scheduled_timer.timeout.connect(self._scheduled_worker)
+
         #----------------------------------------------------------------------
         # Callbacks
         #----------------------------------------------------------------------
@@ -117,7 +125,8 @@ class DatabaseMetadata(object):
         """
         Start the metadata subsystem.
         """
-        pass # TODO: rebase scheduled task
+        if self._scheduled_timer:
+            self._scheduled_timer.start()
 
     def terminate(self):
         """
@@ -126,6 +135,12 @@ class DatabaseMetadata(object):
         self.abort_refresh(join=True)
         if self._rename_hooks:
             self._rename_hooks.unhook()
+
+        # attempt to stop the scheduled callback... semi-safely :S
+        if self._scheduled_timer:
+            stopping = self._scheduled_timer
+            self._scheduled_timer = None
+            stopping.stop()
 
         # best effort to free up resources & improve interpreter spindown
         del self._metadata_modified_callbacks
@@ -711,6 +726,31 @@ class DatabaseMetadata(object):
         TODO/FUTURE: send old / new imagebases
         """
         notify_callback(self._rebased_callbacks)
+
+    #--------------------------------------------------------------------------
+    # Scheduled
+    #--------------------------------------------------------------------------
+
+    @disassembler.execute_read
+    def _scheduled_worker(self):
+        """
+        A timed callback to watch for metadata-relevant database changes.
+        """
+        logger.debug("In timed metadata callback...")
+        disassembler_ctx = disassembler[self.lctx]
+
+        # watch for rebase events
+        current_imagebase = disassembler_ctx.get_imagebase()
+        if (self.cached and current_imagebase != self.imagebase):
+
+            # only attempt a rebase if the disassembler seems idle...
+            if not disassembler_ctx.busy:
+                lmsg("Rebasing Lighthouse (0x%X --> 0x%X)" % (self.imagebase, current_imagebase))
+                self.lctx.director.refresh()
+
+        # schedule the next update (ms)
+        if self._scheduled_timer:
+            self._scheduled_timer.start(self._scheduled_interval)
 
 #------------------------------------------------------------------------------
 # Function Metadata
