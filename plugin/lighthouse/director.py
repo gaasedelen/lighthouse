@@ -74,7 +74,14 @@ class CoverageDirector(object):
         # a map of loaded or composed database coverages
         self._database_coverage = collections.OrderedDict()
 
-        # TODO/COMMENT
+        #
+        # the owners map is used in block/coverage blame operations. it
+        # contains the mapping of node_address --> [ coverage filepaths ]
+        #
+        # given any node (basic block) address, we can use this mapping to do
+        # a reverse lookup to find which loaded coverage sets hit the block.
+        #
+
         self.owners = collections.defaultdict(set)
 
         #
@@ -311,8 +318,6 @@ class CoverageDirector(object):
     def _notify_coverage_created(self):
         """
         Notify listeners of a coverage creation event.
-
-        TODO/FUTURE: send list of names created?
         """
         notify_callback(self._coverage_created_callbacks)
 
@@ -325,8 +330,6 @@ class CoverageDirector(object):
     def _notify_coverage_deleted(self):
         """
         Notify listeners of a coverage deletion event.
-
-        TODO/FUTURE: send list of names deleted?
         """
         notify_callback(self._coverage_deleted_callbacks)
 
@@ -590,17 +593,27 @@ class CoverageDirector(object):
 
     def _optimize_coverage_data(self, coverage_addresses):
         """
-        Internal routine to optimize raw coverage data to the current metadata.
+        Optimize exploded coverage data to the current metadata cache.
         """
         logger.debug("Optimizing coverage data...")
         addresses = set(coverage_addresses)
 
-        # bucketize coverage addresses
+        # bucketize the exploded coverage addresses
         instructions = addresses & set(self.metadata.instructions)
         basic_blocks = instructions & viewkeys(self.metadata.nodes)
+
+        if not instructions:
+            logger.debug("No mappable instruction addresses in coverage data")
+            return []
+
+        """
+        #
+        # TODO/LOADING: display undefined/misaligned data somehow?
+        #
+
         unknown = addresses - instructions
 
-        # bucketize the uncategorized addresses
+        # bucketize the uncategorized exploded addresses
         undefined, misaligned = [], []
         for address in unknown:
 
@@ -611,18 +624,15 @@ class CoverageDirector(object):
             # size == 0 (misaligned inst)
             else:
                 misaligned.append(address)
+        """
 
         #
-        # TODO/LOADING: what if there are no defined instructions?
-        # TODO/LOADING: display undefined/misaligned data somehow
+        # here we attempt to compute the ratio between basic block addresses,
+        # and instruction addresses in the incoming coverage data.
         #
-
-        if not instructions:
-            logger.debug("No mappable instruction addresses in coverage data")
-            return []
-
-        #
-        # TODO/COMMENT
+        # this will help us determine if the existing instruction data is
+        # sufficient, or whether we need to explode/flatten the basic block
+        # addresses into their respective child instructions
         #
 
         block_ratio = len(basic_blocks) / float(len(instructions))
@@ -631,7 +641,8 @@ class CoverageDirector(object):
 
         #
         # a low basic block to instruction ratio implies the data is probably
-        # from an instruction trace or has been flattened already.
+        # from an instruction trace, or a basic block trace has been flattened
+        # exploded already (eg, a drcov log)
         #
 
         if block_ratio < block_trace_confidence:
@@ -639,15 +650,19 @@ class CoverageDirector(object):
             return list(instructions)
 
         #
-        # take each basic block address, and expand it into a list of
-        # presumably executed instructions
+        # take each basic block address, and explode it into a list of all the
+        # instruction addresses contained within the basic block as determined
+        # by the database metadata cache
+        #
+        # it is *possible* that this may introduce 'inaccurate' paint should
+        # the user provide a basic block trace that crashes mid-block. but
+        # that is not something we can account for in a block trace...
         #
 
         block_instructions = set([])
         for address in basic_blocks:
             block_instructions |= set(self.metadata.nodes[address].instructions)
 
-        # DONE
         logger.debug("Optimized as basic block trace...")
         return list(block_instructions | instructions)
 

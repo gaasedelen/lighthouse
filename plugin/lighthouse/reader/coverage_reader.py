@@ -4,8 +4,8 @@ import inspect
 import logging
 import traceback
 
-from lighthouse.util.python import iteritems
 from .coverage_file import CoverageFile
+from lighthouse.util.python import iteritems
 from lighthouse.exceptions import CoverageParsingError
 
 logger = logging.getLogger("Lighthouse.Reader")
@@ -14,7 +14,14 @@ MODULES_DIRECTORY = os.path.join(os.path.dirname(os.path.realpath(__file__)), "p
 
 class CoverageReader(object):
     """
-    TODO/COMMENT
+    Middleware to automatically parse and load different coverage file formats.
+
+    This class will dynamically load and make use of coverage file parsers
+    that subclass from the CoverageFile abstraction and live within the
+    reader's 'parsers' folder.
+
+    This should allow end-users to write parsers for custom coverage file
+    format without having to modify any of Lighthouse's existing code (ideally)
     """
 
     def __init__(self):
@@ -59,7 +66,7 @@ class CoverageReader(object):
 
     def _import_parsers(self):
         """
-        Scan and import coverage file parsers.
+        Scan and import coverage file parsers from the 'parsers' directory.
         """
         target_subclass = CoverageFile
         ignored_files = ["__init__.py"]
@@ -93,12 +100,12 @@ class CoverageReader(object):
         """
         Return the first matching target_subclass in module_file.
 
-        This function is used to scan a specific file (module_file)
-        in the Lighthouse parsers directory for class definitions that
-        subclass from target_subclass.
+        This function is used to scan a specific file (module_file) in the
+        Lighthouse parsers directory for class definitions that subclass from
+        target_subclass.
 
-        We use this to dynmically import, locate, and return objects
-        that are utilizing our CoverageFile abstraction.
+        We use this to dynmically import, locate, and return objects that are
+        utilizing our CoverageFile abstraction.
         """
         module = None
         module_class = None

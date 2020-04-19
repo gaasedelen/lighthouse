@@ -42,7 +42,7 @@ class CoverageTableView(QtWidgets.QTableView):
         """
         Refresh UI facing elements to reflect the current theme.
         """
-        palette = self._model._director.palette
+        palette = self._model.lctx.palette
         self.setStyleSheet(
             "QTableView {"
             "  gridline-color: %s;" % palette.table_grid.name() +
@@ -411,7 +411,8 @@ class CoverageTableController(object):
     The Coverage Table Controller (Logic)
     """
 
-    def __init__(self, model):
+    def __init__(self, lctx, model):
+        self.lctx = lctx
         self._model = model
         self._last_directory = None
 
@@ -424,11 +425,10 @@ class CoverageTableController(object):
         """
         Interactive rename of a database function via the coverage table.
         """
-        lctx = self._model._director.metadata.lctx # TODO dirty
 
         # retrieve details about the function targeted for rename
         function_address = self._model.row2func[row]
-        original_name = disassembler[lctx].get_function_raw_name_at(function_address)
+        original_name = disassembler[self.lctx].get_function_raw_name_at(function_address)
 
         # prompt the user for a new function name
         ok, new_name = prompt_string(
@@ -446,14 +446,13 @@ class CoverageTableController(object):
             return
 
         # rename the function
-        disassembler[lctx].set_function_name_at(function_address, new_name)
+        disassembler[self.lctx].set_function_name_at(function_address, new_name)
 
     @mainthread
     def prefix_table_functions(self, rows):
         """
         Interactive prefixing of database functions via the coverage table.
         """
-        lctx = self._model._director.metadata.lctx # TODO dirty
 
         # prompt the user for a new function name
         ok, prefix = prompt_string(
@@ -468,16 +467,15 @@ class CoverageTableController(object):
 
         # apply the user prefix to the functions depicted in the given rows
         function_addresses = self._get_function_addresses(rows)
-        disassembler[lctx].prefix_functions(function_addresses, prefix)
+        disassembler[self.lctx].prefix_functions(function_addresses, prefix)
 
     @mainthread
     def clear_function_prefixes(self, rows):
         """
         Clear prefixes of database functions via the coverage table.
         """
-        lctx = self._model._director.metadata.lctx # TODO dirty
         function_addresses = self._get_function_addresses(rows)
-        disassembler[lctx].clear_prefixes(function_addresses)
+        disassembler[self.lctx].clear_prefixes(function_addresses)
 
     #---------------------------------------------------------------------------
     # Copy-to-Clipboard
@@ -536,7 +534,6 @@ class CoverageTableController(object):
         """
         Navigate to the function depicted by the given row.
         """
-        lctx = self._model._director.metadata.lctx # TODO dirty
 
         # get the clicked function address
         function_address = self._model.row2func[row]
@@ -546,7 +543,7 @@ class CoverageTableController(object):
         # first block (or any block) with coverage and set that as our target
         #
 
-        function_coverage = lctx.director.coverage.functions.get(function_address, None)
+        function_coverage = self.lctx.director.coverage.functions.get(function_address, None)
         if function_coverage:
             if function_address in function_coverage.nodes:
                 target_address = function_address
@@ -562,7 +559,7 @@ class CoverageTableController(object):
             target_address = function_address
 
         # navigate to the target function + block
-        disassembler[lctx].navigate_to_function(function_address, target_address)
+        disassembler[self.lctx].navigate_to_function(function_address, target_address)
 
     def toggle_column_alignment(self, column):
         """
@@ -584,12 +581,11 @@ class CoverageTableController(object):
         """
         Export the coverage table to an HTML report.
         """
-        lctx = self._model._director.metadata.lctx # TODO dirty
         if not self._last_directory:
-            self._last_directory = disassembler[lctx].get_database_directory()
+            self._last_directory = disassembler[self.lctx].get_database_directory()
 
         # build filename for the coverage report based off the coverage name
-        name, _ = os.path.splitext(self._model._director.coverage_name)
+        name, _ = os.path.splitext(self.lctx.director.coverage_name)
         filename = name + ".html"
         suggested_filepath = os.path.join(self._last_directory, filename)
 
@@ -693,9 +689,10 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         ""
     ]
 
-    def __init__(self, director, parent=None):
+    def __init__(self, lctx, parent=None):
         super(CoverageTableModel, self).__init__(parent)
-        self._director = director
+        self.lctx = lctx
+        self._director = lctx.director
 
         # convenience mapping from row_number --> function_address
         self.row2func = {}
@@ -708,7 +705,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # a fallback coverage object for functions with no coverage
         self._blank_coverage = FunctionCoverage(BADADDR)
-        self._blank_coverage.coverage_color = director.palette.table_coverage_none
+        self._blank_coverage.coverage_color = lctx.palette.table_coverage_none
 
         # set the default column text alignment for each column (centered)
         self._default_alignment = QtCore.Qt.AlignCenter
@@ -761,7 +758,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         Does not require @disassembler.execute_ui decorator, data_changed() has its own.
         """
-        self._blank_coverage.coverage_color = self._director.palette.table_coverage_none
+        self._blank_coverage.coverage_color = self.lctx.palette.table_coverage_none
         self._data_changed()
 
     #--------------------------------------------------------------------------
@@ -821,7 +818,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             # lookup the function info for this row
             try:
                 function_address  = self.row2func[index.row()]
-                function_metadata = self._director.metadata.functions[function_address]
+                function_metadata = self.lctx.metadata.functions[function_address]
 
             #
             # if we hit a KeyError, it is probably because the database metadata
@@ -921,7 +918,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # column has not been enlightened to sorting
         except KeyError as e:
-            logger.warning("TODO/FUTURE: implement column %u sorting?" % column)
+            logger.error("ERROR: Sorting not implemented for column %u" % column)
             self.layoutChanged.emit()
             return
 
@@ -1023,7 +1020,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate an HTML representation of the coverage table.
         """
-        palette = self._director.palette
+        palette = self.lctx.palette
 
         # table summary
         summary_html, summary_css = self._generate_html_summary()
@@ -1063,7 +1060,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate the HTML table summary.
         """
-        palette = self._director.palette
+        palette = self.lctx.palette
         metadata = self._director.metadata
         coverage = self._director.coverage
 
@@ -1107,7 +1104,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         """
         Generate the HTML coverage table.
         """
-        palette = self._director.palette
+        palette = self.lctx.palette
         table_rows = []
 
         # generate the table's column title row

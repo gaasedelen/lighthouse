@@ -58,9 +58,6 @@ def execute_sync(function, sync_type):
 #------------------------------------------------------------------------------
 
 class IDACoreAPI(DisassemblerCoreAPI):
-    """
-    The IDA implementation of the disassembler API abstraction.
-    """
     NAME = "IDA"
 
     def __init__(self):
@@ -172,13 +169,8 @@ class IDACoreAPI(DisassemblerCoreAPI):
         except KeyError:
             return False
 
-        # TODO/IDA remove try/cacth after cleanup
-        try:
-            parent, dctx = None, None # not used for IDA's integration
-            widget = make_dockable(dockable_name, parent, dctx)
-        except Exception:
-            logger.exception("Error showing dockable...")
-            return False
+        parent, dctx = None, None # not used for IDA's integration
+        widget = make_dockable(dockable_name, parent, dctx)
 
         # get the original twidget, so we can use it with the IDA API's
         #twidget = idaapi.TWidget__from_ptrval__(widget) NOTE: IDA 7.2+ only...
@@ -212,7 +204,10 @@ class IDACoreAPI(DisassemblerCoreAPI):
         #
         # TODO/IDA: we need better early detection for if IDA is fully ready,
         # this isn't effective and this func theme func can crash IDA if
-        # called too early (eg, during db load...)
+        # called too early (eg, during db load...).
+        #
+        # this isn't a problem now... but I don't want us to be at risk of
+        # hard crashing people's IDA in the future should we change something.
         #
 
         imagebase = idaapi.get_imagebase()
@@ -323,9 +318,6 @@ class IDACoreAPI(DisassemblerCoreAPI):
 #------------------------------------------------------------------------------
 
 class IDAContextAPI(DisassemblerContextAPI):
-    """
-    TODO/COMMENT
-    """
 
     def __init__(self, dctx):
         super(IDAContextAPI, self).__init__(dctx)

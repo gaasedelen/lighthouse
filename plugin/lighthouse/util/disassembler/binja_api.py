@@ -79,9 +79,6 @@ def execute_sync(function):
 #------------------------------------------------------------------------------
 
 class BinjaCoreAPI(DisassemblerCoreAPI):
-    """
-    The Binary Ninja implementation of the disassembler API abstraction.
-    """
     NAME = "BINJA"
 
     def __init__(self):
@@ -191,9 +188,6 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
         return bv
 
 class BinjaContextAPI(DisassemblerContextAPI):
-    """
-    TODO/COMMENT
-    """
 
     def __init__(self, dctx):
         super(BinjaContextAPI, self).__init__(dctx)

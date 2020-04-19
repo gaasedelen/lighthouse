@@ -722,8 +722,6 @@ class DatabaseMetadata(object):
     def _notify_rebased(self, old_imagebase, new_imagebase):
         """
         Notify listeners of a database rebasing event.
-
-        TODO/FUTURE: send old / new imagebases
         """
         notify_callback(self._rebased_callbacks)
 

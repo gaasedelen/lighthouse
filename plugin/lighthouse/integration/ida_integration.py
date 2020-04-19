@@ -34,7 +34,10 @@ class LighthouseIDA(LighthouseCore):
 
     def get_context(self, dctx=None, startup=True):
         """
-        TODO
+        Get the LighthouseContext object for a given database context.
+
+        NOTE: since IDA can only have one binary / IDB open at a time, the
+        dctx (database context) should always be 'None'.
         """
         self.palette.warmup()
 

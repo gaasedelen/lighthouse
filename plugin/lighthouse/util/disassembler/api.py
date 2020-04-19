@@ -22,7 +22,7 @@ logger = logging.getLogger("Lighthouse.API")
 
 class DisassemblerCoreAPI(object):
     """
-    An abstract implementation of the required disassembler API.
+    An abstract implementation of the core disassembler APIs.
     """
     __metaclass__ = abc.ABCMeta
 
@@ -158,24 +158,45 @@ class DisassemblerCoreAPI(object):
     # UI APIs
     #--------------------------------------------------------------------------
 
+    #
+    # NOTE: please note, these APIs and their usage is a little ... obtuse.
+    # this is primarily because the IDA & Binja dockable widget management
+    # system is rather different.
+    #
+    # these APIs make a best effort in unifiying the systems in a manner that
+    # works for this project. it may not be ideal for the universal use case
+    # but is good enough for our purposes.
+    #
+
     @abc.abstractmethod
     def register_dockable(self, dockable_name, create_widget_callback):
         """
-        TODO/COMMENT
+        Register a callback with the disassembler to generate dockable widgets.
+
+         - dockable_name: the name of the window / dockable to be created
+         - create_widget_callback: a static function that return a new dockable widget
+
+        The registered callback will be called automatically in certain events
+        that will preclude the display of the dockable_name. These events
+        may include a new databse being opened, or show_dockable being called.
+
         """
         pass
 
     @abc.abstractmethod
     def create_dockable_widget(self, parent, dockable_name):
         """
-        TODO/COMMENT
+        Creates a dockable widget.
+
+        This function should generally be called within the create_widget_callback
+        described in register_dockable(...).
         """
         pass
 
     @abc.abstractmethod
     def show_dockable(self, dockable_name):
         """
-        TODO/COMMENT
+        Show the named dockable widget.
         """
         pass
 
@@ -211,7 +232,7 @@ class DisassemblerCoreAPI(object):
 
 class DisassemblerContextAPI(object):
     """
-    An abstract implementation of the required binary-specific disassembler API.
+    An abstract implementation of database/contextual disassembler APIs.
     """
     __metaclass__ = abc.ABCMeta
 

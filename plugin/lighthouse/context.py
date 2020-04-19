@@ -17,7 +17,7 @@ logger = logging.getLogger("Lighthouse.Context")
 
 class LighthouseContext(object):
     """
-    TODO/COMMENT
+    A database/binary-unique instance of Lighthouse and its subsystems.
     """
 
     def __init__(self, core, dctx):
@@ -40,6 +40,10 @@ class LighthouseContext(object):
 
         # the directory to start the coverage file dialog in
         self._last_directory = None
+
+    @property
+    def palette(self):
+        return self.core.palette
 
     def start(self):
         """

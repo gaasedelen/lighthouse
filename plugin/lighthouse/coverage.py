@@ -560,18 +560,6 @@ class DatabaseCoverage(object):
                 node_coverage.executed_instructions[address] = self._hitmap[address]
                 self._unmapped_data.discard(address)
 
-                ##
-                ## if the given address allegedly falls within this node's
-                ## address range, but doesn't line up with the known
-                ## instructions, log it as 'misaligned' / suspicious
-                ##
-                ## TODO/COV: This will need to be moved as instruction to
-                ## node mapping is now guaranteed
-                ##
-
-                #else:
-                #    self._misaligned_data.add(address)
-
                 # get the next address to attempt mapping on
                 try:
                     address = coverage_addresses.popleft()

@@ -74,11 +74,7 @@ def get_dpi_scale():
 def compute_color_on_gradiant(percent, color1, color2):
     """
     Compute the color specified by a percent between two colors.
-
-    TODO/PERF: This is silly, heavy, and can be refactored.
     """
-
-    # dump the rgb values from QColor objects
     r1, g1, b1, _ = color1.getRgb()
     r2, g2, b2, _ = color2.getRgb()
 

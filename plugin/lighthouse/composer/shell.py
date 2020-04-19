@@ -21,13 +21,13 @@ class ComposingShell(QtWidgets.QWidget):
     independent, but obviously must communicate with the director.
     """
 
-    def __init__(self, director, table_model, table_view=None):
+    def __init__(self, lctx, table_model, table_view=None):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
 
         # external entities
-        self._director = director
-        self._palette = director.palette
+        self._director = lctx.director
+        self._palette = lctx.palette
         self._table_model = table_model
         self._table_view = table_view
 

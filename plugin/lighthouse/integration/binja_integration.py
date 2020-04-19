@@ -24,7 +24,7 @@ class LighthouseBinja(LighthouseCore):
 
     def get_context(self, dctx, startup=True):
         """
-        Get the LighthouseContext object for a given disassembler context.
+        Get the LighthouseContext object for a given database context.
         """
         dctx_id = ctypes.addressof(dctx.handle.contents)
 
@@ -62,7 +62,7 @@ class LighthouseBinja(LighthouseCore):
             lctx = self.lighthouse_contexts[dctx_id]
             lctx.start()
 
-        # return the lighthouse context object for this disassembler ctx / bv
+        # return the lighthouse context object for this database ctx / bv
         return lctx
 
     #--------------------------------------------------------------------------
@@ -75,7 +75,7 @@ class LighthouseBinja(LighthouseCore):
     #
     # this is problematic, because if the user 'clicks' onto the termial, and
     # then tries to execute our UIActions (like 'Load Coverage File'), the
-    # given 'contxet.binaryView' will be None
+    # given 'context.binaryView' will be None
     #
     # in the meantime, we have to use this workaround that will try to grab
     # the 'current' bv from the dock. this is not ideal, but it will suffice.

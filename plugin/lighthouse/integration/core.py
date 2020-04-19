@@ -3,6 +3,7 @@ import abc
 import logging
 
 import lighthouse
+
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.update import check_for_update
@@ -102,7 +103,7 @@ class LighthouseCore(object):
     @abc.abstractmethod
     def get_context(self, dctx, startup=True):
         """
-        Get the LighthouseContext object for a given disassembler context.
+        Get the LighthouseContext object for a given database context.
         """
         pass
 

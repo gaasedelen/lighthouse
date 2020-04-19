@@ -92,8 +92,8 @@ class CoverageOverview(object):
         """
         Initialize the coverage table.
         """
-        self._table_model = CoverageTableModel(self.director, self.widget)
-        self._table_controller = CoverageTableController(self._table_model)
+        self._table_model = CoverageTableModel(self.lctx, self.widget)
+        self._table_controller = CoverageTableController(self.lctx, self._table_model)
         self._table_view = CoverageTableView(self._table_controller, self._table_model, self.widget)
 
     def _ui_init_toolbar(self):
@@ -122,9 +122,10 @@ class CoverageOverview(object):
         """
         Initialize the coverage toolbar UI elements.
         """
+
         # the composing shell
         self._shell = ComposingShell(
-            self.director,
+            self.lctx,
             weakref.proxy(self._table_model),
             weakref.proxy(self._table_view)
         )

@@ -428,9 +428,13 @@ class IDAPainter(DatabasePainter):
 
         return 0
 
+#------------------------------------------------------------------------------
+# Instruction Paint Streaming (Processor Hooks)
+#------------------------------------------------------------------------------
+
 class InstructionPaintHooks(idaapi.IDP_Hooks):
     """
-    TODO/COMMENT
+    Hook IDA's processor callbacks to paint instructions on the fly.
     """
 
     def __init__(self, director, palette):
