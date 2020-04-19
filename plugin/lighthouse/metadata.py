@@ -6,6 +6,7 @@ import itertools
 import threading
 import collections
 
+from lighthouse.util.log import lmsg
 from lighthouse.util.misc import *
 from lighthouse.util.python import *
 from lighthouse.util.disassembler import disassembler
@@ -831,6 +832,7 @@ class FunctionMetadata(object):
         function_metadata = self
         function_metadata.nodes = {}
         bv = disassembler_ctx.bv
+        count = ctypes.c_ulonglong(0)
 
         # get the function from the Binja database
         function = bv.get_function_at(self.address)
@@ -860,12 +862,12 @@ class FunctionMetadata(object):
 
             edge_src = node_metadata.edge_out
 
-            count = ctypes.c_ulonglong(0)
+            count.value = 0
             edges = core.BNGetBasicBlockOutgoingEdges(node.handle, count)
 
             for i in range(0, count.value):
                 if edges[i].target:
-                    function_metadata.edges[edge_src].append(node._create_instance(core.BNNewBasicBlockReference(edges[i].target), bv).start)
+                    function_metadata.edges[edge_src].append(node._create_instance(BNNewBasicBlockReference(edges[i].target), bv).start)
             core.BNFreeBasicBlockEdgeList(edges, count.value)
 
             # NOTE/PERF ~28% of metadata collection time alone...
@@ -1006,7 +1008,7 @@ class NodeMetadata(object):
         #
 
         while current_address < node_end:
-            instruction_size = idaapi.get_item_end(current_address) - current_address
+            instruction_size = get_item_end(current_address) - current_address
             self.instructions[current_address] = instruction_size
             current_address += instruction_size
 
@@ -1034,7 +1036,7 @@ class NodeMetadata(object):
         #
 
         while current_address < node_end:
-            instruction_size = core.BNGetInstructionLength(bh, ah, current_address) or 1
+            instruction_size = BNGetInstructionLength(bh, ah, current_address) or 1
             self.instructions[current_address] = instruction_size
             current_address += instruction_size
 
@@ -1115,12 +1117,19 @@ if disassembler.NAME == "IDA":
     FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
     NodeMetadata._cache_node = NodeMetadata._ida_cache_node
 
+    # pull hot funcs out of module for faster access... (perf)
+    from idaapi import get_item_end
+
 elif disassembler.NAME == "BINJA":
     import ctypes
     import binaryninja
     from binaryninja import core
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
     NodeMetadata._cache_node = NodeMetadata._binja_cache_node
+
+    # pull hot funcs out of module for faster access... (perf)
+    BNGetInstructionLength = core.BNGetInstructionLength
+    BNNewBasicBlockReference = core.BNNewBasicBlockReference
 
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

@@ -59,8 +59,14 @@ class BinjaPainter(DatabasePainter):
         color = HighlightColor(red=r, green=g, blue=b)
 
         for node_address in node_addresses:
-            node_metadata = db_metadata.nodes[node_address]
-            node_coverage = db_coverage.nodes[node_address]
+            node_metadata = db_metadata.nodes.get(node_address, None)
+            node_coverage = db_coverage.nodes.get(node_address, None)
+
+            # read comment in ida_painter.py (self._paint_nodes)
+            if not (node_coverage and node_metadata):
+                self._msg_queue.put(self.MSG_ABORT)
+                node_addresses = node_addresses[:node_addresses.index(node_address)]
+                break
 
             # special case for nodes that are only partially executed...
             if node_coverage.instructions_executed != node_metadata.instruction_count:
@@ -78,7 +84,14 @@ class BinjaPainter(DatabasePainter):
         db_metadata = self.director.metadata
 
         for node_address in node_addresses:
-            node_metadata = db_metadata.nodes[node_address]
+            node_metadata = db_metadata.nodes.get(node_address, None)
+
+            # read comment in ida_painter.py (self._paint_nodes)
+            if not node_metadata:
+                self._msg_queue.put(self.MSG_ABORT)
+                node_addresses = node_addresses[:node_addresses.index(node_address)]
+                break
+
             for node in bv.get_basic_blocks_starting_at(node_address):
                 node.highlight = HighlightStandardColor.NoHighlightColor
 

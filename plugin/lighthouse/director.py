@@ -1377,7 +1377,7 @@ class CoverageDirector(object):
         #
 
         else:
-            future = self.metadata.refresh_async(metadata_progress)
+            future = self.metadata.refresh_async(metadata_progress, force=True)
             self.metadata.go_synchronous()
             await_future(future)
 
