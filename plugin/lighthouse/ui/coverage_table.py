@@ -50,6 +50,10 @@ class CoverageTableView(QtWidgets.QTableView):
             "  color: %s;" % palette.table_text.name() +
             "  outline: none; "
             "} " +
+            "QHeaderView::section { "
+            "  padding: 1ex;"  \
+            "  margin: 0;"  \
+            "} " +
             "QTableView::item:selected {"
             "  color: white; "
             "  background-color: %s;" % palette.table_selection.name() +
@@ -128,23 +132,8 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # set the initial column widths based on their title or contents
         for i in xrange(self._model.columnCount()):
-
-            # determine the pixel width of the column header text
-            title_text = self._model.headerData(i, QtCore.Qt.Horizontal)
-            title_rect = title_fm.boundingRect(title_text)
-
-            # determine the pixel width of sample column entry text
-            entry_text = self._model.SAMPLE_CONTENTS[i]
-            entry_rect = entry_fm.boundingRect(entry_text)
-
-            # select the lager of the two potential column widths
-            column_width = max(title_rect.width(), entry_rect.width())
-
-            # pad the final column width to make the table less dense
-            column_width = int(column_width * 1.2)
-
-            # save the final column width
-            self.setColumnWidth(i, column_width)
+            title_rect = self._model.headerData(i, QtCore.Qt.Horizontal, QtCore.Qt.SizeHintRole)
+            self.setColumnWidth(i, title_rect.width())
 
         #
         # Misc
@@ -161,7 +150,9 @@ class CoverageTableView(QtWidgets.QTableView):
         vh.hide()
 
         # stretch last table column (which is blank) to fill remaining space
-        hh.setStretchLastSection(True)
+        #hh.setStretchLastSection(True)
+        #hh.setCascadingSectionResizes(True)
+        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
 
         # disable bolding of table column headers when table is selected
         hh.setHighlightSections(False)
@@ -180,11 +171,6 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # force the table row heights to be fixed height
         vh.setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
-
-        # specify the fixed pixel height for the table headers
-        spacing = title_fm.height() - title_fm.xHeight()
-        tweak = 26*get_dpi_scale() - spacing
-        hh.setFixedHeight(entry_fm.height()+tweak)
 
         # specify the fixed pixel height for the table rows
         # NOTE: don't ask too many questions about this voodoo math :D
@@ -646,7 +632,6 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
     INST_HIT     = 4
     FUNC_SIZE    = 5
     COMPLEXITY   = 6
-    FINAL_COLUMN = 7
 
     METADATA_ATTRIBUTES = [FUNC_NAME, FUNC_ADDR, FUNC_SIZE, COMPLEXITY]
     COVERAGE_ATTRIBUTES = [COV_PERCENT, BLOCKS_HIT, INST_HIT]
@@ -666,27 +651,37 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
     # column headers of the table
     COLUMN_HEADERS = \
     {
-        COV_PERCENT:  "Coverage %",
-        FUNC_NAME:    "Function Name",
+        COV_PERCENT:  "Cov %",
+        FUNC_NAME:    "Func Name",
         FUNC_ADDR:    "Address",
         BLOCKS_HIT:   "Blocks Hit",
-        INST_HIT:     "Instructions Hit",
-        FUNC_SIZE:    "Function Size",
-        COMPLEXITY:   "Complexity",
-        FINAL_COLUMN: ""
+        INST_HIT:     "Instr. Hit",
+        FUNC_SIZE:    "Func Size",
+        COMPLEXITY:   "CC",
+    }
+
+    # column header tooltips
+    COLUMN_TOOLTIPS = \
+    {
+        COV_PERCENT:  "Coverage Percent",
+        FUNC_NAME:    "Function Name",
+        FUNC_ADDR:    "Function Address",
+        BLOCKS_HIT:   "Number of Basic Blocks Executed",
+        INST_HIT:     "Number of Instructions Executed",
+        FUNC_SIZE:    "Function Size (bytes)",
+        COMPLEXITY:   "Cyclomatic Complexity",
     }
 
     # sample column
     SAMPLE_CONTENTS = \
     [
-        " 100.00% ",
+        " 100.00 ",
         " sub_140001B20 ",
         " 0x140001b20 ",
         " 100 / 100 ",
         " 1000 / 1000 ",
-        " 10000000 ",
-        " 1000000 ",
-        ""
+        " 100000 ",
+        " 1000 ",
     ]
 
     def __init__(self, lctx, parent=None):
@@ -797,9 +792,20 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
                 # center align all columns
                 return self._column_alignment[column]
 
+            # tooltip request
+            elif role == QtCore.Qt.ToolTipRole:
+                return self.COLUMN_TOOLTIPS[column]
+
             # font format request
             elif role == QtCore.Qt.FontRole:
                 return self._title_font
+
+        if role == QtCore.Qt.SizeHintRole:
+            title_fm = QtGui.QFontMetricsF(self._title_font)
+            #title_rect = title_fm.boundingRect(self.COLUMN_HEADERS[column])
+            title_rect = title_fm.boundingRect(self.SAMPLE_CONTENTS[column])
+            padded = QtCore.QSize(int(title_rect.width()*1.45), int(title_rect.height()*1.75))
+            return padded
 
         # unhandeled header request
         return None

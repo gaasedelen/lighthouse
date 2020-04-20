@@ -47,6 +47,10 @@ class ModuleSelector(QtWidgets.QDialog):
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
         self.setModal(True)
 
+        self._font = self.font()
+        self._font.setPointSizeF(normalize_to_dpi(10))
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
+
         # initialize module selector table
         self._ui_init_header()
         self._ui_init_table()
@@ -71,10 +75,12 @@ class ModuleSelector(QtWidgets.QDialog):
 
         self._label_description = QtWidgets.QLabel(description_text)
         self._label_description.setTextFormat(QtCore.Qt.RichText)
+        self._label_description.setFont(self._font)
         #self._label_description.setWordWrap(True)
 
         # a checkbox to save the user selected alias to the database
         self._checkbox_remember = QtWidgets.QCheckBox("Remember target module alias for this session")
+        self._checkbox_remember.setFont(self._font)
 
     def _ui_init_table(self):
         """
@@ -83,6 +89,8 @@ class ModuleSelector(QtWidgets.QDialog):
         self._table = QtWidgets.QTableWidget()
         self._table.verticalHeader().setVisible(False)
         self._table.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self._table.horizontalHeader().setFont(self._font)
+        self._table.setFont(self._font)
 
         # Create a simple table / list
         self._table.setColumnCount(1)

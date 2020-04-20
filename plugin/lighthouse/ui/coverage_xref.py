@@ -45,6 +45,10 @@ class CoverageXref(QtWidgets.QDialog):
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
         self.setModal(True)
 
+        self._font = self.font()
+        self._font.setPointSizeF(normalize_to_dpi(10))
+        self._font_metrics = QtGui.QFontMetricsF(self._font)
+
         # initialize coverage xref table
         self._ui_init_table()
         self._populate_table()
@@ -59,6 +63,8 @@ class CoverageXref(QtWidgets.QDialog):
         self._table = QtWidgets.QTableWidget()
         self._table.verticalHeader().setVisible(False)
         self._table.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self._table.horizontalHeader().setFont(self._font)
+        self._table.setFont(self._font)
         self._table.setWordWrap(False)
 
         # symbol, cov %, name, time
