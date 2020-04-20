@@ -88,7 +88,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
@@ -413,7 +413,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
@@ -526,7 +526,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # load the raw 'X' delete icon from disk

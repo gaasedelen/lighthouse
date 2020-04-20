@@ -130,10 +130,25 @@ class CoverageTableView(QtWidgets.QTableView):
         entry_font = self._model.data(0, QtCore.Qt.FontRole)
         entry_fm = QtGui.QFontMetricsF(entry_font)
 
+        # get the font used by the table cell entries
+        entry_font = self._model.data(0, QtCore.Qt.FontRole)
+        entry_fm = QtGui.QFontMetricsF(entry_font)
+
         # set the initial column widths based on their title or contents
         for i in xrange(self._model.columnCount()):
+
+            # determine the pixel width of the column header text
             title_rect = self._model.headerData(i, QtCore.Qt.Horizontal, QtCore.Qt.SizeHintRole)
-            self.setColumnWidth(i, title_rect.width())
+
+            # determine the pixel width of sample column entry text
+            entry_text = self._model.SAMPLE_CONTENTS[i]
+            entry_rect = entry_fm.boundingRect(entry_text)
+
+            # select the larger of the two potential column widths
+            column_width = max(title_rect.width(), entry_rect.width()*1.2)
+
+            # save the final column width
+            self.setColumnWidth(i, column_width)
 
         #
         # Misc
@@ -714,11 +729,11 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # initialize a monospace font to use for table row / cell text
         self._entry_font = MonospaceFont()
         self._entry_font.setStyleStrategy(QtGui.QFont.ForceIntegerMetrics)
-        self._entry_font.setPointSizeF(normalize_to_dpi(9))
+        self._entry_font.setPointSizeF(normalize_to_dpi(10))
 
         # use the default / system font for the column titles
         self._title_font = QtGui.QFont()
-        self._title_font.setPointSizeF(normalize_to_dpi(9))
+        self._title_font.setPointSizeF(normalize_to_dpi(10))
 
         #----------------------------------------------------------------------
         # Sorting
@@ -802,8 +817,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         if role == QtCore.Qt.SizeHintRole:
             title_fm = QtGui.QFontMetricsF(self._title_font)
-            #title_rect = title_fm.boundingRect(self.COLUMN_HEADERS[column])
-            title_rect = title_fm.boundingRect(self.SAMPLE_CONTENTS[column])
+            title_rect = title_fm.boundingRect(self.COLUMN_HEADERS[column])
             padded = QtCore.QSize(int(title_rect.width()*1.45), int(title_rect.height()*1.75))
             return padded
 

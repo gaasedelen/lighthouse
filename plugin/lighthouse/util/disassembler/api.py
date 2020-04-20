@@ -145,12 +145,20 @@ class DisassemblerCoreAPI(object):
         Display a warning dialog box with the given text.
         """
         msgbox = QtWidgets.QMessageBox()
+        before = msgbox.sizeHint().width()
         msgbox.setIcon(QtWidgets.QMessageBox.Critical)
+        after = msgbox.sizeHint().width()
+        icon_width = after - before
+
         msgbox.setWindowTitle("Lighthouse Warning")
-        msgbox.setInformativeText(text)
+        msgbox.setText(text)
+
+        font = msgbox.font()
+        fm = QtGui.QFontMetricsF(font)
+        text_width = fm.size(0, text).width()
 
         # don't ask...
-        spacer = QtWidgets.QSpacerItem(int(msgbox.sizeHint().width()*1.1), 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        spacer = QtWidgets.QSpacerItem(int(text_width*1.1 + icon_width), 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         layout = msgbox.layout()
         layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
         msgbox.setLayout(layout)

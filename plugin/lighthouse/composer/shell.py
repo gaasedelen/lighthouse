@@ -70,7 +70,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # initialize our ui elements
@@ -1029,7 +1029,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 

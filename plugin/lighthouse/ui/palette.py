@@ -5,6 +5,12 @@ import shutil
 import logging
 import traceback
 
+# NOTE: Py2/Py3 compat
+try:
+    from json.decoder import JSONDecodeError
+except ImportError:
+    JSONDecodeError = ValueError
+
 from lighthouse.util.qt import *
 from lighthouse.util.log import lmsg
 from lighthouse.util.misc import *
@@ -387,7 +393,7 @@ class LighthousePalette(object):
             return False
 
         # JSON decoding failed
-        except json.decoder.JSONDecodeError as e:
+        except JSONDecodeError as e:
             lmsg("Failed to decode theme '%s' to json" % filepath)
             lmsg(" - " + str(e))
             return False
