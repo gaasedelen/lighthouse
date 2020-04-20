@@ -1,21 +1,18 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-
 import logging
 import functools
 import threading
 import collections
 
-import binaryninja
-import binaryninjaui
-from binaryninja import PythonScriptingInstance, binaryview
-from binaryninjaui import DockHandler, DockContextHandler, UIContext, UIActionHandler
-from binaryninja.plugin import BackgroundTaskThread
-
 from .api import DisassemblerCoreAPI, DisassemblerContextAPI
 from ..qt import *
 from ..misc import is_mainthread, not_mainthread
+
+import binaryninja
+from binaryninja import PythonScriptingInstance, binaryview
+from binaryninja.plugin import BackgroundTaskThread
 
 logger = logging.getLogger("Lighthouse.API.Binja")
 
@@ -347,47 +344,52 @@ class RenameHooks(binaryview.BinaryDataNotification):
 # UI
 #------------------------------------------------------------------------------
 
-class DockableWidget(QtWidgets.QWidget, DockContextHandler):
-    """
-    A dockable Qt widget for Binary Ninja.
-    """
+if QT_AVAILABLE:
 
-    def __init__(self, parent, name):
-        QtWidgets.QWidget.__init__(self, parent)
-        DockContextHandler.__init__(self, self, name)
+    import binaryninjaui
+    from binaryninjaui import DockHandler, DockContextHandler, UIContext, UIActionHandler
 
-        self.actionHandler = UIActionHandler()
-        self.actionHandler.setupActionHandler(self)
+    class DockableWidget(QtWidgets.QWidget, DockContextHandler):
+        """
+        A dockable Qt widget for Binary Ninja.
+        """
 
-        self._active_view = None
-        self._visible_for_view = collections.defaultdict(lambda: False)
+        def __init__(self, parent, name):
+            QtWidgets.QWidget.__init__(self, parent)
+            DockContextHandler.__init__(self, self, name)
 
-    @property
-    def visible(self):
-        return self._visible_for_view[self._active_view]
+            self.actionHandler = UIActionHandler()
+            self.actionHandler.setupActionHandler(self)
 
-    @visible.setter
-    def visible(self, is_visible):
-        self._visible_for_view[self._active_view] = is_visible
-
-    def shouldBeVisible(self, view_frame):
-        if not view_frame:
-            return False
-
-        import shiboken2 as shiboken
-        vf_ptr = shiboken.getCppPointer(view_frame)[0]
-        return self._visible_for_view[vf_ptr]
-
-    def notifyVisibilityChanged(self, is_visible):
-        self.visible = is_visible
-
-    def notifyViewChanged(self, view_frame):
-        if not view_frame:
             self._active_view = None
-            return
+            self._visible_for_view = collections.defaultdict(lambda: False)
 
-        import shiboken2 as shiboken
-        self._active_view = shiboken.getCppPointer(view_frame)[0]
-        if self.visible:
-            dock_handler = DockHandler.getActiveDockHandler()
-            dock_handler.setVisible(self.m_name, True)
+        @property
+        def visible(self):
+            return self._visible_for_view[self._active_view]
+
+        @visible.setter
+        def visible(self, is_visible):
+            self._visible_for_view[self._active_view] = is_visible
+
+        def shouldBeVisible(self, view_frame):
+            if not view_frame:
+                return False
+
+            import shiboken2 as shiboken
+            vf_ptr = shiboken.getCppPointer(view_frame)[0]
+            return self._visible_for_view[vf_ptr]
+
+        def notifyVisibilityChanged(self, is_visible):
+            self.visible = is_visible
+
+        def notifyViewChanged(self, view_frame):
+            if not view_frame:
+                self._active_view = None
+                return
+
+            import shiboken2 as shiboken
+            self._active_view = shiboken.getCppPointer(view_frame)[0]
+            if self.visible:
+                dock_handler = DockHandler.getActiveDockHandler()
+                dock_handler.setVisible(self.m_name, True)

@@ -83,7 +83,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
     @property
     def headless(self):
-        return False
+        return QT_AVAILABLE
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
