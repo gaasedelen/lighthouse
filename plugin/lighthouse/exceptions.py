@@ -79,7 +79,7 @@ class CoverageMappingAbsent(CoverageException):
         " Possible reasons:\n"                                                     \
         " - The loaded coverage data does not fall within defined functions.\n"    \
         " - You loaded an absolute address trace with a different imagebase.\n"    \
-        " - The coverage file might be corrupt or malformed.\n\n"                  \
+        " - The coverage data might be corrupt or malformed.\n\n"                  \
         "Please see the disassembler console for more info..."
 
     def __init__(self, coverage):
@@ -94,13 +94,14 @@ class CoverageMappingSuspicious(CoverageException):
     description = \
         "One or more of the loaded coverage files appears to be badly mapped.\n\n" \
         " Possible reasons:\n"                                                     \
-        " - You selected a coverage file that was collected against a\n"           \
-        "    slightly different version of the binary.\n"                          \
+        " - You selected the wrong binary/module to load coverage from.\n"         \
+        " - Your coverage file/data is for a different version of the\n"           \
+        "   binary that does not match what the disassembler has open.\n"          \
         " - You recorded self-modifying code or something with very\n"             \
         "    abnormal control flow (obfuscated code, malware, packers).\n"         \
-        " - The coverage file might be corrupt or malformed.\n\n"                  \
+        " - The coverage data might be corrupt or malformed.\n\n"                  \
         "This means that any coverage displayed by Lighthouse is PROBABLY\n"       \
-        "WRONG and is not be trusted because the coverage data does not\n."        \
+        "WRONG and is not be trusted because the coverage data does not\n"         \
         "appear to match the disassembled binary."
 
     def __init__(self, coverage):

@@ -134,8 +134,9 @@ class IDACoreAPI(DisassemblerCoreAPI):
     def is_msg_inited(self):
         return idaapi.is_msg_inited()
 
+    @execute_ui.__func__
     def warning(self, text):
-        idaapi.warning(text)
+        super(IDACoreAPI, self).warning(text)
 
     @execute_ui.__func__
     def message(self, message):

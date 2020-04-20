@@ -151,8 +151,9 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
     def is_msg_inited(self):
         return True
 
+    @execute_ui.__func__
     def warning(self, text):
-        binaryninja.interaction.show_message_box("Warning", text)
+        super(BinjaCoreAPI, self).warning(text)
 
     def message(self, message):
         print(message)

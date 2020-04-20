@@ -1,7 +1,7 @@
 import abc
 import logging
 
-from ..qt import QT_AVAILABLE, QtGui
+from ..qt import QT_AVAILABLE, QtGui, QtWidgets
 
 logger = logging.getLogger("Lighthouse.API")
 
@@ -140,12 +140,23 @@ class DisassemblerCoreAPI(object):
         """
         pass
 
-    @abc.abstractmethod
     def warning(self, text):
         """
         Display a warning dialog box with the given text.
         """
-        pass
+        msgbox = QtWidgets.QMessageBox()
+        msgbox.setIcon(QtWidgets.QMessageBox.Critical)
+        msgbox.setWindowTitle("Lighthouse Warning")
+        msgbox.setInformativeText(text)
+
+        # don't ask...
+        spacer = QtWidgets.QSpacerItem(int(msgbox.sizeHint().width()*1.1), 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        layout = msgbox.layout()
+        layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
+        msgbox.setLayout(layout)
+
+        # show the dialog
+        msgbox.exec_()
 
     @abc.abstractmethod
     def message(self, function_address, new_name):
