@@ -264,6 +264,7 @@ class EventProxy(QtCore.QObject):
     def __init__(self, target):
         super(EventProxy, self).__init__()
         self._target = weakref.proxy(target)
+        self._first_hit = True
 
     def eventFilter(self, source, event):
 
@@ -304,10 +305,15 @@ class EventProxy(QtCore.QObject):
         #
 
         elif int(event.type()) == self.EventUpdateLater:
-            if self._target.visible and not self._target.director.metadata.cached:
+
+            if self._target.visible and self._first_hit:
+                self._first_hit = False
+
                 if disassembler.NAME == "BINJA":
                     self._target.lctx.start()
-                self._target.director.refresh()
+
+                if not self._target.director.metadata.cached:
+                    self._target.director.refresh()
 
         #
         # this is an unknown event, but it seems to fire when the widget is

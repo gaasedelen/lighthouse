@@ -1401,7 +1401,8 @@ class CoverageDirector(object):
             await_future(future)
 
         # (re) map each set of loaded coverage data to the database
-        self._refresh_database_coverage()
+        if self.coverage_names:
+            self._refresh_database_coverage()
 
         # notify of full-refresh
         self._notify_refreshed()
