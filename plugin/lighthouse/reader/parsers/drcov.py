@@ -386,7 +386,7 @@ class DrcovModule(object):
         self.id       = int(data[0])
         self.size     = int(data[1])
         self.path     = str(data[2])
-        self.filename = os.path.basename(self.path)
+        self.filename = os.path.basename(self.path.replace('\\', os.sep))
 
     def _parse_module_v2(self, data):
         """
@@ -401,7 +401,7 @@ class DrcovModule(object):
             self.timestamp = int(data[5], 16)
         self.path      = str(data[-1])
         self.size      = self.end-self.base
-        self.filename  = os.path.basename(self.path)
+        self.filename  = os.path.basename(self.path.replace('\\', os.sep))
 
     def _parse_module_v3(self, data):
         """
@@ -417,7 +417,7 @@ class DrcovModule(object):
             self.timestamp = int(data[6], 16)
         self.path          = str(data[-1])
         self.size          = self.end-self.base
-        self.filename      = os.path.basename(self.path)
+        self.filename      = os.path.basename(self.path.replace('\\', os.sep))
 
     def _parse_module_v4(self, data):
         """
@@ -434,7 +434,7 @@ class DrcovModule(object):
             self.timestamp = int(data[7], 16)
         self.path          = str(data[-1])
         self.size          = self.end-self.base
-        self.filename      = os.path.basename(self.path)
+        self.filename      = os.path.basename(self.path.replace('\\', os.sep))
 
 #------------------------------------------------------------------------------
 # drcov basic block parser
