@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 
+from .misc import makedirs
 from .disassembler import disassembler
 
 #------------------------------------------------------------------------------
@@ -118,8 +119,11 @@ def start_logging():
 
     # create a directory for lighthouse logs if it does not exist
     log_dir = get_log_dir()
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    try:
+        makedirs(log_dir)
+    except Exception as e:
+        logger.disabled = True
+        return logger
 
     # construct the full log path
     log_path = os.path.join(log_dir, "lighthouse.%s.log" % os.getpid())

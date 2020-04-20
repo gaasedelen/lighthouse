@@ -1,5 +1,6 @@
 import os
 import re
+import errno
 import struct
 import weakref
 import datetime
@@ -77,6 +78,18 @@ def test_color_brightness(color):
 #------------------------------------------------------------------------------
 # Python Util
 #------------------------------------------------------------------------------
+
+def makedirs(path, exists_ok=True):
+    """
+    Make a fully qualified path.
+    """
+    try:
+        os.makedirs(path)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise e
+        if not exists_ok:
+            raise e
 
 def chunks(l, n):
     """

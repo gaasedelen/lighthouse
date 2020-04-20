@@ -258,8 +258,7 @@ class LighthousePalette(object):
 
         # create the user theme directory if it does not exist
         user_theme_dir = self.get_user_theme_dir()
-        if not os.path.exists(user_theme_dir):
-            os.makedirs(user_theme_dir)
+        makedirs(user_theme_dir)
 
         # copy the default themes into the user directory if they don't exist
         for theme_name in self._default_themes.values():
