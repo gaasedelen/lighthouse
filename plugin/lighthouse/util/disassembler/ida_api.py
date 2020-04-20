@@ -83,7 +83,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
     @property
     def headless(self):
-        return QT_AVAILABLE
+        return idaapi.cvar.batch
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
