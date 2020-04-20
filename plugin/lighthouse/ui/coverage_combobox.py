@@ -49,9 +49,9 @@ class CoverageComboBox(QtWidgets.QComboBox):
     # QComboBox Overloads
     #--------------------------------------------------------------------------
 
-    def mousePressEvent(self, e):
+    def mouseReleaseEvent(self, e):
         """
-        Capture mouse click events to the QComboBox.
+        Capture mouse release events on the QComboBox.
         """
 
         # get the widget currently beneath the mouse event being handled
