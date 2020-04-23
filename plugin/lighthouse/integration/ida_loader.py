@@ -1,8 +1,9 @@
+import time
 import logging
 
 import idaapi
 from lighthouse.util.log import lmsg
-from lighthouse.ida_integration import LighthouseIDA
+from lighthouse.integration.ida_integration import LighthouseIDA
 
 logger = logging.getLogger("Lighthouse.IDA.Loader")
 
@@ -65,9 +66,6 @@ class LighthouseIDAPlugin(idaapi.plugin_t):
         except Exception as e:
             lmsg("Failed to initialize Lighthouse")
             logger.exception("Exception details:")
-            return idaapi.PLUGIN_SKIP
-
-        # tell IDA to keep the plugin loaded (everything is okay)
         return idaapi.PLUGIN_KEEP
 
     def run(self, arg):
@@ -80,9 +78,17 @@ class LighthouseIDAPlugin(idaapi.plugin_t):
         """
         This is called by IDA when it is unloading the plugin.
         """
+        logger.debug("IDA term started...")
+
+        start = time.time()
+        logger.debug("-"*50)
         try:
             self._lighthouse.unload()
             self._lighthouse = None
         except Exception as e:
             logger.exception("Failed to cleanly unload Lighthouse from IDA.")
+        end = time.time()
+        print("-"*50)
+
+        logger.debug("IDA term done... (%.3f seconds...)" % (end-start))
 

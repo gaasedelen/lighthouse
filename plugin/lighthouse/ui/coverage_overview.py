@@ -4,7 +4,8 @@ import weakref
 
 from lighthouse.util.qt import *
 from lighthouse.util.misc import plugin_resource
-from lighthouse.util.disassembler import disassembler, DockableWindow
+from lighthouse.util.disassembler import disassembler
+
 from lighthouse.composer import ComposingShell
 from lighthouse.ui.coverage_table import CoverageTableView, CoverageTableModel, CoverageTableController
 from lighthouse.ui.coverage_combobox import CoverageComboBox
@@ -16,22 +17,23 @@ logger = logging.getLogger("Lighthouse.UI.Overview")
 # Coverage Overview
 #------------------------------------------------------------------------------
 
-class CoverageOverview(DockableWindow):
+class CoverageOverview(object):
     """
     The Coverage Overview Widget.
     """
 
-    def __init__(self, core):
-        super(CoverageOverview, self).__init__(
-            "Coverage Overview",
-            plugin_resource(os.path.join("icons", "overview.png"))
-        )
-        self._core = core
-        self._visible = False
+    def __init__(self, lctx, widget):
+        self.lctx = lctx
+        self.widget = widget
+        self.director = self.lctx.director
+
+        self.lctx.coverage_overview = self
+        self.initialized = False
 
         # see the EventProxy class below for more details
         self._events = EventProxy(self)
-        self._widget.installEventFilter(self._events)
+        self.widget.installEventFilter(self._events)
+        #    plugin_resource(os.path.join("icons", "overview.png"))
 
         # initialize the plugin UI
         self._ui_init()
@@ -39,41 +41,35 @@ class CoverageOverview(DockableWindow):
         # refresh the data UI such that it reflects the most recent data
         self.refresh()
 
+        # register for cues from the director
+        self.director.refreshed(self.refresh)
+
     #--------------------------------------------------------------------------
     # Pseudo Widget Functions
     #--------------------------------------------------------------------------
 
-    def show(self):
-        """
-        Show the CoverageOverview UI / widget.
-        """
-        self.refresh()
-        super(CoverageOverview, self).show()
-        self._visible = True
+    @property
+    def name(self):
+        if not self.widget:
+            return "Coverage Overview"
+        return self.widget.name
 
-        #
-        # if no metadata had been collected prior to showing the coverage
-        # overview (eg, through loading coverage), we should do that now
-        # before the user can interact with the view...
-        #
-
-        if not self._core.director.metadata.cached:
-            self._table_controller.refresh_metadata()
+    @property
+    def visible(self):
+        if not self.widget:
+            return False
+        return self.widget.visible
 
     def terminate(self):
         """
         The CoverageOverview is being hidden / deleted.
         """
-        self._visible = False
         self._combobox = None
         self._shell = None
         self._table_view = None
         self._table_controller = None
         self._table_model = None
-        self._widget = None
-
-    def isVisible(self):
-        return self._visible
+        self.widget = None
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -96,13 +92,9 @@ class CoverageOverview(DockableWindow):
         """
         Initialize the coverage table.
         """
-        self._table_model = CoverageTableModel(self._core.director, self._widget)
-        self._table_controller = CoverageTableController(self._table_model)
-        self._table_view = CoverageTableView(
-            self._table_controller,
-            self._table_model,
-            self._widget
-        )
+        self._table_model = CoverageTableModel(self.lctx, self.widget)
+        self._table_controller = CoverageTableController(self.lctx, self._table_model)
+        self._table_view = CoverageTableView(self._table_controller, self._table_model, self.widget)
 
     def _ui_init_toolbar(self):
         """
@@ -133,18 +125,23 @@ class CoverageOverview(DockableWindow):
 
         # the composing shell
         self._shell = ComposingShell(
-            self._core.director,
+            self.lctx,
             weakref.proxy(self._table_model),
             weakref.proxy(self._table_view)
         )
 
         # the coverage combobox
-        self._combobox = CoverageComboBox(self._core.director)
+        self._combobox = CoverageComboBox(self.director)
 
         # the splitter to make the shell / combobox resizable
         self._shell_elements = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self._shell_elements.setStyleSheet(
         """
+        QSplitter
+        {
+            border: none;
+        }
+
         QSplitter::handle
         {
             background-color: #909090;
@@ -181,13 +178,13 @@ class CoverageOverview(DockableWindow):
         self._settings_button.setStyleSheet("QToolButton::menu-indicator{image: none;}")
 
         # settings menu
-        self._settings_menu = TableSettingsMenu(self._widget)
+        self._settings_menu = TableSettingsMenu(self.widget)
 
     def _ui_init_signals(self):
         """
         Connect UI signals.
         """
-        self._settings_menu.connect_signals(self._table_controller, self._core)
+        self._settings_menu.connect_signals(self._table_controller, self.lctx)
         self._settings_button.clicked.connect(self._ui_show_settings)
 
     def _ui_layout(self):
@@ -202,7 +199,7 @@ class CoverageOverview(DockableWindow):
         layout.addWidget(self._toolbar)
 
         # apply the layout to the containing form
-        self._widget.setLayout(layout)
+        self.widget.setLayout(layout)
 
     #--------------------------------------------------------------------------
     # Signal Handlers
@@ -236,6 +233,16 @@ class CoverageOverview(DockableWindow):
         self._shell.refresh()
         self._combobox.refresh()
 
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Update visual elements based on theme change.
+        """
+        self._table_view.refresh_theme()
+        self._table_model.refresh_theme()
+        self._shell.refresh_theme()
+        self._combobox.refresh_theme()
+
 #------------------------------------------------------------------------------
 # Qt Event Filter
 #------------------------------------------------------------------------------
@@ -244,9 +251,20 @@ debugger_docked = False
 
 class EventProxy(QtCore.QObject):
 
+    #
+    # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7? Just gonna ship our own...
+    # - https://doc.qt.io/qt-5/qevent.html#Type-enum
+    #
+
+    EventShow = 17
+    EventDestroy = 16
+    EventLayoutRequest = 76
+    EventUpdateLater = 78
+
     def __init__(self, target):
         super(EventProxy, self).__init__()
-        self._target = target
+        self._target = weakref.proxy(target)
+        self._first_hit = True
 
     def eventFilter(self, source, event):
 
@@ -255,19 +273,58 @@ class EventProxy(QtCore.QObject):
         # cleanup after ourselves in the interest of stability
         #
 
-        if int(event.type()) == 16: # NOTE/COMPAT: QtCore.QEvent.Destroy not in IDA7?
+        if int(event.type()) == self.EventDestroy:
+            source.removeEventFilter(self)
             self._target.terminate()
 
         #
+        # this seems to be 'roughly' the last event triggered after the widget
+        # is done initializing in both IDA and Binja, but prior to the first
+        # user-triggered 'show' events.
+        #
+        # this is mostly to account for the fact that binja 'shows' the widget
+        # when it is initially created (outside of our control). this was
+        # causing lighthouse to automatically cache database metadata when
+        # every database was opened ...
+        #
+
+        elif int(event.type()) == self.EventLayoutRequest:
+            self._target.initialized = True
+
+        #
+        # this is used to hook a little bit after the 'show' event of the
+        # coverage overview. this is the most universal signal that the
+        # user is *actually* trying to use lighthouse in a meaningful way...
+        #
+        # we will use this moment first to check if they skipped straight to
+        # 'go' and opened the coverage overview without the metadata cache
+        # getting built.
+        #
+        # this case should only happen if the user does 'Show Coverage
+        # Overview' from the binja-controlled Window menu entry...
+        #
+
+        elif int(event.type()) == self.EventUpdateLater:
+
+            if self._target.visible and self._first_hit:
+                self._first_hit = False
+
+                if disassembler.NAME == "BINJA":
+                    self._target.lctx.start()
+
+                if not self._target.director.metadata.cached:
+                    self._target.director.refresh()
+
+        #
         # this is an unknown event, but it seems to fire when the widget is
-        # being saved/restored by a QMainWidget. we use this to try and ensure
-        # the Coverage Overview stays docked when flipping between Reversing
-        # and Debugging states in IDA.
+        # being saved/restored by a QMainWidget (in IDA). we use this to try
+        # and ensure the Coverage Overview stays docked when flipping between
+        # Reversing and Debugging states in IDA.
         #
         # See issue #16 on github for more information.
         #
 
-        if int(event.type()) == 2002 and disassembler.NAME == "IDA":
+        elif int(event.type()) == 2002 and disassembler.NAME == "IDA":
             import idaapi
 
             #
@@ -275,11 +332,7 @@ class EventProxy(QtCore.QObject):
             # that the user has probably started debugging.
             #
 
-            # NOTE / COMPAT:
-            if disassembler.USING_IDA7API:
-                debug_mode = bool(idaapi.find_widget("General registers"))
-            else:
-                debug_mode = bool(idaapi.find_tform("General registers"))
+            debug_mode = bool(idaapi.find_widget("General registers"))
 
             #
             # if this is the first time the user has started debugging, dock

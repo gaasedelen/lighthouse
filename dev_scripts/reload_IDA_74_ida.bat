@@ -13,6 +13,7 @@ REM - Copy over the new plugin bits
 xcopy /s/y "..\plugin\*" "C:\Users\user\AppData\Roaming\Hex-Rays\IDA Pro\plugins\"
 del /F /Q "C:\Users\user\AppData\Roaming\Hex-Rays\IDA Pro\plugins\.#lighthouse_plugin.py"
 
-REM - Relaunch two IDA sessions
-start "" "C:\tools\disassemblers\IDA 6.95\idaq64.exe" "..\..\testcase\boombox95.i64"
+REM - Launch a new IDA session
+start "" "C:\tools\disassemblers\IDA 7.4\ida64.exe" "..\..\testcase\ida74\ida64.exe.i64"
+REM start "" "C:\tools\disassemblers\IDA 7.4\ida64.exe" "C:\Users\user\Desktop\JavaScriptCore_13.4.i64"
 

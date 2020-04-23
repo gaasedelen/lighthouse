@@ -1,4 +1,6 @@
 import logging
+import weakref
+
 from lighthouse.util import *
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
@@ -41,40 +43,38 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         # configure the widget for use
         self._ui_init()
+        self.refresh_theme()
 
     #--------------------------------------------------------------------------
     # QComboBox Overloads
     #--------------------------------------------------------------------------
 
-    def mousePressEvent(self, e):
+    def mouseReleaseEvent(self, e):
         """
-        Capture mouse click events to the QComboBox.
+        Capture mouse release events on the QComboBox.
         """
 
-        # get the widget currently beneath the given mouse event
+        # get the widget currently beneath the mouse event being handled
         hovering = self.childAt(e.pos())
 
         #
-        # if the hovered widget is the 'head' of the QComboBox, we want to
-        # move any mouse clicks to appear like it was on the dropdown arrow
-        # box on the right side.
+        # if the hovered widget is the 'head' of the QComboBox, we assume
+        # the user has clicked it and should show the dropwdown 'popup'
         #
-        # this is to satisfy some internal QComboBox Qt logic, allowing us
-        # to collapse and expand an 'editable' QComboBox by clicking anywhere
-        # on the 'head' (the read-only QLineEdit)
+        # we must showPopup() ourselves because internal Qt logic for
+        # 'editable' comboboxes try to enter an editing mode for the field
+        # rather than expanding the dropdown.
         #
-        # this is basically dirty-hax
+        # if you don't remember, our combobox is marked 'editable' to satisfy
+        # some internal Qt logic so that our 'Windows' draw style is used
         #
 
         if hovering == self.lineEdit():
-            new_pos = QtCore.QPoint(
-                self.rect().right() - 10,
-                self.rect().height()/2
-            )
-            logger.debug("Moved click %s --> %s" % (e.pos(), new_pos))
-            e = move_mouse_event(e, new_pos)
+            self.showPopup()
+            e.accept()
+            return
 
-        # handle the event (possibly moved) as it normally would be
+        # handle any other events as they normally should be
         super(CoverageComboBox, self).mousePressEvent(e)
 
     #--------------------------------------------------------------------------
@@ -88,7 +88,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 
@@ -109,7 +109,6 @@ class CoverageComboBox(QtWidgets.QComboBox):
         self.lineEdit().setFont(self._font)
         self.lineEdit().setReadOnly(True)    # text can't be edited
         self.lineEdit().setEnabled(False)    # text can't be selected
-        self.setMaximumHeight(self._font_metrics.height()*1.75)
 
         #
         # the combobox will pick a size based on its contents when it is first
@@ -119,18 +118,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         self.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
-
-        #
-        # the purpose of this stylesheet is to pad the visible selection text
-        # in the combobox 'head' on first show. The reason being is that
-        # without this, the text for the selected coverage will lapse behind
-        # the combobox dropdown arrow (which is Qt by design???)
-        #
-        # I don't like the tail of the text disappearing behind this silly
-        # dropdown arrow, therefore we pad the right side of the combobox.
-        #
-
-        self.setStyleSheet("QComboBox { padding: 0 2ex 0 2ex; }")
+        self.setMaximumHeight(self._font_metrics.height()*1.75)
 
         # draw the QComboBox with a 'Windows'-esque style
         self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
@@ -204,18 +192,10 @@ class CoverageComboBox(QtWidgets.QComboBox):
         # event, (it looks weird) so clear the table/dropdown highlights now
         #
 
-        # NOTE/COMPAT
-        if USING_PYQT5:
-            self.view().selectionModel().setCurrentIndex(
-                QtCore.QModelIndex(),
-                QtCore.QItemSelectionModel.ClearAndSelect
-            )
-        else:
-            self.view().selectionModel().setCurrentIndex(
-                QtCore.QModelIndex(),
-                QtGui.QItemSelectionModel.ClearAndSelect
-            )
-
+        self.view().selectionModel().setCurrentIndex(
+            QtCore.QModelIndex(),
+            QtCore.QItemSelectionModel.ClearAndSelect
+        )
 
         #
         # the deletion of an entry will shift all the entries beneath it up
@@ -248,6 +228,36 @@ class CoverageComboBox(QtWidgets.QComboBox):
         Public refresh of the coverage combobox.
         """
         self._internal_refresh()
+
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        palette = self._director.palette
+        self.view().refresh_theme()
+
+        # configure the combobox's top row / visible dropdown
+        self.lineEdit().setStyleSheet(
+            "QLineEdit { "
+            "   border: none;"
+            "   padding: 0 0 0 2ex;"
+            "   margin: 0;"
+            "   background-color: %s;" % palette.combobox_background.name() +
+            "}"
+        )
+
+        # style the combobox dropdown
+        self.setStyleSheet(
+            "QComboBox {"
+            "   color: %s;" % palette.combobox_text.name() +
+            "   border: 1px solid %s;" % palette.combobox_border.name() +
+            "   padding: 0;"
+            "} "
+            "QComboBox:hover, QComboBox:focus {"
+            "   border: 1px solid %s;" % palette.combobox_border_focus.name() +
+            "}"
+        )
 
     @disassembler.execute_ui
     def _internal_refresh(self):
@@ -289,16 +299,90 @@ class CoverageComboBoxView(QtWidgets.QTableView):
     def __init__(self, model, parent=None):
         super(CoverageComboBoxView, self).__init__(parent)
         self.setObjectName(self.__class__.__name__)
+        self._combobox = weakref.proxy(parent)
+        self._timer = None
 
         # install the given data model into the table view
         self.setModel(model)
 
         # initialize UI elements
         self._ui_init()
+        self.refresh_theme()
 
     #--------------------------------------------------------------------------
     # QTableView Overloads
     #--------------------------------------------------------------------------
+
+    def showEvent(self, e):
+        """
+        Show the QComboBox dropdown/popup.
+        """
+
+        #
+        # the next line of code will prevent the combobox 'head' from getting
+        # any mouse actions now that the popup/dropdown is visible.
+        #
+        # this is pretty aggressive, but it will allow the user to 'collapse'
+        # the combobox dropdown while it is in an expanded state by simply
+        # clicking the combobox head as one can do to expand it.
+        #
+        # the reason this dirty trick is able to simulate a 'collapsing click'
+        # is because the user clicks 'outside' the popup/dropdown which
+        # automatically closes it. if the click was on the combobox head, it
+        # is simply ignored because we set this attribute!
+        #
+        # when the popup is closing, we undo this action in hideEvent().
+        #
+        # we have to use this workaround because we are using an 'editable' Qt
+        # combobox which behaves differently to clicks than a normal combobox.
+        #
+        # NOTE: we have to do this here in the tableview because the combobox's
+        # showPopup() and hidePopup() do not always trigger symmetrically.
+        #
+        # for example, hidePopup() was not being triggered when focus was lost
+        # via virutal desktop switch, and other external focus changes. this
+        # is really bad, because the combobox would get stuck *closed* as it
+        # was never re-enabled for mouse events
+        #
+
+        self._combobox.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+
+    def hideEvent(self, e):
+        """
+        Hide the QComboBox dropdown/popup.
+        """
+
+        #
+        # the combobox popup is now hidden / collapsed. the combobox head needs
+        # to be re-enlightened to direct mouse clicks (eg, to expand it). this
+        # undos the setAttribute action in showPopup() above.
+        #
+        # if the coverage combobox is *not* visible, the coverage window is
+        # probably being closed / deleted. but just in case, we should attempt
+        # to restore the combobox's ability to accept clicks before bailing.
+        #
+        # this fixes a bug / Qt warning first printed in IDA 7.4 where 'self'
+        # (the comobobox) would be deleted by the time the 100ms timer in the
+        # 'normal' case fires below
+        #
+
+        if not self._combobox.isVisible():
+            self._combobox.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
+            return
+
+        #
+        # in the more normal case, the comobobox is simply being collapsed
+        # by the user clicking it, or clicking away from it.
+        #
+        # we use a short timer of 100ms to ensure the 'hiding' of the dropdown
+        # and its associated click are processed first. aftwards, it is safe to
+        # begin accepting clicks again.
+        #
+
+        self._timer = QtCore.QTimer.singleShot(100, self.__hidePopup_setattr)
+
+    def __hidePopup_setattr(self):
+        self._combobox.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
 
     def leaveEvent(self, e):
         """
@@ -326,26 +410,12 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         """
         Initialize UI elements.
         """
-        palette = self.model()._director._palette
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
-
-        # widget style
-        self.setStyleSheet(
-            "QTableView {"
-            "  background-color: %s;" % palette.combobox_bg.name() +
-            "  color: %s;" % palette.combobox_fg.name() +
-            "  selection-background-color: %s;" % palette.combobox_selection_bg.name() +
-            "  selection-color: %s;" % palette.combobox_selection_fg.name() +
-            "  margin: 0; outline: none;"
-            "} "
-            "QTableView::item{ padding: 0.5ex; } "
-            "QTableView::item:focus { padding: 0; }"
-        )
 
         # hide dropdown table headers, and default grid
         self.horizontalHeader().setVisible(False)
@@ -362,20 +432,15 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         hh = self.horizontalHeader()
 
         #
-        # NOTE/COMPAT:
         # - set the coverage name column to be stretchy and as tall as the text
         # - make the 'X' icon column fixed width
         #
 
-        if USING_PYQT5:
-            hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-            hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
-            vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-        else:
-            hh.setResizeMode(0, QtWidgets.QHeaderView.Stretch)
-            hh.setResizeMode(1, QtWidgets.QHeaderView.Fixed)
-            vh.setResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
 
+        hh.setMinimumSectionSize(0)
         vh.setMinimumSectionSize(0)
 
         # get the column width hint from the model for the 'X' delete column
@@ -389,7 +454,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         hh.resizeSection(COLUMN_DELETE, icon_column_width)
 
         # install a delegate to do some custom painting against the combobox
-        self.setItemDelegate(ComboBoxDelegate())
+        self.setItemDelegate(ComboBoxDelegate(self))
 
     #--------------------------------------------------------------------------
     # Refresh
@@ -419,6 +484,28 @@ class CoverageComboBoxView(QtWidgets.QTableView):
             else:
                 self.setSpan(row, 0, 0, model.columnCount())
 
+    @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        palette = self.model()._director.palette
+        self.setStyleSheet(
+            "QTableView {"
+            "  background-color: %s;" % palette.combobox_background.name() +
+            "  color: %s;" % palette.combobox_text.name() +
+            "  margin: 0; outline: none;"
+            "  border: 1px solid %s; " % palette.shell_border.name() +
+            "} "
+            "QTableView::item { " +
+            "  padding: 0.5ex; border: 0; "
+            "} "
+            "QTableView::item:focus { " +
+            "  background-color: %s; " % palette.combobox_selection_background.name() +
+            "  color: %s; " % palette.combobox_selection_text.name() +
+            "} "
+        )
+
 #------------------------------------------------------------------------------
 # Coverage ComboBox - TableModel
 #------------------------------------------------------------------------------
@@ -439,7 +526,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # load the raw 'X' delete icon from disk
@@ -544,8 +631,13 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         elif role == QtCore.Qt.TextAlignmentRole:
             return QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft
 
+        # combobox header, padded with "   " to account for dropdown arrow overlap
+        elif role == QtCore.Qt.EditRole:
+            if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
+                return self._director.get_coverage_string(self._entries[index.row()]) + "   "
+
         # data display request
-        elif role in [QtCore.Qt.DisplayRole, QtCore.Qt.EditRole]:
+        elif role == QtCore.Qt.DisplayRole:
             if index.column() == COLUMN_COVERAGE_STRING and index.row() != self._seperator_index:
                 return self._director.get_coverage_string(self._entries[index.row()])
 
@@ -668,12 +760,11 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
     dropdown table in the Coverage ComboBox a bit more to our liking.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent):
         super(ComboBoxDelegate, self).__init__(parent)
 
         # painting property definitions
-        self._grid_color = QtGui.QColor(0x909090)
-        self._separator_color = QtGui.QColor(0x505050)
+        self._grid_color = parent.model()._director.palette.shell_border
 
     def sizeHint(self, option, index):
         """
@@ -692,13 +783,15 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
         if index.data(QtCore.Qt.AccessibleDescriptionRole) == ENTRY_USER:
             painter.save()
             painter.setPen(self._grid_color)
+            final_entry = (index.sibling(index.row()+1, 0).row() == -1)
 
             # draw the grid line beneath the current row (a coverage entry)
             tweak = QtCore.QPoint(0, 1) # 1px tweak provides better spacing
-            painter.drawLine(
-                option.rect.bottomLeft() + tweak,
-                option.rect.bottomRight() + tweak
-            )
+            if not final_entry:
+                painter.drawLine(
+                    option.rect.bottomLeft() + tweak,
+                    option.rect.bottomRight() + tweak
+                )
 
             #
             # now we will re-draw the grid line *above* the current entry,
@@ -713,18 +806,6 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
             )
 
             painter.restore()
-
-        # custom paint the separator entry between special & normal coverage
-        if index.data(QtCore.Qt.AccessibleDescriptionRole) == SEPARATOR:
-            painter.save()
-            painter.setPen(self._separator_color)
-            painter.drawRect(
-                option.rect
-            )
-            painter.restore()
-
-            # nothing else to paint for the separator entry
-            return
 
         # custom paint the 'X' icon where applicable
         if index.data(QtCore.Qt.DecorationRole):
@@ -747,9 +828,20 @@ class ComboBoxDelegate(QtWidgets.QStyledItemDelegate):
 
             # draw the icon to the column
             painter.drawPixmap(destination_rect, pixmap)
+            return
 
-            # nothing else to paint for the icon column entry
+        # custom paint the separator entry between special & normal coverage
+        if index.data(QtCore.Qt.AccessibleDescriptionRole) == SEPARATOR:
+            painter.save()
+            painter.setPen(self._grid_color)
+            painter.drawRect(
+                option.rect
+            )
+            painter.restore()
+
+            # nothing else to paint for the separator entry
             return
 
         # pass through to the standard painting
         super(ComboBoxDelegate, self).paint(painter, option, index)
+

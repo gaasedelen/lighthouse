@@ -1,6 +1,9 @@
 import abc
+import logging
 
-from ..qt import QT_AVAILABLE, QtGui
+from ..qt import QT_AVAILABLE, QtGui, QtWidgets
+
+logger = logging.getLogger("Lighthouse.API")
 
 #------------------------------------------------------------------------------
 # Disassembler API
@@ -17,9 +20,9 @@ from ..qt import QT_AVAILABLE, QtGui
 #    to any given interactive disassembler.
 #
 
-class DisassemblerAPI(object):
+class DisassemblerCoreAPI(object):
     """
-    An abstract implementation of the required disassembler API.
+    An abstract implementation of the core disassembler APIs.
     """
     __metaclass__ = abc.ABCMeta
 
@@ -28,41 +31,57 @@ class DisassemblerAPI(object):
 
     @abc.abstractmethod
     def __init__(self):
-        self._waitbox = None
+        self._ctxs = {}
+
+        # required version fields
+        self._version_major = NotImplemented
+        self._version_minor = NotImplemented
+        self._version_patch = NotImplemented
 
         if not self.headless and QT_AVAILABLE:
             from ..qt import WaitBox
             self._waitbox = WaitBox("Please wait...")
+        else:
+            self._waitbox = None
+
+    def __delitem__(self, key):
+        del self._ctxs[key]
+
+    def __getitem__(self, key):
+        return self._ctxs[key]
+
+    def __setitem__(self, key, value):
+        self._ctxs[key] = value
 
     #--------------------------------------------------------------------------
     # Properties
     #--------------------------------------------------------------------------
 
-    @abc.abstractproperty
     def version_major(self):
         """
         Return the major version number of the disassembler framework.
         """
-        pass
+        assert self._version_major != NotImplemented
+        return self._version_major
 
-    @abc.abstractproperty
     def version_minor(self):
         """
         Return the minor version number of the disassembler framework.
         """
-        pass
+        assert self._version_patch != NotImplemented
+        return self._version_patch
 
-    @abc.abstractproperty
-    def version_minor(self):
+    def version_patch(self):
         """
         Return the patch version number of the disassembler framework.
         """
-        pass
+        assert self._version_patch != NotImplemented
+        return self._version_patch
 
     @abc.abstractproperty
     def headless(self):
         """
-        Return a bool indicating if the disassembler is running headlessly.
+        Return a bool indicating if the disassembler is running without a GUI.
         """
         pass
 
@@ -97,20 +116,182 @@ class DisassemblerAPI(object):
         raise NotImplementedError("execute_ui() has not been implemented")
 
     #--------------------------------------------------------------------------
-    # API Shims
+    # Disassembler Universal APIs
     #--------------------------------------------------------------------------
-
-    @abc.abstractmethod
-    def get_database_directory(self):
-        """
-        Return the directory for the open database.
-        """
-        pass
 
     @abc.abstractmethod
     def get_disassembler_user_directory(self):
         """
         Return the 'user' directory for the disassembler.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_disassembly_background_color(self):
+        """
+        Return the background color of the disassembly text view.
+        """
+        pass
+
+    @abc.abstractmethod
+    def is_msg_inited(self):
+        """
+        Return a bool if the disassembler output window is initialized.
+        """
+        pass
+
+    def warning(self, text):
+        """
+        Display a warning dialog box with the given text.
+        """
+        msgbox = QtWidgets.QMessageBox()
+        before = msgbox.sizeHint().width()
+        msgbox.setIcon(QtWidgets.QMessageBox.Critical)
+        after = msgbox.sizeHint().width()
+        icon_width = after - before
+
+        msgbox.setWindowTitle("Lighthouse Warning")
+        msgbox.setText(text)
+
+        font = msgbox.font()
+        fm = QtGui.QFontMetricsF(font)
+        text_width = fm.size(0, text).width()
+
+        # don't ask...
+        spacer = QtWidgets.QSpacerItem(int(text_width*1.1 + icon_width), 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+        layout = msgbox.layout()
+        layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
+        msgbox.setLayout(layout)
+
+        # show the dialog
+        msgbox.exec_()
+
+    @abc.abstractmethod
+    def message(self, function_address, new_name):
+        """
+        Print a message to the disassembler console.
+        """
+        pass
+
+    #--------------------------------------------------------------------------
+    # UI APIs
+    #--------------------------------------------------------------------------
+
+    #
+    # NOTE: please note, these APIs and their usage is a little ... obtuse.
+    # this is primarily because the IDA & Binja dockable widget management
+    # system is rather different.
+    #
+    # these APIs make a best effort in unifiying the systems in a manner that
+    # works for this project. it may not be ideal for the universal use case
+    # but is good enough for our purposes.
+    #
+
+    @abc.abstractmethod
+    def register_dockable(self, dockable_name, create_widget_callback):
+        """
+        Register a callback with the disassembler to generate dockable widgets.
+
+         - dockable_name: the name of the window / dockable to be created
+         - create_widget_callback: a static function that return a new dockable widget
+
+        The registered callback will be called automatically in certain events
+        that will preclude the display of the dockable_name. These events
+        may include a new databse being opened, or show_dockable being called.
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def create_dockable_widget(self, parent, dockable_name):
+        """
+        Creates a dockable widget.
+
+        This function should generally be called within the create_widget_callback
+        described in register_dockable(...).
+        """
+        pass
+
+    @abc.abstractmethod
+    def show_dockable(self, dockable_name):
+        """
+        Show the named dockable widget.
+        """
+        pass
+
+    @abc.abstractmethod
+    def hide_dockable(self, dockable_name):
+        """
+        Hide the named dockable widget.
+        """
+        pass
+
+    #------------------------------------------------------------------------------
+    # WaitBox API
+    #------------------------------------------------------------------------------
+
+    def show_wait_box(self, text, modal=True):
+        """
+        Show the disassembler universal WaitBox.
+        """
+        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
+        self._waitbox.set_text(text)
+        self._waitbox.show(modal)
+
+    def hide_wait_box(self):
+        """
+        Hide the disassembler universal WaitBox.
+        """
+        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
+        self._waitbox.hide()
+
+    def replace_wait_box(self, text):
+        """
+        Replace the text in the disassembler universal WaitBox.
+        """
+        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
+        self._waitbox.set_text(text)
+
+#------------------------------------------------------------------------------
+# Disassembler Contextual API
+#------------------------------------------------------------------------------
+
+class DisassemblerContextAPI(object):
+    """
+    An abstract implementation of database/contextual disassembler APIs.
+    """
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def __init__(self, dctx):
+        self.dctx = dctx
+
+    #--------------------------------------------------------------------------
+    # Properties
+    #--------------------------------------------------------------------------
+
+    @abc.abstractproperty
+    def busy(self):
+        """
+        Return a bool indicating if the disassembler is busy / processing.
+        """
+        pass
+
+    #--------------------------------------------------------------------------
+    # API Shims
+    #--------------------------------------------------------------------------
+
+    @abc.abstractmethod
+    def get_current_address(self):
+        """
+        Return the current cursor address in the open database.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_database_directory(self):
+        """
+        Return the directory for the open database.
         """
         pass
 
@@ -156,9 +337,16 @@ class DisassemblerAPI(object):
         pass
 
     @abc.abstractmethod
-    def navigate(self, address):
+    def navigate(self, address, function_address=None):
         """
         Jump the disassembler UI to the given address.
+        """
+        pass
+
+    @abc.abstractmethod
+    def navigate_to_function(self, function_address, address):
+        """
+        Jump the disassembler UI to the given address, within a function.
         """
         pass
 
@@ -170,27 +358,13 @@ class DisassemblerAPI(object):
         pass
 
     #--------------------------------------------------------------------------
-    # UI API Shims
+    # Hooks API
     #--------------------------------------------------------------------------
 
     @abc.abstractmethod
-    def get_disassembly_background_color(self):
+    def create_rename_hooks(self, function_address, new_name):
         """
-        Return the background color of the disassembly text view.
-        """
-        pass
-
-    @abc.abstractmethod
-    def is_msg_inited(self):
-        """
-        Return a bool if the disassembler output window is initialized.
-        """
-        pass
-
-    @abc.abstractmethod
-    def warning(self, text):
-        """
-        Display a warning dialog box with the given text.
+        Returns a hooking object that can capture rename events for this context.
         """
         pass
 
@@ -261,32 +435,6 @@ class DisassemblerAPI(object):
         for function_address in function_addresses:
             self.clear_prefix(function_address)
 
-    #------------------------------------------------------------------------------
-    # WaitBox API
-    #------------------------------------------------------------------------------
-
-    def show_wait_box(self, text):
-        """
-        Show the disassembler universal WaitBox.
-        """
-        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
-        self._waitbox.set_text(text)
-        self._waitbox.show()
-
-    def hide_wait_box(self):
-        """
-        Hide the disassembler universal WaitBox.
-        """
-        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
-        self._waitbox.hide()
-
-    def replace_wait_box(self, text):
-        """
-        Replace the text in the disassembler universal WaitBox.
-        """
-        assert QT_AVAILABLE, "This function can only be used in a Qt runtime"
-        self._waitbox.set_text(text)
-
 #------------------------------------------------------------------------------
 # Hooking
 #------------------------------------------------------------------------------
@@ -316,38 +464,3 @@ class RenameHooks(object):
         This will be hooked by Lighthouse at runtime to capture rename events.
         """
         pass
-
-#------------------------------------------------------------------------------
-# Dockable Window
-#------------------------------------------------------------------------------
-
-class DockableShim(object):
-    """
-    A minimal template of the DockableWindow.
-
-    this class is only to demonstrate the minimal set of attributes and
-    functions that a disassembler's DockableWindow class should contain.
-
-    show/hide can be overridden entirely depending on your needs, but the
-    self._widget field should contain a reference to a blank widget that has
-    been installed into a QDockWidget in the disassembler interface.
-    """
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, window_title, icon_path):
-        self._window_title = window_title
-        self._window_icon = QtGui.QIcon(icon_path)
-        self._widget = None
-
-    def show(self):
-        """
-        Show the dockable widget.
-        """
-        self._widget.show()
-
-    def hide(self):
-        """
-        Show the dockable widget.
-        """
-        self._widget.hide()
-

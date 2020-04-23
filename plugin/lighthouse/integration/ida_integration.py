@@ -2,8 +2,10 @@ import os
 import logging
 
 import idaapi
-from lighthouse.core import Lighthouse
+
+from lighthouse.context import LighthouseContext
 from lighthouse.util.misc import plugin_resource
+from lighthouse.integration.core import LighthouseCore
 
 logger = logging.getLogger("Lighthouse.IDA.Integration")
 
@@ -11,7 +13,7 @@ logger = logging.getLogger("Lighthouse.IDA.Integration")
 # Lighthouse IDA Integration
 #------------------------------------------------------------------------------
 
-class LighthouseIDA(Lighthouse):
+class LighthouseIDA(LighthouseCore):
     """
     Lighthouse UI Integration for IDA Pro.
     """
@@ -19,12 +21,44 @@ class LighthouseIDA(Lighthouse):
     def __init__(self):
 
         # menu entry icons
+        self._icon_id_xref = idaapi.BADADDR
         self._icon_id_file = idaapi.BADADDR
         self._icon_id_batch = idaapi.BADADDR
         self._icon_id_overview = idaapi.BADADDR
 
+        # IDA ui hooks
+        self._ui_hooks = UIHooks(self)
+
         # run initialization
         super(LighthouseIDA, self).__init__()
+
+    def get_context(self, dctx=None, startup=True):
+        """
+        Get the LighthouseContext object for a given database context.
+
+        NOTE: since IDA can only have one binary / IDB open at a time, the
+        dctx (database context) should always be 'None'.
+        """
+        self.palette.warmup()
+
+        #
+        # there should only ever be 'one' disassembler / IDB context at any
+        # time for IDA. but if one does not exist yet, that means this is the
+        # first time the user has interacted with Lighthouse for this session
+        #
+
+        if dctx not in self.lighthouse_contexts:
+
+            # create a new 'context' representing this IDB
+            lctx = LighthouseContext(self, dctx)
+            if startup:
+                lctx.start()
+
+            # save the created ctx for future calls
+            self.lighthouse_contexts[dctx] = lctx
+
+        # return the lighthouse context object for this IDB
+        return self.lighthouse_contexts[dctx]
 
     #--------------------------------------------------------------------------
     # IDA Actions
@@ -32,6 +66,7 @@ class LighthouseIDA(Lighthouse):
 
     ACTION_LOAD_FILE         = "lighthouse:load_file"
     ACTION_LOAD_BATCH        = "lighthouse:load_batch"
+    ACTION_COVERAGE_XREF     = "lighthouse:coverage_xref"
     ACTION_COVERAGE_OVERVIEW = "lighthouse:coverage_overview"
 
     def _install_load_file(self):
@@ -41,7 +76,7 @@ class LighthouseIDA(Lighthouse):
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "load.png"))
-        icon_data = str(open(icon_path, "rb").read())
+        icon_data = open(icon_path, "rb").read()
         self._icon_id_file = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
@@ -77,7 +112,7 @@ class LighthouseIDA(Lighthouse):
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "batch.png"))
-        icon_data = str(open(icon_path, "rb").read())
+        icon_data = open(icon_path, "rb").read()
         self._icon_id_batch = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
@@ -106,6 +141,34 @@ class LighthouseIDA(Lighthouse):
 
         logger.info("Installed the 'Code coverage batch' menu entry")
 
+    def _install_open_coverage_xref(self):
+        """
+        Install the right click 'Coverage Xref' context menu entry.
+        """
+
+        # create a custom IDA icon
+        icon_path = plugin_resource(os.path.join("icons", "batch.png"))
+        icon_data = open(icon_path, "rb").read()
+        self._icon_id_xref = idaapi.load_custom_icon(data=icon_data)
+
+        # describe a custom IDA UI action
+        action_desc = idaapi.action_desc_t(
+            self.ACTION_COVERAGE_XREF,                # The action name
+            "Xrefs coverage sets...",                 # The action text
+            IDACtxEntry(self._pre_open_coverage_xref),# The action handler
+            None,                                     # Optional: action shortcut
+            "List coverage sets containing this address", # Optional: tooltip
+            self._icon_id_xref                        # Optional: the action icon
+        )
+
+        # register the action with IDA
+        result = idaapi.register_action(action_desc)
+        if not result:
+            RuntimeError("Failed to register coverage_xref action with IDA")
+
+        self._ui_hooks.hook()
+        logger.info("Installed the 'Coverage Xref' menu entry")
+
     def _install_open_coverage_overview(self):
         """
         Install the 'View->Open subviews->Coverage Overview' menu entry.
@@ -113,7 +176,7 @@ class LighthouseIDA(Lighthouse):
 
         # create a custom IDA icon
         icon_path = plugin_resource(os.path.join("icons", "overview.png"))
-        icon_data = str(open(icon_path, "rb").read())
+        icon_data = open(icon_path, "rb").read()
         self._icon_id_overview = idaapi.load_custom_icon(data=icon_data)
 
         # describe a custom IDA UI action
@@ -190,6 +253,23 @@ class LighthouseIDA(Lighthouse):
 
         logger.info("Uninstalled the 'Code coverage batch' menu entry")
 
+    def _uninstall_open_coverage_xref(self):
+        """
+        Remove the right click 'Coverage Xref' context menu entry.
+        """
+        self._ui_hooks.unhook()
+
+        # unregister the action
+        result = idaapi.unregister_action(self.ACTION_COVERAGE_XREF)
+        if not result:
+            return False
+
+        # delete the entry's icon
+        idaapi.free_custom_icon(self._icon_id_xref)
+        self._icon_id_xref = idaapi.BADADDR
+
+        logger.info("Uninstalled the 'Coverage Xref' menu entry")
+
     def _uninstall_open_coverage_overview(self):
         """
         Remove the 'View->Open subviews->Coverage Overview' menu entry.
@@ -214,8 +294,37 @@ class LighthouseIDA(Lighthouse):
 
         logger.info("Uninstalled the 'Coverage Overview' menu entry")
 
+    #--------------------------------------------------------------------------
+    # Helpers
+    #--------------------------------------------------------------------------
+
+    def _inject_ctx_actions(self, view, popup, view_type):
+        """
+        Inject context menu entries into IDA's right click menus.
+
+        NOTE: This is only being used for coverage xref at this time, but
+        may host additional actions in the future.
+
+        """
+
+        if view_type == idaapi.BWN_DISASMS:
+
+            idaapi.attach_action_to_popup(
+                view,
+                popup,
+                self.ACTION_COVERAGE_XREF,  # The action ID (see above)
+                "Xrefs graph from...",      # Relative path of where to add the action
+                idaapi.SETMENU_APP          # We want to append the action after ^
+            )
+
+    def _pre_open_coverage_xref(self):
+        """
+        Grab a contextual address before opening the coverage xref dialog.
+        """
+        self.open_coverage_xref(idaapi.get_screen_ea())
+
 #------------------------------------------------------------------------------
-# IDA Action Handler Stub
+# IDA UI Helpers
 #------------------------------------------------------------------------------
 
 class IDACtxEntry(idaapi.action_handler_t):
@@ -239,3 +348,38 @@ class IDACtxEntry(idaapi.action_handler_t):
         Ensure the context menu is always available in IDA.
         """
         return idaapi.AST_ENABLE_ALWAYS
+
+class UIHooks(idaapi.UI_Hooks):
+    """
+    Hooks for IDA's UI subsystem.
+
+    At the moment, we are only using these to inject into IDA's right click
+    context menus (eg, coverage xrefs)
+    """
+
+    def __init__(self, integration):
+        self.integration = integration
+        super(UIHooks, self).__init__()
+
+    def finish_populating_widget_popup(self, widget, popup):
+        """
+        A right click menu is about to be shown. (IDA 7.0+)
+        """
+
+        #
+        # if lighthouse hasn't been used yet, there's nothing to do. we also
+        # don't want this event to trigger the creation of a lighthouse
+        # context! so we should bail early in this case...
+        #
+
+        if not self.integration.lighthouse_contexts:
+            return 0
+
+        # inject any of lighthouse's right click context menu's into IDA
+        lctx = self.integration.get_context(None)
+        if lctx.director.coverage_names:
+            self.integration._inject_ctx_actions(widget, popup, idaapi.get_widget_type(widget))
+
+        # must return 0 for ida...
+        return 0
+

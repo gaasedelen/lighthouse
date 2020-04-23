@@ -1,13 +1,18 @@
 import time
-import Queue
 import bisect
 import logging
 import weakref
+import itertools
 import threading
 import collections
 
+from lighthouse.util.qt import QtCore
+from lighthouse.util.log import lmsg
 from lighthouse.util.misc import *
+from lighthouse.util.python import *
 from lighthouse.util.disassembler import disassembler
+
+from lighthouse.util.debug import catch_errors
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
@@ -40,11 +45,11 @@ logger = logging.getLogger("Lighthouse.Metadata")
 #
 #    2. Building the metadata comes with an upfront cost, but this cost has
 #       been reduced as much as possible. For example, generating metadata for
-#       a database with ~17k functions, ~95k nodes (basic blocks), and ~563k
-#       instructions takes only ~6 seconds.
+#       a larger database with ~25k functions, ~725k nodes (basic blocks), and
+#       ~3.4m instructions took ~27 seconds.
 #
-#       This will be negligible for small-medium sized databases, but may still
-#       be jarring for larger databases.
+#       This will be negligible for small-medium sized databases, but will be
+#       measurable for larger databases.
 #
 #    Ultimately, this model provides us a more responsive user experience at
 #    the expense of the occasional inaccuracies that can be corrected by
@@ -60,11 +65,12 @@ class DatabaseMetadata(object):
     Database level metadata cache.
     """
 
-    def __init__(self):
+    def __init__(self, lctx=None):
+        self.lctx = lctx
 
         # name & imagebase of the executable this metadata is based on
         self.filename = ""
-        self.imagebase = -1
+        self.imagebase = BADADDR
 
         # database metadata cache status
         self.cached = False
@@ -75,21 +81,52 @@ class DatabaseMetadata(object):
         self.instructions = []
 
         # internal members to help index & navigate the cached metadata
-        self._stale_lookup = False
         self._name2func = {}
-        self._last_node = []           # HACK: blank iterable for now
+        self._node2func = collections.defaultdict(list)
         self._node_addresses = []
         self._function_addresses = []
 
-        # placeholder attribute for disassembler event hooks
-        self._rename_hooks = None
+        # HACK: dirty hack since we can't create a blank node easily
+        self._last_node = lambda: None
+        self._last_node.instructions = []
 
-        # metadata callbacks (see director for more info)
-        self._function_renamed_callbacks = []
+        # create the disassembler hooks to listen for rename events
+        if lctx:
+            self._rename_hooks = disassembler[lctx].create_rename_hooks()
+            self._rename_hooks.name_changed = self._name_changed
+        else:
+            self._rename_hooks = None
 
         # asynchronous metadata collection thread
         self._refresh_worker = None
         self._stop_threads = False
+        self._go_synchronous = False
+
+        # a scheduled callback to watch for specific database changes
+        self._scheduled_interval = 2000 # ms
+        self._scheduled_timer = QtCore.QTimer()
+        self._scheduled_timer.setInterval(self._scheduled_interval)
+        self._scheduled_timer.setSingleShot(True)
+        self._scheduled_timer.timeout.connect(self._scheduled_worker)
+
+        #----------------------------------------------------------------------
+        # Callbacks
+        #----------------------------------------------------------------------
+
+        self._metadata_modified_callbacks = []
+        self._function_renamed_callbacks = []
+        self._rebased_callbacks = []
+
+    #--------------------------------------------------------------------------
+    # Subsystem Lifetime
+    #--------------------------------------------------------------------------
+
+    def start(self):
+        """
+        Start the metadata subsystem.
+        """
+        if self._scheduled_timer:
+            self._scheduled_timer.start()
 
     def terminate(self):
         """
@@ -98,6 +135,18 @@ class DatabaseMetadata(object):
         self.abort_refresh(join=True)
         if self._rename_hooks:
             self._rename_hooks.unhook()
+
+        # attempt to stop the scheduled callback... semi-safely :S
+        if self._scheduled_timer:
+            stopping = self._scheduled_timer
+            self._scheduled_timer = None
+            stopping.stop()
+
+        # best effort to free up resources & improve interpreter spindown
+        del self._metadata_modified_callbacks
+        del self._function_renamed_callbacks
+        del self._rebased_callbacks
+        self._clear_cache()
 
     #--------------------------------------------------------------------------
     # Providers
@@ -111,14 +160,40 @@ class DatabaseMetadata(object):
         index_end   = bisect.bisect_left(self.instructions, end_address)
         return self.instructions[index_start:index_end]
 
+    def get_instruction_size(self, address):
+        """
+        Get the size of an instruction at a given address.
+
+        Returns:
+          -1 if undefined address (not within a basic block)
+           0 if within defined instruction
+           n if it is a defined instruction
+        """
+        node_metadata = self.get_node(address)
+
+        #
+        # if the given address does not fall within a node, we have no idea how
+        # big it really is. return -1
+        #
+
+        if not node_metadata:
+            return -1
+
+        #
+        # if the address falls within a node, attempt to return the size of the
+        # instruction at its address. if the address is misaligned / in the
+        # middle of an instruction, simply return 0
+        #
+
+        return node_metadata.instructions.get(address, 0)
+
     def get_node(self, address):
         """
         Get the node (basic block) metadata for a given address.
         """
-        assert not self._stale_lookup, "Stale metadata is unsafe to use..."
 
         # fast path, effectively a LRU cache of 1 ;P
-        if address in self._last_node:
+        if address in self._last_node.instructions:
             return self._last_node
 
         #
@@ -130,12 +205,22 @@ class DatabaseMetadata(object):
         node_metadata = self.nodes.get(self._node_addresses[index], None)
 
         #
-        # if the given address does not fall within the selected node (or the
-        # node simply does not exist), then we have no match/metadata to return
+        # this should hit 99.9% of the time on the first index...
+        #
+        # but we added a fallback in the rare case when binja creates an edge
+        # to an unknown/undefined instruction, whose address happens to fall
+        # within a real one, thus throwing off the basic block lookup...
+        #
+        # technically, we could also fail going back only one block, but at
+        # that point, idc, the user is looking at some weird binaries... :\
         #
 
-        if not (node_metadata and address in node_metadata):
-            return None
+        if not (node_metadata and address in node_metadata.instructions):
+            node_metadata = self.nodes.get(self._node_addresses[index-1], None)
+
+            # double fault, let's just dip...
+            if not (node_metadata and address in node_metadata.instructions):
+                return None
 
         #
         # if the selected node metadata contains the given target address, it
@@ -148,14 +233,20 @@ class DatabaseMetadata(object):
         # return the located node_metadata
         return node_metadata
 
-    def get_function(self, address):
+    def get_function(self, function_address):
         """
-        Get the function metadata for a given address.
+        Get the function metadata that starts at the given address.
+        """
+        return self.functions.get(function_address, None)
+
+    def get_functions_containing(self, address):
+        """
+        Get the list of function metadata objects that contain the given address.
         """
         node_metadata = self.get_node(address)
         if not node_metadata:
-            return None
-        return node_metadata.function
+            return []
+        return self.get_functions_by_node(node_metadata.address)
 
     def get_function_by_name(self, function_name):
         """
@@ -180,6 +271,12 @@ class DatabaseMetadata(object):
         Get the function index for a given address.
         """
         return self._function_addresses.index(address)
+
+    def get_functions_by_node(self, node_address):
+        """
+        Get the functions containing the given node.
+        """
+        return self._node2func.get(node_address, [])
 
     def get_closest_function(self, address):
         """
@@ -211,20 +308,6 @@ class DatabaseMetadata(object):
         else:
             return self.functions[before]
 
-    def flatten_blocks(self, basic_blocks):
-        """
-        Flatten a list of basic blocks (address, size) to instruction addresses.
-
-        This function provides a way to convert a list of (address, size) basic
-        block entries into a list of individual instruction (or byte) addresses
-        based on the current metadata.
-        """
-        output = []
-        for address, size in basic_blocks:
-            instructions = self.get_instructions_slice(address, address+size)
-            output.extend(instructions)
-        return output
-
     def is_big(self):
         """
         Return a bool indicating whether we think the database is 'big'.
@@ -235,29 +318,45 @@ class DatabaseMetadata(object):
     # Refresh
     #--------------------------------------------------------------------------
 
-    def refresh(self, function_addresses=None, progress_callback=None):
+    def refresh(self, progress_callback=None):
         """
-        Request an asynchronous refresh of the database metadata.
+        Refresh the database metadata cache.
+        """
+        self._refresh(progress_callback)
 
-        TODO/FUTURE: we should make a synchronous refresh available
+    def refresh_async(self, progress_callback=None, force=False):
+        """
+        Refresh the database metadata cache asynchronously.
+
+        Returns a future (Queue) that will carry the completion message.
         """
         assert self._refresh_worker == None, 'Refresh already running'
-        result_queue = Queue.Queue()
+        result_queue = queue.Queue()
 
         #
-        # reset the async abort/stop flag that can be used used to cancel the
-        # ongoing refresh task
+        # if there is already metadata cached for this disassembler session,
+        # ignore a request to refresh it unless forced
+        #
+
+        if self.cached and not force:
+            result_queue.put(False)
+            return result_queue
+
+        #
+        # reset the async abort and go_synchronous flags so that we can use them
+        # for this new refresh if needed
         #
 
         self._stop_threads = False
+        self._go_synchronous = False
 
         #
         # kick off an asynchronous metadata collection task
         #
 
         self._refresh_worker = threading.Thread(
-            target=self._async_refresh,
-            args=(result_queue, function_addresses, progress_callback,)
+            target=self._refresh_async,
+            args=(result_queue, progress_callback,)
         )
         self._refresh_worker.start()
 
@@ -309,9 +408,9 @@ class DatabaseMetadata(object):
         Refresh the list of database instructions (from function metadata).
         """
         instructions = []
-        for function_metadata in self.functions.itervalues():
-            instructions.extend(function_metadata.instructions)
-        instructions = list(set(instructions))
+        for function_metadata in itervalues(self.functions):
+            instructions.append(function_metadata.instructions)
+        instructions = list(set(itertools.chain.from_iterable(instructions)))
         instructions.sort()
 
         # commit the updated instruction list
@@ -331,47 +430,95 @@ class DatabaseMetadata(object):
           - get_function(ea)
 
         """
-        self._last_node = []
-        self._name2func = { f.name: f.address for f in self.functions.itervalues() }
+        self._last_node = lambda: None # XXX blank node hack, see other ref to _last_node
+        self._last_node.instructions = []
+        self._name2func = { f.name: f.address for f in itervalues(self.functions) }
         self._node_addresses = sorted(self.nodes.keys())
         self._function_addresses = sorted(self.functions.keys())
-        self._stale_lookup = False
+        for function_metadata in itervalues(self.functions):
+            for node_address in function_metadata.nodes:
+                self._node2func[node_address].append(function_metadata)
+
+    def go_synchronous(self):
+        """
+        Switch an ongoing async refresh into a synchronous one.
+
+        This will make it go ... significantly faster ... but cannot be interrupted.
+        """
+        self._go_synchronous = True
 
     #--------------------------------------------------------------------------
     # Metadata Collection
     #--------------------------------------------------------------------------
 
     @not_mainthread
-    def _async_refresh(self, result_queue, function_addresses, progress_callback):
+    def _refresh_async(self, result_queue, progress_callback=None):
         """
-        The main routine for the asynchronous metadata refresh worker.
+        Internal thread worker routine to refresh the database metadata asynchronously.
+        """
 
-        TODO/FUTURE: this should be cleaned up / refactored
+        # start an interruptable refresh
+        completed = self._refresh(progress_callback, True)
+
+        # clean up our thread's reference as it is basically done/dead
+        self._refresh_worker = None
+
+        # send the refresh result (good/bad) incase anyone is still listening
+        result_queue.put(completed)
+
+        # exit thread...
+
+    def _clear_cache(self):
         """
+        Cleare the metadata cache of all collected info.
+        """
+        self.nodes = {}
+        self.functions = {}
+        self.instructions = []
+        self._node2func = collections.defaultdict(list)
+        self._refresh_lookup()
+        self.cached = False
+
+    def _refresh(self, progress_callback=None, is_async=False):
+        """
+        Internal routine that will update the database metadata cache.
+        """
+        self._clear_cache()
 
         # pause our rename listening hooks (more performant collection)
         if self._rename_hooks:
             self._rename_hooks.unhook()
 
+        # grab the cached imagebase as it might have changed
+        prev_imagebase = self.imagebase
+
+        # refresh high level database properties that we wish to cache
+        self._sync_refresh_properties()
+
         #
-        # if the caller provided no function addresses to target for refresh,
         # we will perform a complete metadata refresh of all database defined
         # functions. let's retrieve that list from the disassembler now...
         #
 
-        if not function_addresses:
-            function_addresses = disassembler.execute_read(
-                disassembler.get_function_addresses
-            )()
+        disassembler_ctx = disassembler[self.lctx]
+        function_addresses = disassembler.execute_read(disassembler_ctx.get_function_addresses)()
+        total = len(function_addresses)
 
-        # refresh database properties that we wish to cache
-        self._async_refresh_properties()
+        start = time.time()
+        #----------------------------------------------------------------------
 
         # refresh the core database metadata asynchronously
-        completed = self._async_collect_metadata(
-            function_addresses,
-            progress_callback
-        )
+        if is_async and self._async_collect_metadata(function_addresses, progress_callback):
+            self._clear_cache()
+            return False
+
+        # refresh the core database metadata synchronously
+        completed = total - len(function_addresses)
+        self._sync_collect_metadata(function_addresses, progress_callback, completed)
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Metadata collection took %s seconds" % (end - start))
 
         # regenerate the instruction list from collected metadata
         self._refresh_instructions()
@@ -379,187 +526,148 @@ class DatabaseMetadata(object):
         # refresh the internal function/node fast lookup lists
         self._refresh_lookup()
 
-        #
-        # NOTE:
-        #
-        #   creating the hooks inline like this is less than ideal, but they
-        #   they have been moved here (from the metadata constructor) to
-        #   accomodate shortcomings of the Binary Ninja API.
-        #
-        # TODO/FUTURE/V35:
-        #
-        #   it would be nice to move these back to the constructor once the
-        #   Binary Ninja API allows us to detect BV / sessions as they are
-        #   created, and able to load plugins on such events.
-        #
-
-        #----------------------------------------------------------------------
-
-        # create the disassembler hooks to listen for rename events
-        if not self._rename_hooks:
-            self._rename_hooks = disassembler.create_rename_hooks()
-            self._rename_hooks.renamed = self._name_changed
-            self._rename_hooks.metadata = weakref.proxy(self)
-
         #----------------------------------------------------------------------
 
         # reinstall the rename listener hooks now that the refresh is done
         self._rename_hooks.hook()
 
-        # send the refresh result (good/bad) incase anyone is still listening
-        if completed:
-            self.cached = True
-            result_queue.put(True)
-        else:
-            result_queue.put(False)
+        # the metadata refresh is effectively done, and the data is now 'cached'
+        self.cached = True
 
-        # clean up our thread's reference as it is basically done/dead
-        self._refresh_worker = None
+        # detect & notify of a rebase event
+        if prev_imagebase != BADADDR and prev_imagebase != self.imagebase:
+            self._notify_rebased(prev_imagebase, self.imagebase)
 
-        # thread exit...
-        return
+        # return true/false to indicates completion
+        return True
 
     @disassembler.execute_read
-    def _async_refresh_properties(self):
+    def _sync_refresh_properties(self):
         """
         Refresh a selection of interesting database properties.
         """
-        self.filename = disassembler.get_root_filename()
-        self.imagebase = disassembler.get_imagebase()
+        disassembler_ctx = disassembler[self.lctx]
+        self.filename = disassembler_ctx.get_root_filename()
+        self.imagebase = disassembler_ctx.get_imagebase()
+
+    @disassembler.execute_read
+    def _sync_collect_metadata(self, function_addresses, progress_callback, progress_base=0):
+        """
+        Collect metadata from the underlying database.
+        """
+        CHUNK_SIZE = 500
+        completed = progress_base
+        total = progress_base + len(function_addresses)
+        logger.debug("Refreshing synchronously from %u/%u" % (completed, total))
+
+        while function_addresses:
+
+            # split off a chunk of functions to process metadata for
+            addresses_chunk = function_addresses[:CHUNK_SIZE]
+            del function_addresses[:CHUNK_SIZE]
+
+            # collect metadata from the database
+            self._cache_functions(addresses_chunk)
+
+            # report incremental progress to an optional progress_callback
+            if progress_callback:
+                completed += CHUNK_SIZE if function_addresses else len(addresses_chunk)
+                progress_callback(completed, total)
 
     @not_mainthread
     def _async_collect_metadata(self, function_addresses, progress_callback):
         """
-        Collect metadata from the underlying database (interruptable).
+        Collect metadata from the underlying database asynchronously (interruptable).
         """
         CHUNK_SIZE = 150
         completed = 0
+        total = len(function_addresses)
+        logger.debug("Refreshing asynchronously from %u/%u" % (completed, total))
 
-        start = time.time()
-        #----------------------------------------------------------------------
-
-        for addresses_chunk in chunks(function_addresses, CHUNK_SIZE):
+        while function_addresses:
 
             #
-            # collect function metadata from the open database in groups of
-            # CHUNK_SIZE. collect_function_metadata() takes a list of function
-            # addresses and collects their metadata in a thread-safe manner
+            # here we will split off CHUNK_SIZE elements from the function
+            # addresses list, in-place. this allows the list to keep track of
+            # what has not been processed, such that the caller can continue
+            # to operate on it if needed
             #
 
-            fresh_metadata = collect_function_metadata(addresses_chunk)
+            addresses_chunk = function_addresses[:CHUNK_SIZE]
+            del function_addresses[:CHUNK_SIZE]
 
-            # update our database metadata cache with the new function metadata
-            self._update_functions(fresh_metadata)
+            # collect metadata from the database
+            self._async_cache_functions(addresses_chunk)
 
             # report incremental progress to an optional progress_callback
             if progress_callback:
-                completed += len(addresses_chunk)
-                progress_callback(completed, len(function_addresses))
+                completed += CHUNK_SIZE if function_addresses else len(addresses_chunk)
+                progress_callback(completed, total)
 
             # if the refresh was canceled, stop collecting metadata and bail
             if self._stop_threads:
-                return False
+                logger.debug("Async metadata collection is bailing!")
+                return True
+
+            # ALL SYSTEMS GO!!
+            if self._go_synchronous:
+                break
 
             # sleep some so we don't choke the mainthread
-            time.sleep(.0015)
+            time.sleep(.015)
 
-        #----------------------------------------------------------------------
-        end = time.time()
-        logger.debug("Metadata collection took %s seconds" % (end - start))
+        # the refresh either completed, or it is going synchronous!
+        return False
 
-        # refresh completed normally / was not interrupted
-        return True
-
-    def _update_functions(self, fresh_metadata):
+    @disassembler.execute_read
+    def _async_cache_functions(self, addresses_chunk):
         """
-        Update stored function metadata with the given fresh metadata.
-
-        Returns a map of {address: function metadata} that has been updated.
+        Wrapped version of self._cache_functions, safe for use from an async worker thread.
         """
-        blank_function = FunctionMetadata(-1)
+        self._cache_functions(addresses_chunk)
 
-        #
-        # the first step is to loop through the 'fresh' function metadata that
-        # has been given to us, and identify what is truly new or different
-        # from any existing metadata we hold.
-        #
+    @catch_errors
+    def _cache_functions(self, addresses_chunk):
+        """
+        Lift and cache function metadata for the given list of function addresses.
+        """
+        disassembler_ctx = disassembler[self.lctx]
 
-        for function_address, new_metadata in fresh_metadata.iteritems():
+        for address in addresses_chunk:
 
-            # extract the 'old' metadata from the database metadata cache
-            old_metadata = self.functions.get(function_address, blank_function)
+            # attempt to 'lift' the function from the database
+            try:
+                function_metadata = FunctionMetadata(address, disassembler_ctx)
 
             #
-            # if the fresh metadata for this function is identical to the
-            # existing metadata we have collected for it, there's nothing
-            # else for us to do -- just ignore it.
+            # this is not exactly a good thing but it indicates that the
+            # disassembler didn't see the a function that we thought should
+            # have been there based on what it told us previously...
+            #
+            # this means the database might have changed, while the refresh
+            # was running. it's not the end of the world, but it might mean
+            # the cache will not be fully accurate...
             #
 
-            if old_metadata == new_metadata:
+            except Exception:
+                lmsg(" - Caching function at 0x%08X failed..." % address)
+                logger.exception("FunctionMetadata Error:")
                 continue
 
-            # delete nodes that explicitly no longer exist
-            old = old_metadata.nodes.viewkeys() - new_metadata.nodes.viewkeys()
-            for node_address in old:
-                del self.nodes[node_address]
-
-            #
-            # the newly collected metadata for a given function is empty, this
-            # indicates that the function has been deleted. we go ahead and
-            # remove its old function metadata from the db metadata entirely
-            #
-
-            if new_metadata.empty:
-                del self.functions[function_address]
-                continue
-
-            # add or overwrite the new/updated basic blocks
-            self.nodes.update(new_metadata.nodes)
-
-            # save the new/updated function
-            self.functions[function_address] = new_metadata
-
-        #
-        # since the node / function metadata cache has probably changed, we
-        # will need to refresh the internal fast lookup lists. this flag is
-        # only really used for debugging, and will probably be removed
-        # in the TODO/FUTURE collection refactor (v0.9?)
-        #
-
-        self._stale_lookup = True
+            # add the updated info
+            self.nodes.update(function_metadata.nodes)
+            self.functions[address] = function_metadata
 
     #--------------------------------------------------------------------------
     # Signal Handlers
     #--------------------------------------------------------------------------
 
-    @mainthread
-    def _name_changed(self, address, new_name, local_name=None):
+    def _name_changed(self, address, new_name):
         """
-        Handler for rename event in IDA.
-
-        TODO/FUTURE: refactor this to not be so IDA-specific
+        Handle function rename event.
         """
-
-        # we should never care about local renames (eg, loc_40804b), ignore
-        if local_name or new_name.startswith("loc_"):
-            return 0
-
-        # get the function that this address falls within
         function = self.get_function(address)
-
-        # if the address does not fall within a function (might happen?), ignore
-        if not function:
-            return 0
-
-        #
-        # ensure the renamed address matches the function start before
-        # renaming the function in our metadata cache.
-        #
-        # I am not sure when this would not be the case (globals? maybe)
-        # but I'd rather not find out.
-        #
-
-        if address != function.address:
+        if not (function and function.address == address):
             return
 
         # if the name isn't actually changing (misfire?) nothing to do
@@ -567,20 +675,31 @@ class DatabaseMetadata(object):
             return
 
         logger.debug("Name changing @ 0x%X" % address)
-        logger.debug("  Old name: %s" % function.name)
-        logger.debug("  New name: %s" % new_name)
+        logger.debug("  Old name: %s" % function.name.encode("utf-8"))
+        logger.debug("  New name: %s" % new_name.encode("utf-8"))
 
-        # rename the function, and notify metadata listeners
-        #function.name = new_name
-        function.refresh_name()
+        # update the function name in the cached lookup & rename it for real
+        self._name2func[new_name] = self._name2func.pop(function.name)
+        function.name = new_name
+
+        # notify metadata listeners of the rename event
         self._notify_function_renamed()
-
-        # necessary for IDP/IDB_Hooks
-        return 0
 
     #--------------------------------------------------------------------------
     # Callbacks
     #--------------------------------------------------------------------------
+
+    def metadata_modified(self, callback):
+        """
+        Subscribe a callback for metadata modification events.
+        """
+        register_callback(self._metadata_modified_callbacks, callback)
+
+    def _notify_metadata_modified(self):
+        """
+        Notify listeners of a metadata modification event.
+        """
+        notify_callback(self._metadata_modified_callbacks)
 
     def function_renamed(self, callback):
         """
@@ -594,6 +713,43 @@ class DatabaseMetadata(object):
         """
         notify_callback(self._function_renamed_callbacks)
 
+    def rebased(self, callback):
+        """
+        Subscribe a callback for director rebasing events.
+        """
+        register_callback(self._rebased_callbacks, callback)
+
+    def _notify_rebased(self, old_imagebase, new_imagebase):
+        """
+        Notify listeners of a database rebasing event.
+        """
+        notify_callback(self._rebased_callbacks)
+
+    #--------------------------------------------------------------------------
+    # Scheduled
+    #--------------------------------------------------------------------------
+
+    @disassembler.execute_read
+    def _scheduled_worker(self):
+        """
+        A timed callback to watch for metadata-relevant database changes.
+        """
+        logger.debug("In timed metadata callback...")
+        disassembler_ctx = disassembler[self.lctx]
+
+        # watch for rebase events
+        current_imagebase = disassembler_ctx.get_imagebase()
+        if (self.cached and current_imagebase != self.imagebase):
+
+            # only attempt a rebase if the disassembler seems idle...
+            if not disassembler_ctx.busy:
+                lmsg("Rebasing Lighthouse (0x%X --> 0x%X)" % (self.imagebase, current_imagebase))
+                self.lctx.director.refresh()
+
+        # schedule the next update (ms)
+        if self._scheduled_timer:
+            self._scheduled_timer.start(self._scheduled_interval)
+
 #------------------------------------------------------------------------------
 # Function Metadata
 #------------------------------------------------------------------------------
@@ -603,7 +759,7 @@ class FunctionMetadata(object):
     Function level metadata cache.
     """
 
-    def __init__(self, address):
+    def __init__(self, address, disassembler_ctx=None):
 
         # function metadata
         self.address = address
@@ -621,8 +777,7 @@ class FunctionMetadata(object):
         self.cyclomatic_complexity = 0
 
         # collect metdata from the underlying database
-        if address != -1:
-            self._build_metadata()
+        self._cache_function(disassembler_ctx)
 
     #--------------------------------------------------------------------------
     # Properties
@@ -633,39 +788,28 @@ class FunctionMetadata(object):
         """
         Return the instruction addresses in this function.
         """
-        return set([ea for node in self.nodes.itervalues() for ea in node.instructions])
+        return set(itertools.chain.from_iterable([node.instructions for node in itervalues(self.nodes)]))
 
     @property
     def empty(self):
         """
         Return a bool indicating whether the object is populated.
         """
-        return len(self.nodes) == 0
-
-    #--------------------------------------------------------------------------
-    # Public
-    #--------------------------------------------------------------------------
-
-    @disassembler.execute_read
-    def refresh_name(self):
-        """
-        Refresh the function name against the open database.
-        """
-        self.name = disassembler.get_function_name_at(self.address)
+        return self.size == 0
 
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
 
-    def _build_metadata(self):
+    def _cache_function(self, disassembler_ctx):
         """
         Collect function metadata from the underlying database.
         """
-        self.name = disassembler.get_function_name_at(self.address)
-        self._refresh_nodes()
+        self.name = disassembler_ctx.get_function_name_at(self.address)
+        self._refresh_nodes(disassembler_ctx)
         self._finalize()
 
-    def _refresh_nodes(self):
+    def _refresh_nodes(self, disassembler_ctx):
         """
         This will be replaced with a disassembler-specific function at runtime.
 
@@ -673,7 +817,7 @@ class FunctionMetadata(object):
         """
         raise RuntimeError("This function should have been monkey patched...")
 
-    def _ida_refresh_nodes(self):
+    def _ida_refresh_nodes(self, _):
         """
         Refresh function node metadata against an open IDA database.
         """
@@ -693,50 +837,43 @@ class FunctionMetadata(object):
         for node_id in xrange(flowchart.size()):
             node = flowchart[node_id]
 
-            # NOTE/COMPAT
-            if disassembler.USING_IDA7API:
-                node_start = node.start_ea
-                node_end   = node.end_ea
-            else:
-                node_start = node.startEA
-                node_end   = node.endEA
-
             #
             # the node current node appears to have a size of zero. This means
             # that another flowchart / function owns this node so we can just
             # ignore it...
             #
 
-            if node_start == node_end:
+            if node.start_ea == node.end_ea:
                 continue
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node_start, node_end, node_id)
+            node_metadata = NodeMetadata(node.start_ea, node.end_ea, node_id)
 
             #
             # establish a relationship between this node (basic block) and
             # this function metadata (its parent)
             #
 
-            node_metadata.function = function_metadata
-            function_metadata.nodes[node_start] = node_metadata
+            function_metadata.nodes[node.start_ea] = node_metadata
 
         # compute all of the edges between nodes in the current function
-        for node_metadata in function_metadata.nodes.itervalues():
-            edge_src = node_metadata.instructions[-1]
+        for node_metadata in itervalues(function_metadata.nodes):
+            edge_src = node_metadata.edge_out
             for edge_dst in idautils.CodeRefsFrom(edge_src, True):
                 if edge_dst in function_metadata.nodes:
                     function_metadata.edges[edge_src].append(edge_dst)
 
-    def _binja_refresh_nodes(self):
+    def _binja_refresh_nodes(self, disassembler_ctx):
         """
         Refresh function node metadata against an open Binary Ninja database.
         """
         function_metadata = self
         function_metadata.nodes = {}
+        bv = disassembler_ctx.bv
+        count = ctypes.c_ulonglong(0)
 
         # get the function from the Binja database
-        function = disassembler.bv.get_function_at(self.address)
+        function = bv.get_function_at(self.address)
 
         #
         # now we will walk the flowchart for this function, collecting
@@ -747,14 +884,13 @@ class FunctionMetadata(object):
         for node in function.basic_blocks:
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node.start, node.end, node.index)
+            node_metadata = NodeMetadata(node.start, node.end, node.index, disassembler_ctx)
 
             #
             # establish a relationship between this node (basic block) and
             # this function metadata (its parent)
             #
 
-            node_metadata.function = function_metadata
             function_metadata.nodes[node.start] = node_metadata
 
             #
@@ -762,9 +898,19 @@ class FunctionMetadata(object):
             # destination that falls within this function.
             #
 
-            edge_src = node_metadata.instructions[-1]
-            for edge in node.outgoing_edges:
-                function_metadata.edges[edge_src].append(edge.target.start)
+            edge_src = node_metadata.edge_out
+
+            count.value = 0
+            edges = core.BNGetBasicBlockOutgoingEdges(node.handle, count)
+
+            for i in range(0, count.value):
+                if edges[i].target:
+                    function_metadata.edges[edge_src].append(node._create_instance(BNNewBasicBlockReference(edges[i].target), bv).start)
+            core.BNFreeBasicBlockEdgeList(edges, count.value)
+
+            # NOTE/PERF ~28% of metadata collection time alone...
+            #for edge in node.outgoing_edges:
+            #    function_metadata.edges[edge_src].append(edge.target.start)
 
     def _compute_complexity(self):
         """
@@ -788,7 +934,7 @@ class FunctionMetadata(object):
         # current node (node_address) to walk the function graph
         #
 
-        to_walk = set([self.address])
+        to_walk = set([self.address]) if self.nodes else set()
         while to_walk:
 
             # this is the address of the node we will 'walk' from
@@ -796,7 +942,7 @@ class FunctionMetadata(object):
             confirmed_nodes.add(node_address)
 
             # now we loop through all edges that originate from this block
-            current_src = self.nodes[node_address].instructions[-1]
+            current_src = self.nodes[node_address].edge_out
             for current_dest in self.edges[current_src]:
 
                 # ignore nodes we have already visited
@@ -815,7 +961,7 @@ class FunctionMetadata(object):
             confirmed_edges[current_src] = self.edges.pop(current_src)
 
         # compute the final cyclomatic complexity for the function
-        num_edges = sum(len(x) for x in confirmed_edges.itervalues())
+        num_edges = sum(len(x) for x in itervalues(confirmed_edges))
         num_nodes = len(confirmed_nodes)
         return num_edges - num_nodes + 2
 
@@ -823,10 +969,10 @@ class FunctionMetadata(object):
         """
         Finalize function metadata for use.
         """
-        self.size = sum(node.size for node in self.nodes.itervalues())
+        self.size = sum(node.size for node in itervalues(self.nodes))
         self.node_count = len(self.nodes)
         self.edge_count = len(self.edges)
-        self.instruction_count = sum(node.instruction_count for node in self.nodes.itervalues())
+        self.instruction_count = sum(node.instruction_count for node in itervalues(self.nodes))
         self.cyclomatic_complexity = self._compute_complexity()
 
     #--------------------------------------------------------------------------
@@ -843,7 +989,7 @@ class FunctionMetadata(object):
         result &= self.address == other.address
         result &= self.node_count == other.node_count
         result &= self.instruction_count == other.instruction_count
-        result &= self.nodes.viewkeys() == other.nodes.viewkeys()
+        result &= viewkeys(self.nodes) == viewkeys(other.nodes)
         return result
 
 #------------------------------------------------------------------------------
@@ -855,32 +1001,30 @@ class NodeMetadata(object):
     Node (basic block) level metadata cache.
     """
 
-    def __init__(self, start_ea, end_ea, node_id=None):
+    def __init__(self, start_ea, end_ea, node_id=None, disassembler_ctx=None):
 
         # node metadata
         self.size = end_ea - start_ea
         self.address = start_ea
         self.instruction_count = 0
+        self.edge_out = -1
 
         # flowchart node_id
         self.id = node_id
 
-        # parent function_metadata
-        self.function = None
-
         # instruction addresses
-        self.instructions = []
+        self.instructions = {}
 
         #----------------------------------------------------------------------
 
         # collect metadata from the underlying database
-        self._build_metadata()
+        self._cache_node(disassembler_ctx)
 
     #--------------------------------------------------------------------------
     # Metadata Population
     #--------------------------------------------------------------------------
 
-    def _build_metadata(self):
+    def _cache_node(self, disassembler_ctx):
         """
         This will be replaced with a disassembler-specific function at runtime.
 
@@ -888,7 +1032,7 @@ class NodeMetadata(object):
         """
         raise RuntimeError("This function should have been monkey patched...")
 
-    def _ida_build_metadata(self):
+    def _ida_cache_node(self, _):
         """
         Collect node metadata from the underlying database.
         """
@@ -902,20 +1046,26 @@ class NodeMetadata(object):
         #
 
         while current_address < node_end:
-            instruction_size = idaapi.get_item_end(current_address) - current_address
-            self.instructions.append(current_address)
+            instruction_size = get_item_end(current_address) - current_address
+            self.instructions[current_address] = instruction_size
             current_address += instruction_size
+
+        # the source of the outward edge
+        self.edge_out = current_address - instruction_size
 
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
 
-    def _binja_build_metadata(self):
+    def _binja_cache_node(self, disassembler_ctx):
         """
         Collect node metadata from the underlying database.
         """
-        bv = disassembler.bv
         current_address = self.address
         node_end = self.address + self.size
+
+        # NOTE/PERF: gotta go fast :D
+        bh = disassembler_ctx.bv.handle
+        ah = disassembler_ctx.bv.arch.handle
 
         #
         # Note that we 'iterate over' the instructions using their byte length
@@ -924,8 +1074,12 @@ class NodeMetadata(object):
         #
 
         while current_address < node_end:
-            self.instructions.append(current_address)
-            current_address += bv.get_instruction_length(current_address)
+            instruction_size = BNGetInstructionLength(bh, ah, current_address) or 1
+            self.instructions[current_address] = instruction_size
+            current_address += instruction_size
+
+        # the source of the outward edge
+        self.edge_out = current_address - instruction_size
 
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
@@ -944,7 +1098,6 @@ class NodeMetadata(object):
         output += " Size: %u\n" % self.size
         output += " Instruction Count: %u\n" % self.instruction_count
         output += " Id: %u\n" % self.id
-        output += " Function: %s\n" % self.function
         output += " Instructions: %s" % self.instructions
         return output
 
@@ -966,20 +1119,12 @@ class NodeMetadata(object):
         result &= self.size == other.size
         result &= self.address == other.address
         result &= self.instruction_count == other.instruction_count
-        result &= self.function == other.function
         result &= self.id == other.id
         return result
 
 #------------------------------------------------------------------------------
 # Async Metadata Helpers
 #------------------------------------------------------------------------------
-
-@disassembler.execute_read
-def collect_function_metadata(function_addresses):
-    """
-    Collect function metadata for a list of addresses.
-    """
-    return { ea: FunctionMetadata(ea) for ea in function_addresses }
 
 @disassembler.execute_ui
 def metadata_progress(completed, total):
@@ -1008,12 +1153,21 @@ if disassembler.NAME == "IDA":
     import idaapi
     import idautils
     FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
-    NodeMetadata._build_metadata = NodeMetadata._ida_build_metadata
+    NodeMetadata._cache_node = NodeMetadata._ida_cache_node
+
+    # pull hot funcs out of module for faster access... (perf)
+    from idaapi import get_item_end
 
 elif disassembler.NAME == "BINJA":
+    import ctypes
     import binaryninja
+    from binaryninja import core
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
-    NodeMetadata._build_metadata = NodeMetadata._binja_build_metadata
+    NodeMetadata._cache_node = NodeMetadata._binja_cache_node
+
+    # pull hot funcs out of module for faster access... (perf)
+    BNGetInstructionLength = core.BNGetInstructionLength
+    BNNewBasicBlockReference = core.BNNewBasicBlockReference
 
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

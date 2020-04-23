@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 
+from .misc import makedirs
 from .disassembler import disassembler
 
 #------------------------------------------------------------------------------
@@ -18,7 +19,7 @@ def lmsg(message):
 
     # only print to disassembler if its output window is alive
     if disassembler.is_msg_inited():
-        print prefix_message
+        disassembler.message(prefix_message)
     else:
         logger.info(message)
 
@@ -54,7 +55,8 @@ class LoggerProxy(object):
     def write(self, buf):
         for line in buf.rstrip().splitlines():
             self._logger.log(self._log_level, line.rstrip())
-        self._stream.write(buf)
+        if self._stream:
+            self._stream.write(buf)
 
     def flush(self):
         pass
@@ -66,7 +68,7 @@ class LoggerProxy(object):
 # Initialize Logging
 #------------------------------------------------------------------------------
 
-MAX_LOGS = 5
+MAX_LOGS = 10
 def cleanup_log_directory(log_directory):
     """
     Retain only the last 15 logs.
@@ -80,7 +82,7 @@ def cleanup_log_directory(log_directory):
             filetimes[os.path.getmtime(filepath)] = filepath
 
     # get the filetimes and check if there's enough to warrant cleanup
-    times = filetimes.keys()
+    times = list(filetimes.keys())
     if len(times) < MAX_LOGS:
         return
 
@@ -108,15 +110,20 @@ def start_logging():
     # only enable logging if the LIGHTHOUSE_LOGGING environment variable is
     # present. we simply return a stub logger to sinkhole messages.
     #
+    # NOTE / v0.9.0: logging is enabled by default for now...
+    #
 
-    if os.getenv("LIGHTHOUSE_LOGGING") == None:
-        logger.disabled = True
-        return logger
+    #if os.getenv("LIGHTHOUSE_LOGGING") == None:
+    #    logger.disabled = True
+    #    return logger
 
     # create a directory for lighthouse logs if it does not exist
     log_dir = get_log_dir()
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    try:
+        makedirs(log_dir)
+    except Exception as e:
+        logger.disabled = True
+        return logger
 
     # construct the full log path
     log_path = os.path.join(log_dir, "lighthouse.%s.log" % os.getpid())

@@ -1,10 +1,11 @@
 import sys
 import time
-import Queue
 import logging
+import threading
 
 from .shim import *
 from ..misc import is_mainthread
+from ..python import *
 from ..disassembler import disassembler
 
 logger = logging.getLogger("Lighthouse.Qt.Util")
@@ -53,13 +54,6 @@ def get_qt_icon(name):
     icon_type = getattr(QtWidgets.QStyle, name)
     return QtWidgets.QApplication.style().standardIcon(icon_type)
 
-def get_qt_main_window():
-    """
-    Get the QMainWindow instance for the current Qt runtime.
-    """
-    app = QtCore.QCoreApplication.instance()
-    return [x for x in app.allWidgets() if x.__class__ is QtWidgets.QMainWindow][0]
-
 def get_default_font_size():
     """
     Get the default font size for this QApplication.
@@ -76,6 +70,21 @@ def get_dpi_scale():
 
     # xHeight is expected to be 40.0 at normal DPI
     return fm.height() / 173.0
+
+def compute_color_on_gradiant(percent, color1, color2):
+    """
+    Compute the color specified by a percent between two colors.
+    """
+    r1, g1, b1, _ = color1.getRgb()
+    r2, g2, b2, _ = color2.getRgb()
+
+    # compute the new color across the gradiant of color1 -> color 2
+    r = r1 + percent * (r2 - r1)
+    g = g1 + percent * (g2 - g1)
+    b = b1 + percent * (b2 - b1)
+
+    # return the new color
+    return QtGui.QColor(r,g,b)
 
 def move_mouse_event(mouse_event, position):
     """
@@ -95,7 +104,7 @@ def normalize_to_dpi(font_size):
     Normalize the given font size based on the system DPI.
     """
     if sys.platform == "darwin": # macos is lame
-        return font_size + 3
+        return font_size + 2
     return font_size
 
 def prompt_string(label, title, default=""):
@@ -115,6 +124,9 @@ def prompt_string(label, title, default=""):
         dpi_scale*400,
         dpi_scale*50
     )
+    dlg.setModal(True)
+    dlg.show()
+    dlg.setFocus(QtCore.Qt.PopupFocusReason)
     ok = dlg.exec_()
     text = str(dlg.textValue())
     return (ok, text)
@@ -216,7 +228,7 @@ def await_future(future):
         # to the mainthread. flush the requests now and try again
         #
 
-        except Queue.Empty as e:
+        except queue.Empty as e:
             pass
 
         logger.debug("Awaiting future...")
@@ -275,3 +287,82 @@ def await_lock(lock):
     #
 
     raise RuntimeError("Failed to acquire lock after %f seconds!" % timeout)
+
+class QMainthread(QtCore.QObject):
+    """
+    A Qt object whose sole purpose is to execute code on the mainthread.
+    """
+    toMainthread = QtCore.pyqtSignal(object)
+    toMainthreadFast = QtCore.pyqtSignal(object)
+
+    def __init__(self):
+        super(QMainthread, self).__init__()
+
+        # helpers used to ensure thread safety
+        self._lock = threading.Lock()
+        self._fast_refs = []
+        self._result_queue = queue.Queue()
+
+        # signals used to communicate with the Qt mainthread
+        self.toMainthread.connect(self._execute_with_result)
+        self.toMainthreadFast.connect(self._execute_fast)
+
+    #--------------------------------------------------------------------------
+    # Public
+    #--------------------------------------------------------------------------
+
+    def execute(self, function):
+        """
+        Execute a function on the mainthread and wait for its return value.
+
+        This function is safe to call from any thread, at any time.
+        """
+
+        # if we are already on the mainthread, execute the callable inline
+        if is_mainthread():
+            return function()
+
+        # execute the callable on the mainthread and wait for it to complete
+        with self._lock:
+            self.toMainthread.emit(function)
+            result = self._result_queue.get()
+
+        # return the result of executing on the mainthread
+        return result
+
+    def execute_fast(self, function):
+        """
+        Execute a function on the mainthread without waiting for completion.
+        """
+
+        #
+        # append the given function to a reference list.
+        #
+        # I do this because I am not confident python / qt will guarantee the
+        # lifetime of the callable (function) as we cross threads and the
+        # callee scope/callstack dissolves away from beneath us
+        #
+        # this callable will be deleted from the ref list in _excute_fast()
+        #
+
+        self._fast_refs.append(function)
+
+        # signal to the mainthread that a new function is ready to execute
+        self.toMainthreadFast.emit(function)
+
+    #--------------------------------------------------------------------------
+    # Internal
+    #--------------------------------------------------------------------------
+
+    def _execute_with_result(self, function):
+        try:
+            self._result_queue.put(function())
+        except Exception as e:
+            logger.exception("QMainthread Exception")
+            self._result_queue.put(None)
+
+    def _execute_fast(self, function):
+        function()
+        self._fast_refs.remove(function)
+
+qt_mainthread = QMainthread()

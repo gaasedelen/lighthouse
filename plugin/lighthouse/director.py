@@ -1,16 +1,22 @@
+import os
 import time
-import Queue
 import string
 import logging
 import threading
+import traceback
 import collections
 
-from lighthouse.util import lmsg
 from lighthouse.util.misc import *
-from lighthouse.util.qt import await_future, await_lock, color_text
+from lighthouse.util.debug import *
+from lighthouse.util.python import *
+from lighthouse.util.qt import await_future, await_lock, flush_qt_events
 from lighthouse.util.disassembler import disassembler
+
+from lighthouse.ui import ModuleSelector
+from lighthouse.reader import CoverageReader
 from lighthouse.metadata import DatabaseMetadata, metadata_progress
 from lighthouse.coverage import DatabaseCoverage
+from lighthouse.exceptions import *
 from lighthouse.composer.parser import *
 
 logger = logging.getLogger("Lighthouse.Director")
@@ -46,26 +52,37 @@ class CoverageDirector(object):
     between any number of coverage files.
     """
 
-    ERROR_COVERAGE_ABSENT = 1
-    ERROR_COVERAGE_SUSPICIOUS = 2
+    def __init__(self, metadata, palette):
 
-    def __init__(self, palette):
+        # the database metadata cache
+        self.metadata = metadata
 
         # the plugin color palette
-        self._palette = palette
-
-        # the central database metadata cache
-        self.metadata = DatabaseMetadata()
+        self.palette = palette
 
         #----------------------------------------------------------------------
         # Coverage
         #----------------------------------------------------------------------
+
+        # the coverage file parser
+        self.reader = CoverageReader()
+        self._target_whitelist = []
 
         # the name of the active coverage
         self.coverage_name = NEW_COMPOSITION
 
         # a map of loaded or composed database coverages
         self._database_coverage = collections.OrderedDict()
+
+        #
+        # the owners map is used in block/coverage blame operations. it
+        # contains the mapping of node_address --> [ coverage filepaths ]
+        #
+        # given any node (basic block) address, we can use this mapping to do
+        # a reverse lookup to find which loaded coverage sets hit the block.
+        #
+
+        self.owners = collections.defaultdict(set)
 
         #
         # the director automatically maintains / generates a few coverage sets
@@ -164,7 +181,7 @@ class CoverageDirector(object):
         # to handle these computation requests.
         #
 
-        self._ast_queue = Queue.Queue()
+        self._ast_queue = queue.Queue()
         self._composition_lock = threading.Lock()
         self._composition_cache = CompositionCache()
 
@@ -172,7 +189,6 @@ class CoverageDirector(object):
             target=self._async_evaluate_ast,
             name="EvaluateAST"
         )
-        self._composition_worker.start()
 
         #----------------------------------------------------------------------
         # Callbacks
@@ -194,20 +210,37 @@ class CoverageDirector(object):
         self._coverage_created_callbacks  = []
         self._coverage_deleted_callbacks  = []
 
-        # metadata callbacks
-        self._metadata_modified_callbacks = []
+        # director callbacks
+        self._refreshed_callbacks  = []
+
+    #--------------------------------------------------------------------------
+    # Subsystem Lifetime
+    #--------------------------------------------------------------------------
+
+    def start(self):
+        """
+        Start the metadata subsystem.
+        """
+        self._composition_worker.start()
 
     def terminate(self):
         """
         Cleanup & terminate the director.
         """
-
-        # stop the composition worker
         self._ast_queue.put(None)
-        self._composition_worker.join()
+        try:
+            self._composition_worker.join()
+        except RuntimeError:
+            pass
 
-        # spin down the live metadata object
-        self.metadata.terminate()
+        # best effort to free up resources & improve interpreter spindown
+        del self._special_coverage
+        del self._database_coverage
+        del self._coverage_switched_callbacks
+        del self._coverage_modified_callbacks
+        del self._coverage_created_callbacks
+        del self._coverage_deleted_callbacks
+        del self._composition_cache
 
     #--------------------------------------------------------------------------
     # Properties
@@ -232,14 +265,14 @@ class CoverageDirector(object):
         """
         Return the list or loaded / composed database coverage names.
         """
-        return self._database_coverage.keys()
+        return list(self._database_coverage)
 
     @property
     def special_names(self):
         """
         Return the list of special (director maintained) coverage names.
         """
-        return self._special_coverage.keys()
+        return list(self._special_coverage)
 
     @property
     def all_names(self):
@@ -285,8 +318,6 @@ class CoverageDirector(object):
     def _notify_coverage_created(self):
         """
         Notify listeners of a coverage creation event.
-
-        TODO/FUTURE: send list of names created?
         """
         notify_callback(self._coverage_created_callbacks)
 
@@ -299,22 +330,20 @@ class CoverageDirector(object):
     def _notify_coverage_deleted(self):
         """
         Notify listeners of a coverage deletion event.
-
-        TODO/FUTURE: send list of names deleted?
         """
         notify_callback(self._coverage_deleted_callbacks)
 
-    def metadata_modified(self, callback):
+    def refreshed(self, callback):
         """
-        Subscribe a callback for metadata modification events.
+        Subscribe a callback for director refresh events.
         """
-        register_callback(self._metadata_modified_callbacks, callback)
+        register_callback(self._refreshed_callbacks, callback)
 
-    def _notify_metadata_modified(self):
+    def _notify_refreshed(self):
         """
-        Notify listeners of a metadata modification event.
+        Notify listeners of a director refresh event.
         """
-        notify_callback(self._metadata_modified_callbacks)
+        notify_callback(self._refreshed_callbacks)
 
     #----------------------------------------------------------------------
     # Batch Loading
@@ -339,180 +368,427 @@ class CoverageDirector(object):
         self._aggregation_suspended = True
 
     #----------------------------------------------------------------------
-    # Coverage Creation
+    # Coverage Loading
     #----------------------------------------------------------------------
+
+    def load_coverage_batch(self, filepaths, batch_name, progress_callback=logger.debug):
+        """
+        Create a new database coverage mapping from a list of coverage files.
+
+        Returns a tuple of (coverage, errors)
+        """
+        errors = collections.defaultdict(list)
+        aggregate_addresses = set()
+
+        start = time.time()
+        #----------------------------------------------------------------------
+
+        for i, filepath in enumerate(filepaths, 1):
+            logger.debug("-"*50)
+            progress_callback("Aggregating batch data %u/%u" % (i, len(filepaths)))
+
+            # attempt to load coverage data from disk
+            try:
+                coverage_file = self.reader.open(filepath)
+                coverage_addresses = self._extract_coverage_data(coverage_file)
+
+            # save and suppress warnings generated from loading coverage files
+            except CoverageParsingError as e:
+                errors[CoverageParsingError].append(e)
+                continue
+
+            # ensure some data was actually extracted from the log
+            if not coverage_addresses:
+                errors[CoverageMissingError].append(CoverageMissingError(filepath))
+                continue
+
+            # save the attribution data for this coverage data
+            for address in coverage_addresses:
+                if address in self.metadata.nodes:
+                    self.owners[address].add(filepath)
+
+            # aggregate all coverage data into a single set of addresses
+            aggregate_addresses.update(coverage_addresses)
+
+        if not aggregate_addresses:
+            return (None, errors)
+
+        # optimize the aggregated data (once) and save it to the director
+        coverage_data = self._optimize_coverage_data(aggregate_addresses)
+        coverage = self.create_coverage(batch_name, coverage_data)
+
+        # evaluate coverage
+        if not coverage.nodes:
+            errors[CoverageMappingAbsent].append(CoverageMappingAbsent(coverage))
+        elif coverage.suspicious:
+            errors[CoverageMappingSuspicious].append(CoverageMappingSuspicious(coverage))
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("Batch loading took %f seconds" % (end-start))
+
+        # return the created coverage name
+        return (coverage, errors)
+
+    def load_coverage_files(self, filepaths, progress_callback=logger.debug):
+        """
+        Create new database coverage mappings from a list of coverage files.
+
+        Returns a tuple of (created_coverage, errors)
+        """
+        errors = collections.defaultdict(list)
+        all_coverage = []
+
+        start = time.time()
+        #----------------------------------------------------------------------
+
+        #
+        # stop the director's aggregate set from recomputing after each new
+        # coverage mapping is created. instead, we want to wait till *all* new
+        # files have been loaded and mapped, computing the new aggregate only
+        # at very end. this is far more performant.
+        #
+
+        self.suspend_aggregation()
+
+        #
+        # loop through the list of filepaths we have been given and begin
+        # the process of loading the coverage data from disk, and normalizing
+        # it for the director to consume
+        #
+
+        for i, filepath in enumerate(filepaths, 1):
+            logger.debug("-"*50)
+            progress_callback("Loading coverage %u/%u" % (i, len(filepaths)))
+
+            # attempt to load coverage data from disk
+            try:
+                coverage_file = self.reader.open(filepath)
+                coverage_addresses = self._extract_coverage_data(coverage_file)
+                coverage_data = self._optimize_coverage_data(coverage_addresses)
+
+            # save and suppress warnings generated from loading coverage files
+            except CoverageParsingError as e:
+                errors[CoverageParsingError].append(e)
+                continue
+
+            # ensure some data was actually extracted from the log
+            if not coverage_addresses:
+                errors[CoverageMissingError].append(CoverageMissingError(filepath))
+                continue
+
+            # save the attribution data for this coverage data
+            for address in coverage_data:
+                if address in self.metadata.nodes:
+                    self.owners[address].add(filepath)
+
+            #
+            # request a name for the new coverage mapping that the director will
+            # generate from the loaded coverage data
+            #
+
+            coverage_name = self._suggest_coverage_name(filepath)
+            coverage = self.create_coverage(coverage_name, coverage_data, filepath)
+
+            # evaluate coverage
+            if not coverage.nodes:
+                errors[CoverageMappingAbsent].append(CoverageMappingAbsent(coverage))
+            elif coverage.suspicious:
+                errors[CoverageMappingSuspicious].append(CoverageMappingSuspicious(coverage))
+
+            # add the newly created coverage to the list of coverage to be returned
+            all_coverage.append(coverage)
+
+        #
+        # resume the director's aggregation service, triggering an update to
+        # recompute the aggregate set with the newly loaded coverage
+        #
+
+        progress_callback("Recomputing coverage aggregate...")
+        self.resume_aggregation()
+
+        #----------------------------------------------------------------------
+        end = time.time()
+        logger.debug("File loading took %f seconds" % (end-start))
+
+        # all done
+        return (all_coverage, errors)
+
+    def _extract_coverage_data(self, coverage_file):
+        """
+        Internal routine to extract relevant coverage data from a CoverageFile.
+        """
+        database_target = self.metadata.filename
+        target_names = [database_target] + self._target_whitelist
+
+        #
+        # inspect the coverage file and extract the module name that seems to
+        # match the executable loaded by the disassembler (fuzzy lookup) or
+        # otherwise aliased by the user through the fallback dialog
+        #
+
+        for name in target_names:
+            module_name = self._find_fuzzy_name(coverage_file, name)
+            if module_name:
+                break
+
+        #
+        # if the fuzzy name lookup failed and there are named modules in the
+        # coverage file, then we will show them to the user and see if they
+        # can pick out a matching module to load coverage from
+        #
+
+        if not module_name and coverage_file.modules:
+
+            #
+            # if the user closes the dialog without selecting a name, there's
+            # nothing we can do for them ...
+            #
+
+            dialog = ModuleSelector(database_target, coverage_file.modules, coverage_file.filepath)
+            if not dialog.exec_():
+                return [] # no coverage data extracted ...
+
+            # the user selected a module name! use that to extract coverage
+            module_name = dialog.selected_name
+            if dialog.remember_alias:
+                self._target_whitelist.append(module_name)
+
+        #
+        # (module, offset, size) style logs (eg, drcov)
+        #
+
+        imagebase = self.metadata.imagebase
+
+        try:
+            coverage_blocks = coverage_file.get_offset_blocks(module_name)
+            coverage_addresses = [imagebase+offset for bb_start, bb_len in coverage_blocks for offset in xrange(bb_start, bb_start+bb_len)]
+            return coverage_addresses
+        except NotImplementedError:
+            pass
+
+        #
+        # (module, offset) style logs (eg, mod+off)
+        #
+
+        try:
+            coverage_offsets = coverage_file.get_offsets(module_name)
+            coverage_addresses = [imagebase+offset for offset in coverage_offsets]
+            return coverage_addresses
+        except NotImplementedError:
+            pass
+
+        #
+        # (absolute address) style log (eg, instruction/bb trace)
+        #
+
+        try:
+            coverage_addresses = coverage_file.get_addresses(module_name)
+            return coverage_addresses
+        except NotImplementedError:
+            pass
+
+        # well, this one is probably the fault of the CoverageFile author...
+        raise NotImplementedError("Incomplete CoverageFile implementation")
+
+    def _optimize_coverage_data(self, coverage_addresses):
+        """
+        Optimize exploded coverage data to the current metadata cache.
+        """
+        logger.debug("Optimizing coverage data...")
+        addresses = set(coverage_addresses)
+
+        # bucketize the exploded coverage addresses
+        instructions = addresses & set(self.metadata.instructions)
+        basic_blocks = instructions & viewkeys(self.metadata.nodes)
+
+        if not instructions:
+            logger.debug("No mappable instruction addresses in coverage data")
+            return []
+
+        """
+        #
+        # TODO/LOADING: display undefined/misaligned data somehow?
+        #
+
+        unknown = addresses - instructions
+
+        # bucketize the uncategorized exploded addresses
+        undefined, misaligned = [], []
+        for address in unknown:
+
+            # size == -1 (undefined inst)
+            if self.metadata.get_instruction_size(address):
+                undefined.append(address)
+
+            # size == 0 (misaligned inst)
+            else:
+                misaligned.append(address)
+        """
+
+        #
+        # here we attempt to compute the ratio between basic block addresses,
+        # and instruction addresses in the incoming coverage data.
+        #
+        # this will help us determine if the existing instruction data is
+        # sufficient, or whether we need to explode/flatten the basic block
+        # addresses into their respective child instructions
+        #
+
+        block_ratio = len(basic_blocks) / float(len(instructions))
+        block_trace_confidence = 0.90
+        logger.debug("Block confidence %f" % block_ratio)
+
+        #
+        # a low basic block to instruction ratio implies the data is probably
+        # from an instruction trace, or a basic block trace has been flattened
+        # exploded already (eg, a drcov log)
+        #
+
+        if block_ratio < block_trace_confidence:
+            logger.debug("Optimized as instruction trace...")
+            return list(instructions)
+
+        #
+        # take each basic block address, and explode it into a list of all the
+        # instruction addresses contained within the basic block as determined
+        # by the database metadata cache
+        #
+        # it is *possible* that this may introduce 'inaccurate' paint should
+        # the user provide a basic block trace that crashes mid-block. but
+        # that is not something we can account for in a block trace...
+        #
+
+        block_instructions = set([])
+        for address in basic_blocks:
+            block_instructions |= set(self.metadata.nodes[address].instructions)
+
+        logger.debug("Optimized as basic block trace...")
+        return list(block_instructions | instructions)
+
+    def _suggest_coverage_name(self, filepath):
+        """
+        Return a suggested coverage name for the given filepath.
+        """
+        coverage_name = os.path.basename(filepath)
+        coverage = self.get_coverage(coverage_name)
+
+        # no internal conflict, the filename is a unique enough coverage name
+        if not coverage:
+            return coverage_name
+
+        #
+        # if there is an existing coverage mapping under this name, odds are
+        # that the user is re-loading the same coverage file in which case the
+        # director will overwrite the old DatabaseCoverage object.
+        #
+        # however, we have to be careful for the case where the user loads a
+        # coverage file from a different directory under the same name
+        #
+        # e.g:
+        #  - C:\coverage\foo.log
+        #  - C:\coverage\testing\foo.log
+        #
+        # in these cases, we will append a suffix to the new coverage file
+        #
+
+        # assign a suffix to the coverage_name in the event of a collision
+        if coverage.filepath != filepath:
+
+            # find a suitable suffix
+            for i in xrange(2, 1000000):
+                new_name = "%s_%u" % (coverage_name, i)
+                if not self.get_coverage(new_name):
+                    break
+
+            # save the suffixed name to the return value
+            coverage_name = new_name
+
+        # return the suggested coverage name for the given filepath
+        return coverage_name
+
+    def _find_fuzzy_name(self, coverage_file, target_name):
+        """
+        Return the closest matching module name in the given coverage file.
+        """
+        target_name = target_name.lower()
+
+        #
+        # 1. exact, case-insensitive filename matching
+        #
+
+        for module_name in coverage_file.modules:
+            if target_name == module_name.lower():
+                return module_name
+
+        #
+        # 2. cleave the extension from the target module name (the source)
+        # and try again to see if matches anything in the coverage file
+        #
+
+        target_name, extension = os.path.splitext(target_name)
+        for module_name in coverage_file.modules:
+            if target_name == module_name.lower():
+                return module_name
+
+        # too risky to do fuzzy matching on short names...
+        if len(target_name) < 6:
+            return None
+
+        #
+        # 3. try to match *{target_name}*{extension} in module_name, assuming
+        # target_name is more than 6 characters and there is no othe ambiguity
+        #
+
+        possible_names = []
+        for module_name in coverage_file.modules:
+            if target_name in module_name.lower() and extension in module_name.lower():
+                possible_names.append(module_name)
+
+        # there were no matches on the wildcarding, so we're done
+        if not possible_names:
+            return None
+
+        #
+        # if there is multiple potential matches it is too risky to pick one,
+        # so we are not going to return anything as a viable match
+        #
+
+        if len(possible_names) > 1:
+            return None
+
+        return possible_names[0]
+
+    #----------------------------------------------------------------------
+    # Coverage Management
+    #----------------------------------------------------------------------
+
+    def get_address_coverage(self, address):
+        """
+        Return a list of coverage object containing the given address.
+        """
+        found = []
+
+        for name, db_coverage in iteritems(self._database_coverage):
+            if address in db_coverage.coverage:
+                found.append(db_coverage)
+
+        return found
+
+    def get_address_file(self, address):
+        """
+        Return a list of coverage filepaths containing the given address.
+        """
+        node = self.metadata.get_node(address)
+        if not node:
+            return []
+        return list(self.owners.get(node.address, []))
 
     def create_coverage(self, coverage_name, coverage_data, coverage_filepath=None):
         """
         Create a new database coverage mapping from the given data.
         """
         return self.update_coverage(coverage_name, coverage_data, coverage_filepath)
-
-    def create_coverage_from_drcov_list(self, drcov_list):
-        """
-        Create a number of database coverage mappings from a list of DrcovData.
-
-        Returns a tuple of (created_coverage, errors)
-        """
-        created_coverage = []
-        errors = []
-
-        #
-        # stop the director's aggregate from updating. this will prevent the
-        # aggregate from recomputing after each individual mapping is created.
-        # instead, we will wait till *all* have been created, computing the
-        # new aggregate at the very end. this is far more performant.
-        #
-
-        self.suspend_aggregation()
-
-        #
-        # loop through the coverage data we been given (drcov_list), and begin
-        # the normalization process to translate / filter / flatten its blocks
-        # into a generic format the director can consume (a list of addresses)
-        #
-
-        for i, drcov_data in enumerate(drcov_list, 1):
-
-            # keep the user informed about our progress while loading coverage
-            disassembler.replace_wait_box(
-                "Normalizing and mapping coverage %u/%u" % (i, len(drcov_list))
-            )
-
-            #
-            # translate the coverage data's basic block addresses to the
-            # imagebase of the open database, and flatten the blocks to a
-            # list of instruction addresses
-            #
-
-            try:
-                coverage_data = self._normalize_drcov_data(drcov_data)
-            except ValueError as e:
-                errors.append((self.ERROR_COVERAGE_ABSENT, drcov_data.filepath))
-                lmsg("Failed to normalize coverage %s" % drcov_data.filepath)
-                lmsg("- %s" % e)
-                continue
-
-            #
-            # before injecting the new coverage data (now a list of instruction
-            # addresses), we check to see if there is an existing coverage
-            # object under the same name.
-            #
-            # if there is an existing coverage mapping, odds are that the user
-            # is probably re-loading the same coverage file in which case we
-            # simply overwrite the old DatabaseCoverage object.
-            #
-            # but we have to be careful for the case where the user loads a
-            # coverage file from a different directory, but under the same name
-            #
-            # e.g:
-            #  - C:\coverage\foo.log
-            #  - C:\coverage\testing\foo.log
-            #
-            # in these cases, we will append a suffix to the new coverage file
-            #
-
-            coverage_name = os.path.basename(drcov_data.filepath)
-            coverage = self.get_coverage(coverage_name)
-
-            # assign a suffix to the coverage name in the event of a collision
-            if coverage and coverage.filepath != drcov_data.filepath:
-                for i in xrange(2,0x100000):
-                    new_name = "%s_%u" % (coverage_name, i)
-                    if not self.get_coverage(new_name):
-                        break
-                coverage_name = new_name
-
-            #
-            # finally, we can ask the director to create a coverage mapping
-            # from the data we have pre-processed for it
-            #
-
-            coverage = self.create_coverage(
-                coverage_name,
-                coverage_data,
-                drcov_data.filepath
-            )
-            created_coverage.append(coverage_name)
-
-            # warn when loaded coverage appears to be poorly mapped (suspicious)
-            if coverage.suspicious:
-                errors.append((self.ERROR_COVERAGE_SUSPICIOUS, drcov_data.filepath))
-                lmsg("Badly mapped coverage %s" % drcov_data.filepath)
-
-            # warn when loaded coverage (for this module) appears to be empty
-            if not len(coverage.nodes):
-                errors.append((self.ERROR_COVERAGE_ABSENT, drcov_data.filepath))
-                lmsg("No relevant coverage data in %s" % drcov_data.filepath)
-
-        #
-        # resume the director's aggregation service, triggering an update to
-        # recompute the aggregate with the newly loaded coverage
-        #
-
-        disassembler.replace_wait_box("Recomputing coverage aggregate...")
-        self.resume_aggregation()
-
-        # done
-        return (created_coverage, errors)
-
-    def _normalize_drcov_data(self, drcov_data):
-        """
-        Extract and normalize relevant coverage data from a DrcovData object.
-
-        Returns a list of executed instruction addresses for this database.
-        """
-
-        # extract the coverage relevant to this database (well, the root binary)
-        root_filename = self.metadata.filename
-        coverage_blocks = drcov_data.get_blocks_by_module(root_filename)
-
-        # rebase the coverage log's basic blocks to the database imagebase
-        imagebase = self.metadata.imagebase
-        rebased_blocks = rebase_blocks(imagebase, coverage_blocks)
-
-        # coalesce the blocks into larger contiguous blobs
-        condensed_blocks = coalesce_blocks(rebased_blocks)
-
-        # flatten the blobs into individual instruction addresses
-        return self.metadata.flatten_blocks(condensed_blocks)
-
-    def aggregate_drcov_batch(self, drcov_list):
-        """
-        Aggregate a given list of DrcovData into a single coverage mapping.
-
-        See create_coverage_from_drcov_list(...) for more verbose comments.
-        """
-        errors = []
-
-        # create a new coverage set to manually aggregate data into
-        coverage = DatabaseCoverage(self._palette)
-
-        for i, drcov_data in enumerate(drcov_list, 1):
-
-            # keep the user informed about our progress while aggregating
-            disassembler.replace_wait_box(
-                "Aggregating batch data %u/%u" % (i, len(drcov_list))
-            )
-
-            # normalize coverage data to the open database
-            try:
-                addresses = self._normalize_drcov_data(drcov_data)
-            except Exception as e:
-                errors.append((self.ERROR_COVERAGE_ABSENT, drcov_data.filepath))
-                lmsg("Failed to normalize coverage %s" % drcov_data.filepath)
-                lmsg("- %s" % e)
-                continue
-
-            # aggregate the addresses into the output coverage mapping
-            coverage.add_addresses(addresses, False)
-
-        # return the created coverage name
-        return (coverage, errors)
-
-    #----------------------------------------------------------------------
-    # Coverage Management
-    #----------------------------------------------------------------------
 
     def select_coverage(self, coverage_name):
         """
@@ -552,7 +828,7 @@ class CoverageDirector(object):
 
         # create a new database coverage mapping from the given coverage data
         new_coverage = DatabaseCoverage(
-            self._palette,
+            self.palette,
             coverage_name,
             coverage_filepath,
             coverage_data
@@ -667,7 +943,7 @@ class CoverageDirector(object):
         # TODO/FUTURE: check if there's any references to the coverage aggregate?
 
         # assign a new, blank aggregate set
-        self._special_coverage[AGGREGATE] = DatabaseCoverage(self._palette, AGGREGATE)
+        self._special_coverage[AGGREGATE] = DatabaseCoverage(self.palette, AGGREGATE)
         self._refresh_aggregate() # probably not needed
 
     def get_coverage(self, name):
@@ -687,7 +963,7 @@ class CoverageDirector(object):
         # could not locate coverage
         return None
 
-    def get_coverage_string(self, coverage_name, color=False):
+    def get_coverage_string(self, coverage_name):
         """
         Retrieve a detailed coverage string for the given coverage_name.
         """
@@ -708,24 +984,13 @@ class CoverageDirector(object):
         #   eg: 'A - 73.45% - drcov.boombox.exe.03820.0000.proc.log'
         #
 
-        if color:
-
-            # color the symbol token like the shell
-            symbol = color_text(symbol, self._palette.coverage_token)
-
-            # low coverage color
-            if percent < 30.0:
-                percent_str = color_text(percent_str, self._palette.coverage_bad)
-
-            # okay coverage color
-            elif percent < 60.0:
-                percent_str = color_text(percent_str, self._palette.coverage_okay)
-
-            # good coverage color
-            else:
-                percent_str = color_text(percent_str, self._palette.coverage_good)
-
         return "%s - %s%% - %s" % (symbol, percent_str, coverage_name)
+
+    def dump_unmapped(self):
+        """
+        Dump the unmapped coverage data for the active set.
+        """
+        self.coverage.dump_unmapped()
 
     #----------------------------------------------------------------------
     # Aliases
@@ -852,6 +1117,7 @@ class CoverageDirector(object):
 
         # evaluate the last AST into a coverage set
         composite_coverage = self._evaluate_composition(ast)
+        composite_coverage.name = composite_name
 
         # save the evaluated coverage under the given name
         self._commit_coverage(composite_name, composite_coverage)
@@ -919,7 +1185,7 @@ class CoverageDirector(object):
 
         # if the AST is effectively 'null', return a blank coverage set
         if isinstance(ast, TokenNull):
-            return DatabaseCoverage(self._palette)
+            return DatabaseCoverage(self.palette)
 
         #
         # the director's composition evaluation code (this function) is most
@@ -1057,20 +1323,11 @@ class CoverageDirector(object):
             # we use the mask to generate a new DatabaseCoverage mapping.
             #
 
-            new_composition = DatabaseCoverage(self._palette, data=coverage_mask)
+            new_composition = DatabaseCoverage(self.palette, data=coverage_mask)
 
             # cache & return the newly computed composition
             self._composition_cache[composition_hash] = new_composition
             return new_composition
-
-        #
-        # if the current AST node is a coverage range, we need to evaluate the
-        # range expression. this will produce an aggregate coverage set
-        # described by the start/end of the range (eg, 'A,D')
-        #
-
-        elif isinstance(node, TokenCoverageRange):
-            return self._evaluate_coverage_range(node)
 
         #
         # if the current AST node is a coverage token, we need simply need to
@@ -1095,27 +1352,6 @@ class CoverageDirector(object):
         assert isinstance(coverage_token, TokenCoverageSingle)
         return self.get_coverage(self._alias2name[coverage_token.symbol])
 
-    def _evaluate_coverage_range(self, range_token):
-        """
-        Evaluate a TokenCoverageRange AST token.
-
-        Returns a new aggregate database coverage mapping.
-        """
-        assert isinstance(range_token, TokenCoverageRange)
-
-        # initialize output to a null coverage set
-        output = DatabaseCoverage(self._palette)
-
-        # expand 'A,Z' to ['A', 'B', 'C', ... , 'Z']
-        symbols = [chr(x) for x in range(ord(range_token.symbol_start), ord(range_token.symbol_end) + 1)]
-
-        # build a coverage aggregate described by the range of shorthand symbols
-        for symbol in symbols:
-            output.add_data(self.get_coverage(self._alias2name[symbol]).data)
-
-        # return the computed coverage
-        return output
-
     #----------------------------------------------------------------------
     # Refresh
     #----------------------------------------------------------------------
@@ -1124,49 +1360,63 @@ class CoverageDirector(object):
         """
         Complete refresh of the director and mapped coverage.
         """
-        logger.debug("Refreshing the CoverageDirector")
+        if disassembler[self.metadata.lctx].busy:
+            disassembler.warning("Cannot refresh Lighthouse while the disassembler is busy...")
+            return
 
-        # (re)build our metadata cache of the underlying database
-        future = self.refresh_metadata(metadata_progress, True)
-        await_future(future)
+        disassembler.show_wait_box("Refreshing Lighthouse...")
+        self._refresh()
+        disassembler.hide_wait_box()
 
-        # (re)map each set of loaded coverage data to the database
-        self._refresh_database_coverage()
-
-    def refresh_metadata(self, progress_callback=None, force=False):
+    @catch_errors
+    def _refresh(self):
         """
-        Refresh the database metadata cache utilized by the director.
-
-        Returns a future (Queue) that will carry the completion message.
+        Internal refresh routine, wrapped to help catch bugs for now.
         """
 
         #
-        # if this is the first time the director is going to use / populate
-        # the database metadata, register the director for notifications of
-        # metadata modification (this should only happen once)
-        #
-        # TODO/FUTURE: this is a little dirty, but it will suffice.
+        # (re) build our metadata cache of the underlying database
         #
 
-        if not self.metadata.cached:
-            self.metadata.function_renamed(self._notify_metadata_modified)
+        if not is_mainthread():
+            self.metadata.refresh(metadata_progress)
 
         #
-        # if the lighthouse has collected metadata previously for this
-        # disassembler session (eg, it is cached), ignore a request to refresh
-        # it unless explicitly told to refresh via force=True
+        # NOTE: optionally, we call the async vesrion here so that we do not pin
+        # the mainthread for disassemblers that will primarily read from the
+        # database in a background thread (eg, Binja)
+        #
+        # for example, this refresh action may be called from a UI event or
+        # clicking 'Open Coverage Overview' (eg, the mainthread). if we pin
+        # the mainthread while doing database reads from a background thread,
+        # we cannot post UI updates such as progress updates to the user
+        #
+        # using an async refresh allows us to 'softly' spin the main (UI)
+        # thread and get UI updates while the refresh runs
         #
 
-        if self.metadata.cached and not force:
-            fake_queue = Queue.Queue()
-            fake_queue.put(False)
-            return fake_queue
+        else:
+            future = self.metadata.refresh_async(metadata_progress, force=True)
+            self.metadata.go_synchronous()
+            await_future(future)
 
-        # start the asynchronous metadata refresh
-        result_queue = self.metadata.refresh(progress_callback=progress_callback)
+        # (re) map each set of loaded coverage data to the database
+        if self.coverage_names:
+            self._refresh_database_coverage()
 
-        # return the queue that can be used to block for the async result
-        return result_queue
+        # notify of full-refresh
+        self._notify_refreshed()
+
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+
+        Does not require @disassembler.execute_ui decorator as no Qt is touched.
+        """
+        for coverage in self._database_coverage.values():
+            coverage.refresh_theme()
+        for coverage in self._special_coverage.values():
+            coverage.refresh_theme()
 
     def _refresh_database_coverage(self):
         """

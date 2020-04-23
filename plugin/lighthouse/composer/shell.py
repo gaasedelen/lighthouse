@@ -21,13 +21,13 @@ class ComposingShell(QtWidgets.QWidget):
     independent, but obviously must communicate with the director.
     """
 
-    def __init__(self, director, table_model, table_view=None):
+    def __init__(self, lctx, table_model, table_view=None):
         super(ComposingShell, self).__init__()
         self.setObjectName(self.__class__.__name__)
 
         # external entities
-        self._director = director
-        self._palette = director._palette
+        self._director = lctx.director
+        self._palette = lctx.palette
         self._table_model = table_model
         self._table_view = table_view
 
@@ -46,6 +46,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # configure the widget for use
         self._ui_init()
+        self.refresh_theme()
 
     #--------------------------------------------------------------------------
     # Properties
@@ -69,7 +70,7 @@ class ComposingShell(QtWidgets.QWidget):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
 
         # initialize our ui elements
@@ -86,30 +87,18 @@ class ComposingShell(QtWidgets.QWidget):
         # the composer label at the head of the shell
         self._line_label = QtWidgets.QLabel("Composer")
         self._line_label.setStyleSheet("QLabel { margin: 0 1ex 0 1ex }")
-        self._line_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter)
+        self._line_label.setAlignment(QtCore.Qt.AlignCenter)
         self._line_label.setFont(self._font)
         self._line_label.setFixedWidth(self._line_label.sizeHint().width())
 
         # the text box / shell / ComposingLine
         self._line = ComposingLine()
 
-        # configure the shell background & default text color
-        palette = self._line.palette()
-        palette.setColor(QtGui.QPalette.Base, self._palette.overview_bg)
-        palette.setColor(QtGui.QPalette.Text, self._palette.composer_fg)
-        palette.setColor(QtGui.QPalette.WindowText, self._palette.composer_fg)
-        self._line.setPalette(palette)
-
     def _ui_init_completer(self):
         """
         Initialize the coverage hint UI elements.
         """
-
-        # NOTE/COMPAT:
-        if USING_PYQT5:
-            self._completer_model = QtCore.QStringListModel([])
-        else:
-            self._completer_model = QtGui.QStringListModel([])
+        self._completer_model = QtCore.QStringListModel([])
 
         self._completer = QtWidgets.QCompleter(self)
         self._completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
@@ -118,10 +107,6 @@ class ComposingShell(QtWidgets.QWidget):
         self._completer.setModel(self._completer_model)
         self._completer.setWrapAround(False)
         self._completer.popup().setFont(self._font)
-        self._completer.popup().setStyleSheet(
-            "background: %s;" % self._palette.shell_hint_bg.name() +
-            "color: %s;" % self._palette.shell_hint_fg.name()
-        )
         self._completer.setWidget(self._line)
 
     def _ui_init_signals(self):
@@ -142,6 +127,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._director.coverage_created(self._internal_refresh)
         self._director.coverage_deleted(self._internal_refresh)
         self._director.coverage_modified(self._internal_refresh)
+        self._director.coverage_switched(self._coverage_switched)
 
         # register for cues from the model
         self._table_model.layoutChanged.connect(self._ui_shell_text_changed)
@@ -177,11 +163,43 @@ class ComposingShell(QtWidgets.QWidget):
         self._internal_refresh()
 
     @disassembler.execute_ui
+    def refresh_theme(self):
+        """
+        Refresh UI facing elements to reflect the current theme.
+        """
+        assert (self._line and self._completer), "UI not yet initialized..."
+
+        # configure the shell background & default text color
+        qpal = self._line.palette()
+        qpal.setColor(QtGui.QPalette.Text, self._palette.shell_text)
+        qpal.setColor(QtGui.QPalette.WindowText, self._palette.shell_text)
+        self._line.setPalette(qpal)
+
+        # set other hard to access shell theme elements
+        self._line.setStyleSheet(
+            "QPlainTextEdit {"
+            "    color: %s;" % self._palette.shell_text.name() + # this line ensures the text cursor changes color, with the theme
+            "    background-color: %s;" % self._palette.shell_background.name() +
+            "    border: 1px solid %s;" % self._palette.shell_border.name() +
+            "} "
+            "QPlainTextEdit:hover, QPlainTextEdit:focus {"
+            "    border: 1px solid %s;" % self._palette.shell_border_focus.name() +
+            "}"
+        )
+
+        # refresh completer popup style...
+        self._completer.popup().setStyleSheet(
+            "background: %s;" % self._palette.shell_hint_background.name() +
+            "color: %s;" % self._palette.shell_hint_text.name()
+        )
+
+    @disassembler.execute_ui
     def _internal_refresh(self):
         """
         Internal refresh of the shell.
         """
         self._refresh_hint_list()
+        self._ui_shell_text_changed()
 
     def _refresh_hint_list(self):
         """
@@ -202,6 +220,22 @@ class ComposingShell(QtWidgets.QWidget):
 
         # queue a UI coverage hint if necessary
         self._ui_hint_coverage_refresh()
+
+    def _coverage_switched(self):
+        """
+        Handle a coverage switched event.
+
+        specifically, we want cover the specical case where the hot shell is
+        being switched to. In these cases, we should forcefully clear the
+        'last' AST so that the full shell expression is re-evaluated and
+        sent forward to the director.
+
+        this will ensure that the director will evaluate and display the
+        results of the present expression as the 'Hot Shell' is now active.
+        """
+        if self._director.coverage_name == "Hot Shell":
+            self._last_ast = None
+        self._internal_refresh()
 
     #--------------------------------------------------------------------------
     # Signal Handlers
@@ -383,9 +417,9 @@ class ComposingShell(QtWidgets.QWidget):
 
         # color search based on if there are any matching results
         if self._table_model.rowCount():
-            self._color_text(self._palette.valid_text, start=1)
+            self._color_text(self._palette.shell_text_valid, start=1)
         else:
-            self._color_text(self._palette.invalid_text, start=1)
+            self._color_text(self._palette.shell_text_invalid, start=1)
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -440,9 +474,9 @@ class ComposingShell(QtWidgets.QWidget):
         except ValueError:
             pass
         else:
-            function_metadata = self._director.metadata.get_function(address)
-            if function_metadata:
-                return function_metadata.address
+            functions = self._director.metadata.get_functions_containing(address)
+            if functions:
+                return functions[0].address
 
         #
         # the user string did not translate to a parsable hex number (address)
@@ -454,16 +488,29 @@ class ComposingShell(QtWidgets.QWidget):
 
         # special case to make 'sub_*' prefixed user inputs case insensitive
         if text.lower().startswith("sub_"):
-            text = "sub_" + text[4:].upper()
 
-        # look up the text function name within the director's metadata
+            # attempt uppercase hex (IDA...)
+            function_metadata = self._director.metadata.get_function_by_name("sub_" + text[4:].upper())
+            if function_metadata:
+                return function_metadata.address
+
+            # attempt lowercase hex (Binja...)
+            function_metadata = self._director.metadata.get_function_by_name("sub_" + text[4:].lower())
+            if function_metadata:
+                return function_metadata.address
+
+        #
+        # no luck yet, let's just throw the user's raw text at the lookup. this
+        # would probably be a function they renamed, such as 'foobar'
+        #
+
         function_metadata = self._director.metadata.get_function_by_name(text)
         if function_metadata:
             return function_metadata.address
 
         #
         # the user string did not translate to a function name that could
-        # be found in the director.
+        # be found in the director. so I guess they're not trying to jump...
         #
 
         # failure, the user input (text) isn't a jump ...
@@ -498,7 +545,7 @@ class ComposingShell(QtWidgets.QWidget):
         self._color_clear()
 
         # color jump
-        self._color_text(self._palette.valid_text)
+        self._color_text(self._palette.shell_text_valid)
 
         ################# UPDATES ENABLED #################
         self._line.setUpdatesEnabled(True)
@@ -650,6 +697,18 @@ class ComposingShell(QtWidgets.QWidget):
         #
 
         if not (self._line.hasFocus() and self.text):
+            self._ui_hint_coverage_hide()
+            return
+
+        #
+        # if the text cursor is moving and the user has their left mouse
+        # button held, then they are probably doing a click + drag text
+        # selection so we shouldn't be naggin them with hints and stuff
+        #
+        # without this condition, click+drag selection gets really choppy
+        #
+
+        if QtWidgets.QApplication.mouseButtons() & QtCore.Qt.LeftButton:
             self._ui_hint_coverage_hide()
             return
 
@@ -850,10 +909,10 @@ class ComposingShell(QtWidgets.QWidget):
         cursor_position = cursor.position()
 
         # setup the invalid text highlighter
-        invalid_color = self._palette.invalid_highlight
+        invalid_color = self._palette.shell_highlight_invalid
         highlight = QtGui.QTextCharFormat()
         highlight.setFontWeight(QtGui.QFont.Bold)
-        highlight.setBackground(QtGui.QBrush(QtGui.QColor(invalid_color)))
+        highlight.setBackground(QtGui.QBrush(invalid_color))
 
         self._line.blockSignals(True)
         ################# UPDATES DISABLED #################
@@ -902,7 +961,7 @@ class ComposingShell(QtWidgets.QWidget):
         # setup a simple font coloring (or clearing) text format
         simple = QtGui.QTextCharFormat()
         if color:
-            simple.setForeground(QtGui.QBrush(QtGui.QColor(color)))
+            simple.setForeground(QtGui.QBrush(color))
 
         self._line.blockSignals(True)
         ################# UPDATES DISABLED #################
@@ -970,7 +1029,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
 
         # initialize a monospace font to use with our widget(s)
         self._font = MonospaceFont()
-        self._font.setPointSizeF(normalize_to_dpi(9))
+        self._font.setPointSizeF(normalize_to_dpi(10))
         self._font_metrics = QtGui.QFontMetricsF(self._font)
         self.setFont(self._font)
 

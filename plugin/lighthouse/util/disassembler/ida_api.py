@@ -1,15 +1,21 @@
+import os
 import sys
 import time
 import logging
 import binascii
+import tempfile
 import functools
 
 import idaapi
 import idautils
 
-from .api import DisassemblerAPI, DockableShim
+if int(idaapi.get_kernel_version()[0]) < 7:
+    idaapi.warning("Lighthouse has deprecated support for IDA 6, please upgrade.")
+    raise ImportError
+
+from .api import DisassemblerCoreAPI, DisassemblerContextAPI
 from ..qt import *
-from ..misc import is_mainthread
+from ..misc import is_mainthread, get_string_between
 
 logger = logging.getLogger("Lighthouse.API.IDA")
 
@@ -48,27 +54,16 @@ def execute_sync(function, sync_type):
     return wrapper
 
 #------------------------------------------------------------------------------
-# Disassembler API
+# Disassembler Core API (universal)
 #------------------------------------------------------------------------------
 
-class IDAAPI(DisassemblerAPI):
-    """
-    The IDA implementation of the disassembler API abstraction.
-    """
+class IDACoreAPI(DisassemblerCoreAPI):
     NAME = "IDA"
 
-    #
-    # in IDA 7.0, Hex-Rays refactored the IDA API quite a bit. This
-    # impacts Lighthouse in a few places, so we use version checks at
-    # these junctions to determine which API's to use (v7.x or v6.x)
-    #
-    # search 'USING_IDA7API' in the codebase for example cases
-    #
-
-    USING_IDA7API = bool(idaapi.IDA_SDK_VERSION >= 700)
-
     def __init__(self):
-        super(IDAAPI, self).__init__()
+        super(IDACoreAPI, self).__init__()
+        self._dockable_factory = {}
+        self._dockable_widgets = {}
         self._init_version()
 
     def _init_version(self):
@@ -87,20 +82,8 @@ class IDAAPI(DisassemblerAPI):
     #--------------------------------------------------------------------------
 
     @property
-    def version_major(self):
-        return self._version_major
-
-    @property
-    def version_minor(self):
-        return self._version_minor
-
-    @property
-    def version_patch(self):
-        return self._version_patch
-
-    @property
     def headless(self):
-        return False
+        return idaapi.cvar.batch
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
@@ -122,47 +105,8 @@ class IDAAPI(DisassemblerAPI):
     # API Shims
     #--------------------------------------------------------------------------
 
-    def create_rename_hooks(self):
-        if self.USING_IDA7API:
-            class RenameHooks(idaapi.IDB_Hooks):
-                pass
-        else:
-            class RenameHooks(idaapi.IDP_Hooks):
-                pass
-        return RenameHooks()
-
-    def get_database_directory(self):
-        return idautils.GetIdbDir()
-
     def get_disassembler_user_directory(self):
         return idaapi.get_user_idadir()
-
-    def get_function_addresses(self):
-        return list(idautils.Functions())
-
-    def get_function_name_at(self, address):
-        return idaapi.get_short_name(address)
-
-    def get_function_raw_name_at(self, function_address):
-        if self.USING_IDA7API:
-            return idaapi.get_name(function_address)
-        return idaapi.get_true_name(idaapi.BADADDR, function_address)
-
-    def get_imagebase(self):
-        return idaapi.get_imagebase()
-
-    def get_root_filename(self):
-        return idaapi.get_root_filename()
-
-    def navigate(self, address):
-        return idaapi.jumpto(address)
-
-    def set_function_name_at(self, function_address, new_name):
-        idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
-
-    #--------------------------------------------------------------------------
-    # UI API Shims
-    #--------------------------------------------------------------------------
 
     def get_disassembly_background_color(self):
         """
@@ -173,31 +117,149 @@ class IDAAPI(DisassemblerAPI):
         disassembly view, and take a screenshot of said widget. It will then
         attempt to extract the color of a single background pixel (hopefully).
         """
-        if self.USING_IDA7API:
-            return self._get_ida_bg_color_ida7()
-        else:
-            return self._get_ida_bg_color_ida6()
+
+        # method one
+        color = self._get_ida_bg_color_from_file()
+        if color:
+            return color
+
+        # method two, fallback
+        color = self._get_ida_bg_color_from_view()
+        if not color:
+            return None
+
+        # return the found background color
+        return color
 
     def is_msg_inited(self):
         return idaapi.is_msg_inited()
 
+    @execute_ui.__func__
     def warning(self, text):
-        idaapi.warning(text)
+        super(IDACoreAPI, self).warning(text)
 
-    #------------------------------------------------------------------------------
-    # Function Prefix API
-    #------------------------------------------------------------------------------
+    @execute_ui.__func__
+    def message(self, message):
+        print(message)
 
-    PREFIX_SEPARATOR = "%"
+    #--------------------------------------------------------------------------
+    # UI API Shims
+    #--------------------------------------------------------------------------
+
+    def register_dockable(self, dockable_name, create_widget_callback):
+        self._dockable_factory[dockable_name] = create_widget_callback
+
+    def create_dockable_widget(self, parent, dockable_name):
+        import sip
+
+        # create a dockable widget, and save a reference to it for later use
+        twidget = idaapi.create_empty_widget(dockable_name)
+        self._dockable_widgets[dockable_name] = twidget
+
+        # cast the IDA 'twidget' as a Qt widget for use
+        widget = sip.wrapinstance(int(twidget), QtWidgets.QWidget)
+        widget.name = dockable_name
+        widget.visible = False
+
+        # return the dockable QtWidget / container
+        return widget
+
+    def show_dockable(self, dockable_name):
+        try:
+            make_dockable = self._dockable_factory[dockable_name]
+        except KeyError:
+            return False
+
+        parent, dctx = None, None # not used for IDA's integration
+        widget = make_dockable(dockable_name, parent, dctx)
+
+        # get the original twidget, so we can use it with the IDA API's
+        #twidget = idaapi.TWidget__from_ptrval__(widget) NOTE: IDA 7.2+ only...
+        twidget = self._dockable_widgets.pop(dockable_name)
+        if not twidget:
+            self.warning("Could not open dockable window, because its reference is gone?!?")
+            return
+
+        # show the dockable widget
+        flags = idaapi.PluginForm.WOPN_TAB | idaapi.PluginForm.WOPN_RESTORE | idaapi.PluginForm.WOPN_PERSIST
+        idaapi.display_widget(twidget, flags)
+        widget.visible = True
+
+        # attempt to 'dock' the widget in a reasonable location
+        for target in ["IDA View-A", "Pseudocode-A"]:
+            dwidget = idaapi.find_widget(target)
+            if dwidget:
+                idaapi.set_dock_pos(dockable_name, 'IDA View-A', idaapi.DP_RIGHT)
+                break
+
+    def hide_dockable(self, dockable_name):
+        pass # TODO/IDA: this should never actually be called by lighthouse right now
 
     #--------------------------------------------------------------------------
     # Theme Prediction Helpers (Internal)
     #--------------------------------------------------------------------------
 
-    def _get_ida_bg_color_ida7(self):
+    def _get_ida_bg_color_from_file(self):
         """
-        Get the background color of the IDA disassembly view. (IDA 7+)
+        Get the background color of the IDA disassembly views via HTML export.
         """
+        logger.debug("Attempting to get IDA disassembly background color from HTML...")
+
+        #
+        # TODO/IDA: we need better early detection for if IDA is fully ready,
+        # this isn't effective and this func theme func can crash IDA if
+        # called too early (eg, during db load...).
+        #
+        # this isn't a problem now... but I don't want us to be at risk of
+        # hard crashing people's IDA in the future should we change something.
+        #
+
+        imagebase = idaapi.get_imagebase()
+        #if imagebase == idaapi.BADADDR:
+        #    logger.debug(" - No imagebase...")
+        #    return None
+
+        # create a temp file that we can write to
+        handle, path = tempfile.mkstemp()
+        os.close(handle)
+
+        # attempt to generate an 'html' dump of the first 0x20 bytes (instructions)
+        ida_fd = idaapi.fopenWT(path)
+        idaapi.gen_file(idaapi.OFILE_LST, ida_fd, imagebase, imagebase+0x20, idaapi.GENFLG_GENHTML)
+        idaapi.eclose(ida_fd)
+
+        # read the dumped text
+        with open(path, "r") as fd:
+            html = fd.read()
+
+        # delete the temp file from disk
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+        # attempt to parse the user's disassembly background color from the html
+        bg_color_text = get_string_between(html, '<body bgcolor="', '">')
+        if bg_color_text:
+            logger.debug(" - Extracted bgcolor '%s' from regex!" % bg_color_text)
+            return QtGui.QColor(bg_color_text)
+
+        # sometimes the above one isn't present... so try this one
+        bg_color_text = get_string_between(html, '.c1 \{ background-color: ', ';')
+        if bg_color_text:
+            logger.debug(" - Extracted background-color '%s' from regex!" % bg_color_text)
+            return QtGui.QColor(bg_color_text)
+
+        logger.debug(" - HTML color regex failed...")
+        logger.debug(html)
+        return None
+
+    def _get_ida_bg_color_from_view(self):
+        """
+        Get the background color of the IDA disassembly views via widget inspection.
+        """
+        logger.debug("Attempting to get IDA disassembly background color from view...")
+
         names  = ["Enums", "Structures"]
         names += ["Hex View-%u" % i for i in range(5)]
         names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
@@ -208,49 +270,16 @@ class IDAAPI(DisassemblerAPI):
             if twidget:
                 break
         else:
-            raise RuntimeError("Failed to find donor view")
+            logger.debug(" - Failed to find donor view...")
+            return None
 
         # touch the target form so we know it is populated
         self._touch_ida_window(twidget)
 
         # locate the Qt Widget for a form and take 1px image slice of it
         import sip
-        widget = sip.wrapinstance(long(twidget), QtWidgets.QWidget)
+        widget = sip.wrapinstance(int(twidget), QtWidgets.QWidget)
         pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
-
-        # convert the raw pixmap into an image (easier to interface with)
-        image = QtGui.QImage(pixmap.toImage())
-
-        # return the predicted background color
-        return QtGui.QColor(predict_bg_color(image))
-
-    def _get_ida_bg_color_ida6(self):
-        """
-        Get the background color of the IDA disassembly view. (IDA 6.x)
-        """
-        names  = ["Enums", "Structures"]
-        names += ["Hex View-%u" % i for i in range(5)]
-        names += ["IDA View-%c" % chr(ord('A') + i) for i in range(5)]
-
-        # find a form (eg, IDA view) to analyze colors from
-        for window_name in names:
-            form = idaapi.find_tform(window_name)
-            if form:
-                break
-        else:
-            raise RuntimeError("Failed to find donor View")
-
-        # touch the target form so we know it is populated
-        self._touch_ida_window(form)
-
-        # locate the Qt Widget for a form and take 1px image slice of it
-        if USING_PYQT5:
-            widget = idaapi.PluginForm.FormToPyQtWidget(form, sys.modules[__name__])
-            pixmap = widget.grab(QtCore.QRect(0, 10, widget.width(), 1))
-        else:
-            widget = idaapi.PluginForm.FormToPySideWidget(form, sys.modules[__name__])
-            region = QtCore.QRect(0, 10, widget.width(), 1)
-            pixmap = QtGui.QPixmap.grabWidget(widget, region)
 
         # convert the raw pixmap into an image (easier to interface with)
         image = QtGui.QImage(pixmap.toImage())
@@ -274,90 +303,109 @@ class IDAAPI(DisassemblerAPI):
         """
 
         # get the currently active widget/form title (the form itself seems transient...)
-        if self.USING_IDA7API:
-            twidget = idaapi.get_current_widget()
-            title = idaapi.get_widget_title(twidget)
-        else:
-            form = idaapi.get_current_tform()
-            title = idaapi.get_tform_title(form)
+        twidget = idaapi.get_current_widget()
+        title = idaapi.get_widget_title(twidget)
 
-        # touch/draw the widget by playing musical chairs
-        if self.USING_IDA7API:
+        # touch the target window by switching to it
+        idaapi.activate_widget(target, True)
+        flush_qt_events()
 
-            # touch the target window by switching to it
-            idaapi.activate_widget(target, True)
-            flush_qt_events()
+        # locate our previous selection
+        previous_twidget = idaapi.find_widget(title)
 
-            # locate our previous selection
-            previous_twidget = idaapi.find_widget(title)
-
-            # return us to our previous selection
-            idaapi.activate_widget(previous_twidget, True)
-            flush_qt_events()
-
-        else:
-
-            # touch the target window by switching to it
-            idaapi.switchto_tform(target, True)
-            flush_qt_events()
-
-            # locate our previous selection
-            previous_form = idaapi.find_tform(title)
-
-            # lookup our original form and switch back to it
-            idaapi.switchto_tform(previous_form, True)
-            flush_qt_events()
+        # return us to our previous selection
+        idaapi.activate_widget(previous_twidget, True)
+        flush_qt_events()
 
 #------------------------------------------------------------------------------
-# Dockable Window
+# Disassembler Context API (database-specific)
 #------------------------------------------------------------------------------
 
-class DockableWindow(DockableShim):
-    """
-    A Dockable Qt widget, compatible with IDA 6.8 --> 7.x.
-    """
+class IDAContextAPI(DisassemblerContextAPI):
 
-    def __init__(self, window_title, icon_path):
-        super(DockableWindow, self).__init__(window_title, icon_path)
+    def __init__(self, dctx):
+        super(IDAContextAPI, self).__init__(dctx)
 
-        # IDA 7+ Widgets
-        if IDAAPI.USING_IDA7API:
-            import sip
-            self._form = idaapi.create_empty_widget(self._window_title)
-            self._widget = sip.wrapinstance(long(self._form), QtWidgets.QWidget)
+    @property
+    def busy(self):
+        return not(idaapi.auto_is_ok())
 
-        # legacy IDA PluginForm's
-        else:
-            self._form = idaapi.create_tform(self._window_title, None)
-            if USING_PYQT5:
-                self._widget = idaapi.PluginForm.FormToPyQtWidget(self._form, sys.modules[__name__])
-            else:
-                self._widget = idaapi.PluginForm.FormToPySideWidget(self._form, sys.modules[__name__])
+    #--------------------------------------------------------------------------
+    # API Shims
+    #--------------------------------------------------------------------------
 
-        # set the window icon
-        self._widget.setWindowIcon(self._window_icon)
+    @IDACoreAPI.execute_read
+    def get_current_address(self):
+        return idaapi.get_screen_ea()
 
-    def show(self):
+    def get_database_directory(self):
+        return idautils.GetIdbDir()
+
+    def get_function_addresses(self):
+        return list(idautils.Functions())
+
+    def get_function_name_at(self, address):
+        return idaapi.get_short_name(address)
+
+    def get_function_raw_name_at(self, function_address):
+        return idaapi.get_name(function_address)
+
+    def get_imagebase(self):
+        return idaapi.get_imagebase()
+
+    def get_root_filename(self):
+        return idaapi.get_root_filename()
+
+    def navigate(self, address):
+        return idaapi.jumpto(address)
+
+    def navigate_to_function(self, function_address, address):
+        return self.navigate(address)
+
+    def set_function_name_at(self, function_address, new_name):
+        idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+    #--------------------------------------------------------------------------
+    # Hooks API
+    #--------------------------------------------------------------------------
+
+    def create_rename_hooks(self):
+        return RenameHooks()
+
+    #------------------------------------------------------------------------------
+    # Function Prefix API
+    #------------------------------------------------------------------------------
+
+    PREFIX_SEPARATOR = "%"
+
+#------------------------------------------------------------------------------
+# Hooking
+#------------------------------------------------------------------------------
+
+class RenameHooks(idaapi.IDB_Hooks):
+
+    def renamed(self, address, new_name, local_name):
         """
-        Show the dockable widget.
+        Capture all IDA rename events.
         """
 
-        # IDA 7+ Widgets
-        if IDAAPI.USING_IDA7API:
-            flags = idaapi.PluginForm.WOPN_TAB     | \
-                    idaapi.PluginForm.WOPN_MENU    | \
-                    idaapi.PluginForm.WOPN_RESTORE | \
-                    idaapi.PluginForm.WOPN_PERSIST
-            idaapi.display_widget(self._form, flags)
+        # we should never care about local renames (eg, loc_40804b), ignore
+        if local_name or new_name.startswith("loc_"):
+            return 0
 
-        # legacy IDA PluginForm's
-        else:
-            flags = idaapi.PluginForm.FORM_TAB     | \
-                    idaapi.PluginForm.FORM_MENU    | \
-                    idaapi.PluginForm.FORM_RESTORE | \
-                    idaapi.PluginForm.FORM_PERSIST | \
-                    0x80 #idaapi.PluginForm.FORM_QWIDGET
-            idaapi.open_tform(self._form, flags)
+        rendered_name = idaapi.get_short_name(address)
+
+        # call the 'renamed' callback, that will get hooked by a listener
+        self.name_changed(address, rendered_name)
+
+        # must return 0 to keep IDA happy...
+        return 0
+
+    def name_changed(self, address, new_name):
+        """
+        A placeholder callback, which will get hooked / replaced once live.
+        """
+        pass
 
 #------------------------------------------------------------------------------
 # HexRays Util
@@ -424,7 +472,7 @@ def map_line2node(cfunc, metadata, line2citem):
     # an effort to resolve the set of graph nodes associated with its citems.
     #
 
-    for line_number, citem_indexes in line2citem.iteritems():
+    for line_number, citem_indexes in iteritems(line2citem):
         nodes = set()
 
         #

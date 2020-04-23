@@ -14,5 +14,5 @@ xcopy /s/y "..\plugin\*" "C:\Users\user\AppData\Roaming\Binary Ninja\plugins\"
 del /F /Q "C:\Users\user\AppData\Roaming\Binary Ninja\plugins\.#lighthouse_plugin.py"
 
 REM - Launch a new IDA session
-start "" "C:\tools\disassemblers\BinaryNinja\binaryninja.exe" "..\..\testcase\idaq.bndb"
+start "" "C:\tools\disassemblers\BinaryNinja\binaryninja.exe" "..\..\testcase\ida74\ida64.bndb"
 

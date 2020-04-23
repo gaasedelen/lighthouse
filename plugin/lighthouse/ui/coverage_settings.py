@@ -1,4 +1,5 @@
 import logging
+
 from lighthouse.util.qt import *
 from lighthouse.util.disassembler import disassembler
 
@@ -14,8 +15,7 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._visible_action = None
         self._ui_init_actions()
 
-        if USING_PYQT5:
-            self.setToolTipsVisible(True)
+        self.setToolTipsVisible(True)
 
     #--------------------------------------------------------------------------
     # QMenu Overloads
@@ -34,19 +34,6 @@ class TableSettingsMenu(QtWidgets.QMenu):
                 event.accept()
                 return True
 
-        # show action tooltips (for Qt < 5.1)
-        elif event.type() == QtCore.QEvent.ToolTip and not USING_PYQT5:
-            if action and self._visible_action != action:
-                QtWidgets.QToolTip.showText(event.globalPos(), action.toolTip())
-                self._visible_action = action
-            event.accept()
-            return True
-
-        # clear tooltips (for Qt < 5.1)
-        if not (action or USING_PYQT5):
-            QtWidgets.QToolTip.hideText()
-            self._visible_action = None
-
         # handle any other events as wee normally should
         return super(TableSettingsMenu, self).event(event)
 
@@ -60,29 +47,32 @@ class TableSettingsMenu(QtWidgets.QMenu):
         """
 
         # lighthouse colors
-        self._action_colors = QtWidgets.QAction("Colors", None)
-        self._action_colors.setToolTip("Lighthouse color & theme customization")
-        #self.addAction(self._action_colors)
-        #self.addSeparator()
+        self._action_change_theme = QtWidgets.QAction("Change theme", None)
+        self._action_change_theme.setToolTip("Lighthouse color & theme customization")
+        self.addAction(self._action_change_theme)
+        self.addSeparator()
 
         # painting
-        self._action_pause_paint = QtWidgets.QAction("Pause painting", None)
-        self._action_pause_paint.setCheckable(True)
-        self._action_pause_paint.setToolTip("Disable coverage painting")
-        self.addAction(self._action_pause_paint)
+        self._action_force_clear = QtWidgets.QAction("Force clear paint (slow!)", None)
+        self._action_force_clear.setToolTip("Attempt to forcefully clear stuck paint from the database")
+        self.addAction(self._action_force_clear)
 
-        # misc
-        self._action_clear_paint = QtWidgets.QAction("Clear paint", None)
-        self._action_clear_paint.setToolTip("Forcefully clear all paint")
-        self.addAction(self._action_clear_paint)
+        self._action_disable_paint = QtWidgets.QAction("Disable painting", None)
+        self._action_disable_paint.setCheckable(True)
+        self._action_disable_paint.setToolTip("Disable the coverage painting subsystem")
+        self.addAction(self._action_disable_paint)
         self.addSeparator()
 
         # table actions
-        self._action_refresh_metadata = QtWidgets.QAction("Full table refresh", None)
-        self._action_refresh_metadata.setToolTip("Refresh metadata & coverage for db")
+        self._action_refresh_metadata = QtWidgets.QAction("Rebuild coverage mappings", None)
+        self._action_refresh_metadata.setToolTip("Refresh the database metadata and coverage mapping")
         self.addAction(self._action_refresh_metadata)
 
-        self._action_export_html = QtWidgets.QAction("Export to HTML", None)
+        self._action_dump_unmapped = QtWidgets.QAction("Dump unmapped coverage", None)
+        self._action_dump_unmapped.setToolTip("Print all coverage data not mapped to a function")
+        self.addAction(self._action_dump_unmapped)
+
+        self._action_export_html = QtWidgets.QAction("Generate HTML report", None)
         self._action_export_html.setToolTip("Export the coverage table to HTML")
         self.addAction(self._action_export_html)
 
@@ -91,16 +81,18 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_hide_zero.setCheckable(True)
         self.addAction(self._action_hide_zero)
 
-    def connect_signals(self, controller, core):
+    def connect_signals(self, controller, lctx):
         """
         Connect UI signals.
         """
-        self._action_refresh_metadata.triggered.connect(controller.refresh_metadata)
+        self._action_change_theme.triggered.connect(lctx.core.palette.interactive_change_theme)
+        self._action_refresh_metadata.triggered.connect(lctx.director.refresh)
         self._action_hide_zero.triggered[bool].connect(controller._model.filter_zero_coverage)
-        self._action_pause_paint.triggered[bool].connect(lambda x: core.painter.set_enabled(not x))
-        self._action_clear_paint.triggered.connect(core.painter.clear_paint)
+        self._action_disable_paint.triggered[bool].connect(lambda x: lctx.painter.set_enabled(not x))
+        self._action_force_clear.triggered.connect(lctx.painter.force_clear)
         self._action_export_html.triggered.connect(controller.export_to_html)
-        core.painter.status_changed(self._ui_painter_changed_status)
+        self._action_dump_unmapped.triggered.connect(lctx.director.dump_unmapped)
+        lctx.painter.status_changed(self._ui_painter_changed_status)
 
     #--------------------------------------------------------------------------
     # Signal Handlers
@@ -111,4 +103,4 @@ class TableSettingsMenu(QtWidgets.QMenu):
         """
         Handle an event from the painter being enabled/disabled.
         """
-        self._action_pause_paint.setChecked(not painter_enabled)
+        self._action_disable_paint.setChecked(not painter_enabled)

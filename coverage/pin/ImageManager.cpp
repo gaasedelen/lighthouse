@@ -1,3 +1,4 @@
+using namespace std;
 #include "ImageManager.h"
 #include "pin.H"
 
@@ -11,7 +12,7 @@ ImageManager::~ImageManager()
     PIN_RWMutexFini(&images_lock);
 }
 
-VOID ImageManager::addImage(string image_name, ADDRINT lo_addr,
+VOID ImageManager::addImage(std::string image_name, ADDRINT lo_addr,
     ADDRINT hi_addr)
 {
     PIN_RWMutexWriteLock(&images_lock);
@@ -25,7 +26,7 @@ VOID ImageManager::removeImage(ADDRINT low)
 {
     PIN_RWMutexWriteLock(&images_lock);
     {
-        set<LoadedImage>::iterator i = images.find(LoadedImage("", low));
+        std::set<LoadedImage>::iterator i = images.find(LoadedImage("", low));
         if (i != images.end()) {
             LoadedImage li = *i;
             images.erase(i);
