@@ -192,6 +192,9 @@ class IDACoreAPI(DisassemblerCoreAPI):
                 idaapi.set_dock_pos(dockable_name, 'IDA View-A', idaapi.DP_RIGHT)
                 break
 
+    def hide_dockable(self, dockable_name):
+        pass # TODO/IDA: this should never actually be called by lighthouse right now
+
     #--------------------------------------------------------------------------
     # Theme Prediction Helpers (Internal)
     #--------------------------------------------------------------------------

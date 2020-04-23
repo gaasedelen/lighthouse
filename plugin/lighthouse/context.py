@@ -55,6 +55,11 @@ class LighthouseContext(object):
         self.metadata.start()
         self.director.start()
         self.painter.start()
+
+        # TODO/BINJA remove this ASAP, or find a better workaround... I hate having this here
+        if disassembler.NAME == "BINJA":
+            disassembler.hide_dockable("Feature Map")
+
         self._started = True
 
     def terminate(self):

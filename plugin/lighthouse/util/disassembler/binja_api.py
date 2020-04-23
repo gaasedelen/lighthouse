@@ -170,6 +170,10 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
         dock_handler = DockHandler.getActiveDockHandler()
         dock_handler.setVisible(dockable_name, True)
 
+    def hide_dockable(self, dockable_name):
+        dock_handler = DockHandler.getActiveDockHandler()
+        dock_handler.setVisible(dockable_name, False)
+
     #--------------------------------------------------------------------------
     # XXX Binja Specfic Helpers
     #--------------------------------------------------------------------------

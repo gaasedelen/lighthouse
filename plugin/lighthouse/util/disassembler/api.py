@@ -219,6 +219,13 @@ class DisassemblerCoreAPI(object):
         """
         pass
 
+    @abc.abstractmethod
+    def hide_dockable(self, dockable_name):
+        """
+        Hide the named dockable widget.
+        """
+        pass
+
     #------------------------------------------------------------------------------
     # WaitBox API
     #------------------------------------------------------------------------------
