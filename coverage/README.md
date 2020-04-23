@@ -36,3 +36,44 @@ Example usage:
 sudo python frida-drcov.py bb-bench
 ```
 
+# Other Coverage Formats
+
+Lighthouse is flexible as to what kind of coverage or 'trace' file formats it can load. Below is an outline of these human-readable text formats that are arguably the easiest to output from a custom tracer. 
+
+## Module + Offset (modoff)
+
+A 'Module+Offset' coverage file / trace is a highly recommended coverage format due to its simplicity and readability:
+
+```
+boombox+3a06
+boombox+3a09
+boombox+3a0f
+boombox+3a15
+...
+```
+
+Each line of the trace represents an executed instruction or basic block in the instrumented program. The line *must* name an executed module eg `boombox.exe` and a relative offset to the executed address from the imagebase. 
+
+It is okay for hits from other modules (say, `kernel32.dll`) to exist in the trace. Lighthouse will not load coverage for them.
+
+## Address Trace (Instruction, or Basic Block)
+
+Perhaps the most primitive coverage format, Lighthouse can also consume an 'absolute address' style trace:
+
+```
+0x14000419c
+0x1400041a0
+0x1400045dc
+0x1400045e1
+0x1400045e2
+...
+```
+
+Note that these address traces can be either instruction addresses, or basic block addresses -- it does not matter. The main caveat is that addresses in the trace *must* match the address space within the disassembler database. 
+
+If an address cannot be mapped into a function in the disassembler database, Lighthouse will simply discard it.
+
+## Custom Trace Formats
+
+If you are adamant to use a completely custom coverage format, you can try to subclass Lighthouse's `CoverageFile` parser interface. Once complete, simply drop your parser into the `parsers` folder.
+
