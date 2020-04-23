@@ -196,7 +196,7 @@ class LighthouseCore(object):
         for lctx in self.lighthouse_contexts.values():
             lctx.director.refresh_theme()
             lctx.coverage_overview.refresh_theme()
-            lctx.painter.repaint()
+            lctx.painter.force_repaint()
 
     def open_coverage_overview(self, dctx=None):
         """

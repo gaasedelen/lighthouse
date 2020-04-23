@@ -4,6 +4,7 @@ import logging
 import threading
 
 from lighthouse.util import *
+from lighthouse.util.debug import catch_errors
 from lighthouse.coverage import FunctionCoverage
 
 logger = logging.getLogger("Lighthouse.Painting")
@@ -17,9 +18,10 @@ class DatabasePainter(object):
     MSG_ABORT = -1
     MSG_TERMINATE = 0
     MSG_REPAINT = 1
-    MSG_CLEAR = 2
-    MSG_FORCE_CLEAR = 3
-    MSG_REBASE = 4
+    MSG_FORCE_REPAINT = 2
+    MSG_CLEAR = 3
+    MSG_FORCE_CLEAR = 4
+    MSG_REBASE = 5
 
     def __init__(self, lctx, director, palette):
 
@@ -168,6 +170,12 @@ class DatabasePainter(object):
         Paint coverage defined by the current database mappings.
         """
         self._send_message(self.MSG_REPAINT)
+
+    def force_repaint(self):
+        """
+        Force a coverage repaint of the current database mappings.
+        """
+        self._send_message(self.MSG_FORCE_REPAINT)
 
     def force_clear(self):
         """
@@ -440,6 +448,39 @@ class DatabasePainter(object):
         # paint finished successfully
         return True
 
+    def _force_paint_database(self):
+        """
+        Forcibly repaint the database.
+        """
+        db_metadata = self.director.metadata
+
+        text = "Repainting the database..."
+        logger.debug(text)
+
+        is_modal = bool(disassembler.NAME != "IDA")
+        disassembler.execute_ui(disassembler.show_wait_box)(text, False)
+
+        start = time.time()
+        #------------------------------------------------------------------
+
+        # discard current / known paint state
+        self._painted_nodes = set()
+        self._painted_partial = set()
+        self._painted_instructions = set()
+
+        # paint the database...
+        self._paint_database()
+
+        #------------------------------------------------------------------
+        end = time.time()
+        logger.debug(" - Database repainted in %.2f seconds..." % (end-start))
+
+        time.sleep(.2) # XXX: this seems to fix a bug where the waitbox doesn't close if the paint is too fast??
+        disassembler.execute_ui(disassembler.hide_wait_box)()
+
+        # paint finished successfully
+        return True
+
     def _force_clear_database(self):
         """
         Forcibly clear the paint from all known database addresses.
@@ -480,8 +521,9 @@ class DatabasePainter(object):
 
         #------------------------------------------------------------------
         end = time.time()
-
         logger.debug(" - Database paint cleared in %.2f seconds..." % (end-start))
+
+        time.sleep(.2) # XXX: this seems to fix a bug where the waitbox doesn't close if the clear is too fast??
         disassembler.execute_ui(disassembler.hide_wait_box)()
 
         # paint finished successfully
@@ -517,14 +559,8 @@ class DatabasePainter(object):
     # Asynchronous Painting
     #--------------------------------------------------------------------------
 
+    @catch_errors
     def _async_database_painter(self):
-        try:
-            self._async_database_painter2()
-        except:
-            lmsg("PAINTER THREAD CRASHED :'(")
-            logger.exception("Painter crashed...")
-
-    def _async_database_painter2(self):
         """
         Asynchronous database painting worker loop.
         """
@@ -542,6 +578,10 @@ class DatabasePainter(object):
             # repaint the database based on the current state
             if action == self.MSG_REPAINT:
                 result = self._paint_database()
+
+            # forcibly repaint the database based on the current state
+            elif action == self.MSG_FORCE_REPAINT:
+                result = self._force_paint_database()
 
             # clear database base on the current state
             elif action == self.MSG_CLEAR:
