@@ -46,12 +46,9 @@ static std::string base_name(const std::string& path)
 }
 
 // Per thread data structure. This is mainly done to avoid locking.
+// - Per-thread map of executed basic blocks, and their size.
 struct ThreadData {
-    // Unique list of hit basic blocks.
-    pintool::unordered_set<ADDRINT> m_block_hit;
-
-    // Map basic a block address to its size.
-    pintool::unordered_map<ADDRINT, uint16_t> m_block_size;
+    pintool::unordered_map<ADDRINT, uint16_t> m_blocks;
 };
 
 class ToolContext {
@@ -166,24 +163,37 @@ static VOID PIN_FAST_ANALYSIS_CALL OnBasicBlockHit(THREADID tid, ADDRINT addr, U
 {
     auto& context = *reinterpret_cast<ToolContext*>(v);
     ThreadData* data = context.GetThreadLocalData(tid);
-    data->m_block_hit.insert(addr);
-    data->m_block_size[addr] = size;
+    data->m_blocks[addr] = size;
+    PIN_RemoveInstrumentationInRange(addr, addr);
 }
 
 // Trace hit event handler.
 static VOID OnTrace(TRACE trace, VOID* v)
 {
     auto& context = *reinterpret_cast<ToolContext*>(v);
-    BBL bbl = TRACE_BblHead(trace);
-    ADDRINT addr = BBL_Address(bbl);
 
     // Check if the address is inside a white-listed image.
-    if (!context.m_tracing_enabled || !context.m_images->isInterestingAddress(addr))
+    if (!context.m_tracing_enabled || !context.m_images->isInterestingAddress(TRACE_Address(trace)))
         return;
 
-    // For each basic block in the trace.
-    for (; BBL_Valid(bbl); bbl = BBL_Next(bbl)) {
-        addr = BBL_Address(bbl);
+    auto tid = PIN_ThreadId();
+    ThreadData* data = context.GetThreadLocalData(tid);
+
+    // This trace is getting JIT'd, which implies the head must get executed.
+    auto bbl = TRACE_BblHead(trace);
+    auto addr = BBL_Address(bbl);
+    data->m_blocks[addr] = (uint16_t)BBL_Size(bbl);
+
+    // For each basic block in the trace...
+    for (bbl = BBL_Next(bbl); BBL_Valid(bbl); bbl = BBL_Next(bbl))
+    {
+
+        // Ignore blocks that have already been marked as executed in the past...
+        ADDRINT addr = BBL_Address(bbl);
+        if (data->m_blocks.find(addr) != data->m_blocks.end())
+            continue;
+
+        // Instrument blocks that have not yet been executed (at least... by this thread).
         BBL_InsertCall(bbl, IPOINT_ANYWHERE, (AFUNPTR)OnBasicBlockHit,
             IARG_FAST_ANALYSIS_CALL,
             IARG_THREAD_ID,
@@ -192,6 +202,7 @@ static VOID OnTrace(TRACE trace, VOID* v)
             IARG_PTR, v,
             IARG_END);
     }
+
 }
 
 // Program finish event handler.
@@ -219,7 +230,7 @@ static VOID OnFini(INT32 code, VOID* v)
     // Count the global number of basic blocks.
     size_t number_of_bbs = 0;
     for (const auto& data : context.m_terminated_threads) {
-        number_of_bbs += data->m_block_hit.size();
+        number_of_bbs += data->m_blocks.size();
     }
 
     context.m_trace->write_string("BB Table: %u bbs\n", number_of_bbs);
@@ -233,7 +244,8 @@ static VOID OnFini(INT32 code, VOID* v)
     drcov_bb tmp;
 
     for (const auto& data : context.m_terminated_threads) {
-        for (const auto& address : data->m_block_hit) {
+        for (const auto& block : data->m_blocks) {
+            auto address = block.first;
             auto it = std::find_if(context.m_loaded_images.begin(), context.m_loaded_images.end(), [&address](const LoadedImage& image) {
                 return address >= image.low_ && address < image.high_;
             });
@@ -243,7 +255,7 @@ static VOID OnFini(INT32 code, VOID* v)
 
             tmp.id = (uint16_t)std::distance(context.m_loaded_images.begin(), it);
             tmp.start = (uint32_t)(address - it->low_);
-            tmp.size = data->m_block_size[address];
+            tmp.size = data->m_blocks[address];
 
             context.m_trace->write_binary(&tmp, sizeof(tmp));
         }
