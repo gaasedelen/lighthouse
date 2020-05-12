@@ -959,6 +959,14 @@ class FunctionMetadata(object):
 
             # update the map of confirmed (walked) edges
             confirmed_edges[current_src] = self.edges.pop(current_src)
+            
+        #
+        # retain only the 'confirmed' edges. this may differ from the
+        # original edge map because we are only keeping edges that can be
+        # walked from the function entry. (eg, no ida exception handlers)
+        #
+        
+        self.edges = confirmed_edges
 
         # compute the final cyclomatic complexity for the function
         num_edges = sum(len(x) for x in itervalues(confirmed_edges))
