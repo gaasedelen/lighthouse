@@ -35,6 +35,18 @@ if disassembler == None:
         pass
 
 #--------------------------------------------------------------------------
+# Cutter API Shim
+#--------------------------------------------------------------------------
+
+if disassembler == None:
+    try:
+        from .cutter_api import CutterCoreAPI, CutterContextAPI
+        disassembler = CutterCoreAPI()
+        DisassemblerContextAPI = CutterContextAPI
+    except ImportError as e:
+        pass
+
+#--------------------------------------------------------------------------
 # Unknown Disassembler
 #--------------------------------------------------------------------------
 

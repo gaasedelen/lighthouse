@@ -22,6 +22,10 @@ elif disassembler.NAME == "BINJA":
     logger.info("Selecting Binary Ninja loader...")
     from lighthouse.integration.binja_loader import *
 
+elif disassembler.NAME == "CUTTER":
+    logger.info("Selecting Cutter loader...")
+    from lighthouse.integration.cutter_loader import *
+
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")
 
