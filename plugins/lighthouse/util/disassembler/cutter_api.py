@@ -55,6 +55,7 @@ class CutterCoreAPI(DisassemblerCoreAPI):
 
         # export Cutter Core
         self._core = CutterBindings.CutterCore.instance()
+        self.highlighter = self._core.getBBHighlighter()
         logger.info('self._core: {}'.format(type(self._core)))
         self._config = CutterBindings.Configuration.instance()
         logger.info('self._config: {}'.format(type(self._config)))
@@ -123,25 +124,26 @@ class CutterCoreAPI(DisassemblerCoreAPI):
     #--------------------------------------------------------------------------
 
     def register_dockable(self, dockable_name, create_widget_callback):
-        logger.warning('Method register_dockable not implemented for Cutter')
-        self._widgets[dockable_name] = create_widget_callback
+        self._widgets[dockable_name] = create_widget_callback(dockable_name, self.main, None)
 
     def create_dockable_widget(self, parent, dockable_name):
-        logger.warning('Method create_dockable_widget not implemented for Cutter')
-        widget = cutter.CutterDockWidget(parent)
-        widget.setWindowTitle(dockable_name)
         action = QtWidgets.QAction('Lighthouse coverage table')
         action.setCheckable(True)
-        main.addPluginDockWidget(widget, action)
-        return widget
+        widget = cutter.CutterDockWidget(parent, action)
+        inner_widget = DockableWidget(widget)
+        widget.setWidget(inner_widget)
+        widget.setWindowTitle(dockable_name)
+        widget.setObjectName('Coverage Overview')
+        parent.addPluginDockWidget(widget, action)
+        return inner_widget
 
     def show_dockable(self, dockable_name):
-        logger.warning('Method show_dockable not implemented for Cutter')
-        self._widgets[dockable_name].toggleDockWidget(true)
-        pass
+        self._widgets[dockable_name].toggleDockWidget(True)
+        #self._widgets[dockable_name].adjustSize()
 
     def hide_dockable(self, dockable_name):
         logger.warning('Method hide_dockable not implemented for Cutter')
+        self._widgets[dockable_name].toggleDockWidget(False)
         pass
 
 
@@ -163,48 +165,12 @@ class CutterContextAPI(DisassemblerContextAPI):
     def __init__(self, dctx):
         super(CutterContextAPI, self).__init__(dctx)
 
-        # configure dockable widget container
-        self._widget = QtWidgets.QWidget()
-        self._dockable = QtWidgets.QDockWidget('window_title')
-        self._dockable.setWidget(self._widget)
-        #self._dockable.setWindowIcon(self._window_icon)
-        self._dockable.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-        self._dockable.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding,
-            QtWidgets.QSizePolicy.Expanding
-        )
-        self._widget.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding,
-            QtWidgets.QSizePolicy.Expanding
-        )
-
         # export Cutter Core
         self._core = CutterBindings.CutterCore.instance()
         logger.info('self._core: {}'.format(type(self._core)))
         self._config = CutterBindings.Configuration.instance()
         logger.info('self._config: {}'.format(type(self._config)))
-
-    def show(self):
-        #pass
-        self._dockable.show()
-        self._dockable.raise_()
-
-    def setmain(self, main):
-        #pass
-
-        #
-        # NOTE HACK:
-        #   this is a little dirty, but it's needed because it's not as
-        #   easy as get_qt_main_window() to get the main dock in Cutter
-        #
-
-        self._main = main
-        # self._widget.setParent(main)
-
-        # dock the widget inside Cutter main dock
-        self._action = QtWidgets.QAction('Lighthouse coverage table')
-        self._action.setCheckable(True)
-        main.addPluginDockWidget(self._dockable, self._action)
+        logger.debug('Exported Cutter core')
 
     #--------------------------------------------------------------------------
     # Properties
@@ -316,3 +282,14 @@ class RenameHooks(object):
     # placeholder, this gets replaced in metadata.py
     #def renamed(self, address, new_name):
     #    pass
+
+
+class DockableWidget(QtWidgets.QWidget):
+
+    @property
+    def visible(self):
+        return self.isVisible()
+
+    @visible.setter
+    def visible(self, value):
+        self.setVisible(value)
