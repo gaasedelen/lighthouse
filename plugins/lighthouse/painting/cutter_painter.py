@@ -48,7 +48,7 @@ class CutterPainter(DatabasePainter):
 
         for node_address in nodes_addresses:
             #node_metadata = self.director.metadata.nodes.get(node_address, None)
-            logger.debug('Lalala {} {} {} {}'
+            logger.debug('Logging CutterBindings {} {} {} {}'
                    .format(disassembler,
                            disassembler[self.lctx],
                            disassembler[self.lctx]._core,
