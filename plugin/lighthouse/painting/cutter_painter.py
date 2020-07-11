@@ -48,15 +48,19 @@ class CutterPainter(DatabasePainter):
 
         for node_address in nodes_addresses:
             #node_metadata = self.director.metadata.nodes.get(node_address, None)
-            logger.debug('Painting node at {} with {}'.format(node_address, disassembler.highlighter))
-            disassembler.highlighter.highlight(self.director.coverage.nodes.get(node_address, None), color)
+            logger.debug('Lalala {} {} {} {}'
+                   .format(disassembler,
+                           disassembler[self.lctx],
+                           disassembler[self.lctx]._core,
+                           disassembler[self.lctx]._core.getBBHighlighter()))
+            disassembler[self.lctx]._core.getBBHighlighter().highlight(self.director.coverage.nodes.get(node_address, None), color)
             self._painted_nodes.add(node_address)
         self._action_complete.set()
 
     def _clear_nodes(self, addresses):
         for address in addresses:
-            #disassembler._core.getBBHighlighter().clear(address)
-            disassembler.highlighter.clear(address)
+            disassembler[self.lctx]._core.getBBHighlighter().clear(address)
+            #disassembler.unhighlight(address)
             self._painted_nodes.discard(address)
         self._action_complete.set()
 
