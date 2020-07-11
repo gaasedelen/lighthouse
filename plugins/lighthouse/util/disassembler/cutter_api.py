@@ -55,7 +55,6 @@ class CutterCoreAPI(DisassemblerCoreAPI):
 
         # export Cutter Core
         self._core = CutterBindings.CutterCore.instance()
-        self.highlighter = self._core.getBBHighlighter()
         logger.info('self._core: {}'.format(type(self._core)))
         self._config = CutterBindings.Configuration.instance()
         logger.info('self._config: {}'.format(type(self._config)))
@@ -149,8 +148,16 @@ class CutterCoreAPI(DisassemblerCoreAPI):
 
 
     #--------------------------------------------------------------------------
-    # Function Prefix API
+    # Helper methods
     #--------------------------------------------------------------------------
+
+    def highlight(self, node, color):
+        logger.debug('Highlighting node {} with color {}'.format(node, color))
+        self._core.getBBHighlighter().highlight(node, color)
+
+    def unhighlight(self, address):
+        self._core.getBBHighlighter().clear(address)
+
 
 
 #------------------------------------------------------------------------------
