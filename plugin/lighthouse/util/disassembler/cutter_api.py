@@ -207,8 +207,6 @@ class CutterContextAPI(DisassemblerContextAPI):
         # ***NOT*** valid function addresses. they fail when passed into get_function_at()
         #
 
-        logger.debug('Calling get_function addresses')
-
         maybe_functions = [x['offset'] for x in cutter.cmdj('aflj')]
 
         #
@@ -241,11 +239,11 @@ class CutterContextAPI(DisassemblerContextAPI):
 
     def get_function_at(self, address):
         # TODO/CUTTER: Use Cutter API
-        return cutter.cmdj('afij @ ' + str(address))[0]
-        #try:
-        #    return cutter.cmdj('afij @ ' + str(address))[0]
-        #except IndexError:
-        #    return None
+        #return cutter.cmdj('afij @ ' + str(address))[0]
+        try:
+            return cutter.cmdj('afij @ ' + str(address))[0]
+        except IndexError:
+            return None
 
     def get_root_filename(self):
         # TODO/CUTTER: Use Cutter API
@@ -255,8 +253,9 @@ class CutterContextAPI(DisassemblerContextAPI):
         return self._core.seek(address)
 
     def navigate_to_function(self, function_address, address):
-        logger.warning('Method navigate_to_function not implemented for Cutter')
-        pass
+        #logger.warning('Method navigate_to_function not implemented for Cutter')
+        self._core.seek(address)
+        #pass
 
     def set_function_name_at(self, function_address, new_name):
         old_name = self.get_function_raw_name_at(function_address)
@@ -273,18 +272,19 @@ class RenameHooks(object):
         self._core = core
 
     def hook(self):
-        #self._core.functionRenamed.connect(self.update)
+        self._core.functionRenamed.connect(self.update)
         pass
 
     def unhook(self):
-        #self._core.functionRenamed.disconnect(self.update)
+        self._core.functionRenamed.disconnect()
         pass
 
     def update(self, old_name, new_name):
         logger.debug('Received update event!', old_name, new_name)
         # TODO/CUTTER: HOW DO I GET A FUNCITON'S ADDRESS BY NAME??
         #self.renamed(address, new_name)
-        pass
+        self._core.triggerRefreshAll()
+        #pass
 
     # placeholder, this gets replaced in metadata.py
     #def renamed(self, address, new_name):
