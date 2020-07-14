@@ -179,6 +179,8 @@ class CutterContextAPI(DisassemblerContextAPI):
         logger.info('self._config: {}'.format(type(self._config)))
         logger.debug('Exported Cutter core')
 
+        self.cache = Cache(self)
+
     #--------------------------------------------------------------------------
     # Properties
     #--------------------------------------------------------------------------
@@ -192,10 +194,12 @@ class CutterContextAPI(DisassemblerContextAPI):
     #--------------------------------------------------------------------------
 
     def get_current_address(self):
+        logger.warning('Getting current address')
         return self._core.getOffset()
 
     def get_database_directory(self):
         # TODO/CUTTER: Use Cutter API
+        logger.warning('Getting database directory')
         return cutter.cmdj('ij')['core']['file']
 
     def get_function_addresses(self):
@@ -206,8 +210,10 @@ class CutterContextAPI(DisassemblerContextAPI):
         # TODO/CUTTER: Apparently, some of the addresses returned by this are
         # ***NOT*** valid function addresses. they fail when passed into get_function_at()
         #
+        logger.warning('Getting function addresses')
 
-        maybe_functions = [x['offset'] for x in cutter.cmdj('aflj')]
+        #maybe_functions = [x['offset'] for x in cutter.cmdj('aflj')]
+        maybe_functions = [x['offset'] for x in self.cache.functions]
 
         #
         # TODO/CUTTER/HACK: this is a gross hack to ensure lighthouse wont choke on *non*
@@ -224,6 +230,7 @@ class CutterContextAPI(DisassemblerContextAPI):
 
     def get_function_name_at(self, address):
         # TODO/CUTTER: Use Cutter API
+        logger.warning('Getting function name at')
         func = self.get_function_at(address)
         if not func:
             return None
@@ -231,25 +238,31 @@ class CutterContextAPI(DisassemblerContextAPI):
         return func['name']
 
     def get_function_raw_name_at(self, address):
+        logger.warning('Getting function raw name at')
         return self.get_function_at(address)['name']
 
     def get_imagebase(self):
         # TODO/CUTTER: Use Cutter API
+        logger.warning('Getting image base')
         return cutter.cmdj('ij')['bin']['baddr']
 
     def get_function_at(self, address):
         # TODO/CUTTER: Use Cutter API
         #return cutter.cmdj('afij @ ' + str(address))[0]
+        logger.warning('Getting function at')
         try:
-            return cutter.cmdj('afij @ ' + str(address))[0]
+            return self.cache.get_function_at(address)
+            #return cutter.cmdj('afij @ ' + str(address))[0]
         except IndexError:
             return None
 
     def get_root_filename(self):
         # TODO/CUTTER: Use Cutter API
+        logger.warning('Getting root filename')
         return os.path.basename(cutter.cmdj('ij')['core']['file'])
 
     def navigate(self, address):
+        logger.warning('Navigating')
         return self._core.seek(address)
 
     def navigate_to_function(self, function_address, address):
@@ -258,10 +271,12 @@ class CutterContextAPI(DisassemblerContextAPI):
         #pass
 
     def set_function_name_at(self, function_address, new_name):
+        logger.warning('Setting function name at')
         old_name = self.get_function_raw_name_at(function_address)
         self._core.renameFunction(old_name, new_name)
 
     def create_rename_hooks(self):
+        logger.warning('Creating rename hooks')
         return RenameHooks(self._core)
 
     PREFIX_SEPARATOR = "▁" # Unicode 0x2581
@@ -300,3 +315,23 @@ class DockableWidget(QtWidgets.QWidget):
     @visible.setter
     def visible(self, value):
         self.setVisible(value)
+
+
+class Cache:
+    def __init__(self, context):
+        self.context = context
+        self._functions = None
+
+    def initialize(self):
+        logger.debug('Initializing cache')
+        self._functions = cutter.cmdj('aflj')
+
+    @property
+    def functions(self):
+        if not self._functions:
+            self.initialize()
+        return self._functions
+
+    def get_function_at(self, address):
+        logger.debug('Using cache')
+        return next(filter(lambda f: f['offset'] == address, self.functions), None)
