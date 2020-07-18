@@ -67,7 +67,7 @@ class CutterPainter(DatabasePainter):
 
             # Node completely executed
             if node_coverage.instructions_executed == node_metadata.instruction_count:
-                logger.debug('Painting node {}'.format(node_address))
+                logger.debug('Painting node 0x{:x}'.format(node_address))
                 disassembler[self.lctx]._core.getBBHighlighter().highlight(node_address, color)
                 self._painted_nodes.add(node_address)
 

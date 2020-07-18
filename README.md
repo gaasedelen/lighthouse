@@ -30,6 +30,7 @@ Lighthouse is a cross-platform (Windows, macOS, Linux) Python 2/3 plugin. It tak
 1. From your disassembler's python console, run the following command to find its plugin directory:
    - **IDA Pro**: `os.path.join(idaapi.get_user_idadir(), "plugins")`
    - **Binary Ninja**: `binaryninja.user_plugin_path()`
+   - **Cutter**: Go to `Edit`->`Preferences`->`Plugins` on the top should be the path to the plugins directory. Copy the contents in the python folder.
 
 2. Copy the contents of this repository's `/plugin/` folder to the listed directory.
 3. Restart your disassembler.
@@ -53,6 +54,8 @@ While Lighthouse is in use, it will 'paint' the active coverage data across all 
 </p>
 
 In Binary Ninja, only the linear disassembly, graph, and IL views are supported. Support for painting decompiler output in Binary Ninja will be added to Lighthouse in the *near future* as the feature stabilizes.
+
+Cutter only supports graph view painting currently.
 
 # Coverage Overview
 
