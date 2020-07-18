@@ -138,12 +138,9 @@ class CutterCoreAPI(DisassemblerCoreAPI):
 
     def show_dockable(self, dockable_name):
         self._widgets[dockable_name].toggleDockWidget(True)
-        #self._widgets[dockable_name].adjustSize()
 
     def hide_dockable(self, dockable_name):
-        logger.warning('Method hide_dockable not implemented for Cutter')
         self._widgets[dockable_name].toggleDockWidget(False)
-        pass
 
 
 
@@ -180,6 +177,7 @@ class CutterContextAPI(DisassemblerContextAPI):
         logger.debug('Exported Cutter core')
 
         self.cache = Cache(self)
+        self._image_base = None
 
     #--------------------------------------------------------------------------
     # Properties
@@ -194,12 +192,12 @@ class CutterContextAPI(DisassemblerContextAPI):
     #--------------------------------------------------------------------------
 
     def get_current_address(self):
-        logger.warning('Getting current address')
+        logger.debug('Getting current address')
         return self._core.getOffset()
 
     def get_database_directory(self):
         # TODO/CUTTER: Use Cutter API
-        logger.warning('Getting database directory')
+        logger.debug('Getting database directory')
         return cutter.cmdj('ij')['core']['file']
 
     def get_function_addresses(self):
@@ -210,7 +208,7 @@ class CutterContextAPI(DisassemblerContextAPI):
         # TODO/CUTTER: Apparently, some of the addresses returned by this are
         # ***NOT*** valid function addresses. they fail when passed into get_function_at()
         #
-        logger.warning('Getting function addresses')
+        logger.debug('Getting function addresses')
 
         #maybe_functions = [x['offset'] for x in cutter.cmdj('aflj')]
         maybe_functions = [x['offset'] for x in self.cache.functions]
@@ -230,7 +228,7 @@ class CutterContextAPI(DisassemblerContextAPI):
 
     def get_function_name_at(self, address):
         # TODO/CUTTER: Use Cutter API
-        logger.warning('Getting function name at')
+        logger.debug('Getting function name at')
         func = self.get_function_at(address)
         if not func:
             return None
@@ -238,45 +236,43 @@ class CutterContextAPI(DisassemblerContextAPI):
         return func['name']
 
     def get_function_raw_name_at(self, address):
-        logger.warning('Getting function raw name at')
+        logger.debug('Getting function raw name at')
         return self.get_function_at(address)['name']
 
     def get_imagebase(self):
         # TODO/CUTTER: Use Cutter API
-        logger.warning('Getting image base')
-        return cutter.cmdj('ij')['bin']['baddr']
+        logger.debug('Getting image base')
+        if self._image_base:
+            return self._image_base
+        self._image_base = cutter.cmdj('ij')['bin']['baddr']
+        return self._image_base
 
     def get_function_at(self, address):
-        # TODO/CUTTER: Use Cutter API
-        #return cutter.cmdj('afij @ ' + str(address))[0]
-        logger.warning('Getting function at')
+        logger.debug('Getting function at')
         try:
             return self.cache.get_function_at(address)
-            #return cutter.cmdj('afij @ ' + str(address))[0]
         except IndexError:
             return None
 
     def get_root_filename(self):
         # TODO/CUTTER: Use Cutter API
-        logger.warning('Getting root filename')
+        logger.debug('Getting root filename')
         return os.path.basename(cutter.cmdj('ij')['core']['file'])
 
     def navigate(self, address):
-        logger.warning('Navigating')
+        logger.debug('Navigating')
         return self._core.seek(address)
 
     def navigate_to_function(self, function_address, address):
-        #logger.warning('Method navigate_to_function not implemented for Cutter')
         self._core.seek(address)
-        #pass
 
     def set_function_name_at(self, function_address, new_name):
-        logger.warning('Setting function name at')
+        logger.debug('Setting function name at')
         old_name = self.get_function_raw_name_at(function_address)
         self._core.renameFunction(old_name, new_name)
 
     def create_rename_hooks(self):
-        logger.warning('Creating rename hooks')
+        logger.debug('Creating rename hooks')
         return RenameHooks(self._core)
 
     PREFIX_SEPARATOR = "▁" # Unicode 0x2581
@@ -297,7 +293,7 @@ class RenameHooks(object):
     def update(self, old_name, new_name):
         logger.debug('Received update event!', old_name, new_name)
         # TODO/CUTTER: HOW DO I GET A FUNCITON'S ADDRESS BY NAME??
-        #self.renamed(address, new_name)
+        self.renamed(address, new_name)
         self._core.triggerRefreshAll()
         #pass
 
