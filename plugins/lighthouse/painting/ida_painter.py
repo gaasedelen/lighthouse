@@ -286,9 +286,6 @@ class IDAPainter(DatabasePainter):
         node_info.bg_color = idc.DEFCOLOR
         node_flags = idaapi.NIF_BG_COLOR | idaapi.NIF_FRAME_COLOR
 
-        # a map of function_address --> node_metadata
-        node_metadatas = {}
-
         #
         # loop through every node that we have metadata data for, clearing
         # their paint (color) in the IDA graph view as applicable.
@@ -299,11 +296,15 @@ class IDAPainter(DatabasePainter):
 
         for node_address in node_addresses:
             functions = db_metadata.get_functions_by_node(node_address)
+
+            node_metadatas = {}
             for function in functions:
                 node_metadata = function.nodes.get(node_address, None)
+
                 if not node_metadata:
                     node_metadatas = {}
                     break
+
                 node_metadatas[function.address] = node_metadata
 
             # abort if something looks like it changed...
