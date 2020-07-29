@@ -714,12 +714,48 @@ class CoverageDirector(object):
         target_name = target_name.lower()
 
         #
+        # 0. Pre-process module names, strip filepath if present
+        #
+
+        clean_module_names = {}
+        for module_name_raw in coverage_file.modules:
+
+            # trim 'path' from a 'module name' entry... if present (uncommon)
+            module_name = os.path.basename(module_name_raw)
+
+            #
+            # if this triggers, it's probably because the coverage file is
+            # using full filepaths for 'module names', and that there was
+            # two unique filepaths with the same module name, eg:
+            #
+            #   - C:\foo.dll
+            #   - C:\bar\foo.dll
+            #
+            # this should be super rare, but we'll just revert to using the
+            # full / unprocessed paths and bail...
+            #
+
+            if module_name in clean_module_names:
+                clean_module_names = {name: name for name in coverage_file.modules}
+                break
+
+            clean_module_names[module_name] = module_name_raw
+
+        #
         # 1. exact, case-insensitive filename matching
         #
 
-        for module_name in coverage_file.modules:
+        for module_name in clean_module_names:
             if target_name == module_name.lower():
-                return module_name
+                return clean_module_names[module_name]
+
+        #
+        # 2. exact, case-insensitive filename matching
+        #
+
+        for module_name in clean_module_names:
+            if target_name == module_name.lower():
+                return clean_module_names[module_name]
 
         #
         # 2. cleave the extension from the target module name (the source)
@@ -727,9 +763,9 @@ class CoverageDirector(object):
         #
 
         target_name, extension = os.path.splitext(target_name)
-        for module_name in coverage_file.modules:
+        for module_name in clean_module_names:
             if target_name == module_name.lower():
-                return module_name
+                return clean_module_names[module_name]
 
         # too risky to do fuzzy matching on short names...
         if len(target_name) < 6:
@@ -737,13 +773,13 @@ class CoverageDirector(object):
 
         #
         # 3. try to match *{target_name}*{extension} in module_name, assuming
-        # target_name is more than 6 characters and there is no othe ambiguity
+        # target_name is more than 6 characters and there is no other ambiguity
         #
 
         possible_names = []
-        for module_name in coverage_file.modules:
+        for module_name in clean_module_names:
             if target_name in module_name.lower() and extension in module_name.lower():
-                possible_names.append(module_name)
+                possible_names.append(clean_module_names[module_name])
 
         # there were no matches on the wildcarding, so we're done
         if not possible_names:
