@@ -44,7 +44,7 @@ class LighthouseCore(object):
         # the plugin color palette
         self.palette = LighthousePalette()
         self.palette.theme_changed(self.refresh_theme)
-
+        
         def create_coverage_overview(name, parent, dctx):
             lctx = self.get_context(dctx, startup=False)
             widget = disassembler.create_dockable_widget(parent, name)
@@ -213,6 +213,11 @@ class LighthouseCore(object):
 
         # trigger an update check (this should only ever really 'check' once)
         self.check_for_update()
+        # create a new coverage overview if there is not one visible
+        #self._ui_coverage_overview = CoverageOverview(self)
+        #if disassembler.NAME == "CUTTER":
+        #    self._ui_coverage_overview.setmain(disassembler.main)
+        #self._ui_coverage_overview.show()
 
     def open_coverage_xref(self, address, dctx=None):
         """
