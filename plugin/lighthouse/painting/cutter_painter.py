@@ -42,10 +42,13 @@ class CutterPainter(DatabasePainter):
         self._action_complete.set()
 
     def _partial_paint(self, addresses, color):
-        highlighter = disassembler[self.lctx]._core.getBIHighlighter()
-        for address in addresses:
-            logger.debug('Partially painting {}'.format(address))
-            highlighter.clear(address)
+        try:
+            highlighter = disassembler[self.lctx]._core.getBIHighlighter()
+            for address in addresses:
+                logger.debug('Partially painting {}'.format(address))
+                highlighter.highlight(address, color)
+        except Exception as e:
+            logger.debug('Exception in partial paint: {}'.format(e))
 
 
     def _paint_nodes(self, nodes_addresses):
@@ -67,12 +70,13 @@ class CutterPainter(DatabasePainter):
 
             # Node completely executed
             if node_coverage.instructions_executed == node_metadata.instruction_count:
-                logger.debug('Painting node 0x{:x}'.format(node_address))
+                logger.debug('Painting node {}'.format(node_address))
                 disassembler[self.lctx]._core.getBBHighlighter().highlight(node_address, color)
                 self._painted_nodes.add(node_address)
 
             # Partially executed nodes
             else:
+                logger.debug('Partial block {}'.format(node_address))
                 self._partial_paint(node_coverage.executed_instructions.keys(), color)
 
         self._action_complete.set()
