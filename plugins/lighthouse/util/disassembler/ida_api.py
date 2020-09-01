@@ -411,6 +411,16 @@ class RenameHooks(idaapi.IDB_Hooks):
 # HexRays Util
 #------------------------------------------------------------------------------
 
+def hexrays_available():
+    """
+    Return True if an IDA decompiler is loaded and available for use.
+    """
+    try:
+        import ida_hexrays
+        return ida_hexrays.init_hexrays_plugin()
+    except ImportError:
+        return False
+
 def map_line2citem(decompilation_text):
     """
     Map decompilation line numbers to citems.

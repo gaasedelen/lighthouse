@@ -9,7 +9,7 @@ from idaapi import clr_abits, set_abits, netnode, set_node_info
 
 from lighthouse.util import *
 from lighthouse.util.disassembler import disassembler
-from lighthouse.util.disassembler.ida_api import map_line2citem, map_line2node, lex_citem_indexes
+from lighthouse.util.disassembler.ida_api import map_line2citem, map_line2node, lex_citem_indexes, hexrays_available
 from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting.IDA")
@@ -153,11 +153,11 @@ class IDAPainter(DatabasePainter):
         # enable / disable hook based on the painter being enabled or disabled
         if status:
             self._idp_hooks.hook()
-            if idaapi.init_hexrays_plugin():
+            if hexrays_available():
                 idaapi.install_hexrays_callback(self._hxe_callback)
         else:
             self._idp_hooks.unhook()
-            if idaapi.init_hexrays_plugin():
+            if hexrays_available():
                 idaapi.remove_hexrays_callback(self._hxe_callback)
 
         # send the status changed signal...
