@@ -67,6 +67,7 @@ class CoverageDirector(object):
         # the coverage file parser
         self.reader = CoverageReader()
         self._target_whitelist = []
+        self.suppressed_errors = set()
 
         # the name of the active coverage
         self.coverage_name = NEW_COMPOSITION
@@ -380,6 +381,9 @@ class CoverageDirector(object):
         errors = collections.defaultdict(list)
         aggregate_addresses = set()
 
+        # unsupress NO_COVERAGE_ERROR per-load, instead of per-session
+        self.suppressed_errors.discard(CoverageMissingError)
+
         start = time.time()
         #----------------------------------------------------------------------
 
@@ -438,6 +442,9 @@ class CoverageDirector(object):
         """
         errors = collections.defaultdict(list)
         all_coverage = []
+
+        # unsupress NO_COVERAGE_ERROR per-load, instead of per-session
+        self.suppressed_errors.discard(CoverageMissingError)
 
         start = time.time()
         #----------------------------------------------------------------------
@@ -541,16 +548,39 @@ class CoverageDirector(object):
         if not module_name and coverage_file.modules:
 
             #
-            # if the user closes the dialog without selecting a name, there's
-            # nothing we can do for them ...
+            # earlier in this load, the user opted to ignore future attempts
+            # to alias or select coverage data. this is useful when trying to
+            # load a batch of coverage files, where some coverage files
+            # contain data, but none relevant to this database.
+            #
+
+            if CoverageMissingError in self.suppressed_errors:
+                return []
+
+            #
+            # show the module selection dialog to the user, and wait for them
+            # to select something, or close the dialog
             #
 
             dialog = ModuleSelector(database_target, coverage_file.modules, coverage_file.filepath)
-            if not dialog.exec_():
-                return [] # no coverage data extracted ...
+            result = dialog.exec_()
+
+            # check if the user opted to ignore future warnings for missing coverage
+            if dialog.ignore_missing:
+                self.suppressed_errors.add(CoverageMissingError)
+
+            #
+            # if the user closed the dialog without selecting a name, there's
+            # nothing we can do for them. return an empty set of coverage data
+            #
+
+            if not result:
+                return []
 
             # the user selected a module name! use that to extract coverage
             module_name = dialog.selected_name
+
+            # the user opted to save the selected name as an 'alias'
             if dialog.remember_alias:
                 self._target_whitelist.append(module_name)
 

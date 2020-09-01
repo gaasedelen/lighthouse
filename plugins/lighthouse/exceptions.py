@@ -112,7 +112,7 @@ class CoverageMappingSuspicious(CoverageException):
 # UI Warnings
 #------------------------------------------------------------------------------
 
-def warn_errors(errors):
+def warn_errors(errors, ignore=[]):
     """
     Warn the user of any encountered errors with a messagebox.
     """
@@ -130,6 +130,10 @@ def warn_errors(errors):
         lmsg("Files reporting %s:" % error_type.name)
         for error in error_list:
             lmsg(" - %s" % error.filepath)
+
+        # suppress popups for certain errors, if the user has specified such
+        if error_type in ignore:
+            continue
 
         #
         # popup a more verbose error messagebox for the user to read regarding

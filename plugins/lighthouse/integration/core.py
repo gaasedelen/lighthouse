@@ -329,7 +329,7 @@ class LighthouseCore(object):
         self.open_coverage_overview(lctx.dctx)
 
         # finally, emit any notable issues that occurred during load
-        warn_errors(errors)
+        warn_errors(errors, lctx.director.suppressed_errors)
 
     def interactive_load_file(self, dctx=None):
         """
@@ -399,7 +399,7 @@ class LighthouseCore(object):
         self.open_coverage_overview(lctx.dctx)
 
         # finally, emit any notable issues that occurred during load
-        warn_errors(errors)
+        warn_errors(errors, lctx.director.suppressed_errors)
 
     def check_for_update(self):
         """
