@@ -16,7 +16,7 @@ Example usage:
 
 ## Intel Pin
 
-Using a [custom pintool](pin) contributed by [Agustin Gianni](https://twitter.com/agustingianni), the Intel Pin DBI can also be used to collect coverage data.
+Using a [custom pintool](pin/README.md) contributed by [Agustin Gianni](https://twitter.com/agustingianni), the Intel Pin DBI can also be used to collect coverage data.
 
 Example usage:
 
@@ -24,11 +24,11 @@ Example usage:
 pin.exe -t CodeCoverage64.dll -- boombox.exe
 ```
 
-For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases) page. macOS and Linux users need to compile the pintool themselves following the [instructions](pin#compilation) included with the pintool for their respective platforms.
+For convenience, binaries for the Windows pintool can be found on the [releases](https://github.com/gaasedelen/lighthouse/releases) page. macOS and Linux users need to compile the pintool themselves following the [instructions](pin/README.md#compilation) included with the pintool for their respective platforms.
 
 ## Frida (Experimental)
 
-Lighthouse offers limited support for Frida based code coverage via a custom [instrumentation script](frida) contributed by [yrp](https://twitter.com/yrp604).
+Lighthouse offers limited support for Frida based code coverage via a custom [instrumentation script](frida/README.md) contributed by [yrp](https://twitter.com/yrp604).
 
 Example usage:
 

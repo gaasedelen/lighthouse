@@ -26,7 +26,7 @@ class LighthouseCore(object):
     # Plugin Metadata
     #--------------------------------------------------------------------------
 
-    PLUGIN_VERSION = "0.9.1-DEV"
+    PLUGIN_VERSION = "0.9.1"
     AUTHORS        = "Markus Gaasedelen"
     DATE           = "2020"
 
