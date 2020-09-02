@@ -110,12 +110,10 @@ def start_logging():
     # only enable logging if the LIGHTHOUSE_LOGGING environment variable is
     # present. we simply return a stub logger to sinkhole messages.
     #
-    # NOTE / v0.9.0: logging is enabled by default for now...
-    #
 
-    #if os.getenv("LIGHTHOUSE_LOGGING") == None:
-    #    logger.disabled = True
-    #    return logger
+    if os.getenv("LIGHTHOUSE_LOGGING") == None:
+        logger.disabled = True
+        return logger
 
     # create a directory for lighthouse logs if it does not exist
     log_dir = get_log_dir()

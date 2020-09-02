@@ -9,7 +9,7 @@ from idaapi import clr_abits, set_abits, netnode, set_node_info
 
 from lighthouse.util import *
 from lighthouse.util.disassembler import disassembler
-from lighthouse.util.disassembler.ida_api import map_line2citem, map_line2node, lex_citem_indexes
+from lighthouse.util.disassembler.ida_api import map_line2citem, map_line2node, lex_citem_indexes, hexrays_available
 from lighthouse.painting import DatabasePainter
 
 logger = logging.getLogger("Lighthouse.Painting.IDA")
@@ -153,11 +153,11 @@ class IDAPainter(DatabasePainter):
         # enable / disable hook based on the painter being enabled or disabled
         if status:
             self._idp_hooks.hook()
-            if idaapi.init_hexrays_plugin():
+            if hexrays_available():
                 idaapi.install_hexrays_callback(self._hxe_callback)
         else:
             self._idp_hooks.unhook()
-            if idaapi.init_hexrays_plugin():
+            if hexrays_available():
                 idaapi.remove_hexrays_callback(self._hxe_callback)
 
         # send the status changed signal...
@@ -216,8 +216,34 @@ class IDAPainter(DatabasePainter):
 
             # retrieve all the necessary structures to paint this node
             node_coverage = db_coverage.nodes.get(node_address, None)
-            node_metadata = db_metadata.nodes.get(node_address, None)
             functions = db_metadata.get_functions_by_node(node_address)
+
+            #
+            # due to the fact that multiple functions may 'share' a node,
+            # we need to go through and explicitly fetch the node metadata
+            # from each function when performing a paint.
+            #
+            # this is because each function will have a unique node_id in
+            # the target node_metadata(s)
+            #
+
+            node_metadatas = {}
+            for function in functions:
+
+                # attempt to safely fetch the node metadata from a function
+                node_metadata = function.nodes.get(node_address, None)
+
+                #
+                # this is possible if function is getting torn down. this is because
+                # we don't use locks. this just means it is time for us to bail as
+                # the metadata state is changing and the paint should be canceled
+                #
+
+                if not node_metadata:
+                    node_metadatas = []
+                    break
+
+                node_metadatas[function.address] = node_metadata
 
             #
             # if we did not get *everything* that we needed, then it is
@@ -227,30 +253,23 @@ class IDAPainter(DatabasePainter):
             # okay, just stop painting here and let the painter sort it out
             #
 
-            if not (node_coverage and node_metadata and functions):
+            if not (node_coverage and node_metadatas):
                 self._msg_queue.put(self.MSG_ABORT)
                 node_addresses = node_addresses[:node_addresses.index(node_address)]
                 break
-
-            #
-            # get_functions_by_node() can return multiple functios (eg, a
-            # shared node) but in IDA should only ever return one... so we
-            # can pull it out now
-            #
-
-            function_metadata = functions[0]
 
             # ignore nodes that are only partially executed
             if node_coverage.instructions_executed != node_metadata.instruction_count:
                 continue
 
-            # do the *actual* painting of a single node instance
-            set_node_info(
-                function_metadata.address,
-                node_metadata.id,
-                node_info,
-                node_flags
-            )
+            # do the *actual* painting o;f a single node instance
+            for function_address, node_metadata in iteritems(node_metadatas):
+                set_node_info(
+                    function_address,
+                    node_metadata.id,
+                    node_info,
+                    node_flags
+                )
 
         self._painted_nodes |= set(node_addresses)
         self._action_complete.set()
@@ -271,32 +290,37 @@ class IDAPainter(DatabasePainter):
         # loop through every node that we have metadata data for, clearing
         # their paint (color) in the IDA graph view as applicable.
         #
+        # read self._paint_nodes() comments for more info, the code below
+        # is very similar, sans the repetitive comments
+        #
 
         for node_address in node_addresses:
-
-            # retrieve all the necessary structures to paint this node
-            node_metadata = db_metadata.nodes.get(node_address, None)
             functions = db_metadata.get_functions_by_node(node_address)
 
-            #
-            # abort if something looks like it changed... read the comments in
-            # self._paint_nodes for more verbose information
-            #
+            node_metadatas = {}
+            for function in functions:
+                node_metadata = function.nodes.get(node_address, None)
 
-            if not (node_metadata and functions):
+                if not node_metadata:
+                    node_metadatas = {}
+                    break
+
+                node_metadatas[function.address] = node_metadata
+
+            # abort if something looks like it changed...
+            if not node_metadatas:
                 self._msg_queue.put(self.MSG_ABORT)
                 node_addresses = node_addresses[:node_addresses.index(node_address)]
                 break
 
-            function_metadata = functions[0]
-
             # do the *actual* painting of a single node instance
-            set_node_info(
-                function_metadata.address,
-                node_metadata.id,
-                node_info,
-                node_flags
-            )
+            for function_address, node_metadata in iteritems(node_metadatas):
+                set_node_info(
+                    function_address,
+                    node_metadata.id,
+                    node_info,
+                    node_flags
+                )
 
         self._painted_nodes -= set(node_addresses)
         self._action_complete.set()

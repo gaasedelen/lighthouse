@@ -67,6 +67,7 @@ class CoverageDirector(object):
         # the coverage file parser
         self.reader = CoverageReader()
         self._target_whitelist = []
+        self.suppressed_errors = set()
 
         # the name of the active coverage
         self.coverage_name = NEW_COMPOSITION
@@ -380,6 +381,9 @@ class CoverageDirector(object):
         errors = collections.defaultdict(list)
         aggregate_addresses = set()
 
+        # unsupress NO_COVERAGE_ERROR per-load, instead of per-session
+        self.suppressed_errors.discard(CoverageMissingError)
+
         start = time.time()
         #----------------------------------------------------------------------
 
@@ -438,6 +442,9 @@ class CoverageDirector(object):
         """
         errors = collections.defaultdict(list)
         all_coverage = []
+
+        # unsupress NO_COVERAGE_ERROR per-load, instead of per-session
+        self.suppressed_errors.discard(CoverageMissingError)
 
         start = time.time()
         #----------------------------------------------------------------------
@@ -541,16 +548,39 @@ class CoverageDirector(object):
         if not module_name and coverage_file.modules:
 
             #
-            # if the user closes the dialog without selecting a name, there's
-            # nothing we can do for them ...
+            # earlier in this load, the user opted to ignore future attempts
+            # to alias or select coverage data. this is useful when trying to
+            # load a batch of coverage files, where some coverage files
+            # contain data, but none relevant to this database.
+            #
+
+            if CoverageMissingError in self.suppressed_errors:
+                return []
+
+            #
+            # show the module selection dialog to the user, and wait for them
+            # to select something, or close the dialog
             #
 
             dialog = ModuleSelector(database_target, coverage_file.modules, coverage_file.filepath)
-            if not dialog.exec_():
-                return [] # no coverage data extracted ...
+            result = dialog.exec_()
+
+            # check if the user opted to ignore future warnings for missing coverage
+            if dialog.ignore_missing:
+                self.suppressed_errors.add(CoverageMissingError)
+
+            #
+            # if the user closed the dialog without selecting a name, there's
+            # nothing we can do for them. return an empty set of coverage data
+            #
+
+            if not result:
+                return []
 
             # the user selected a module name! use that to extract coverage
             module_name = dialog.selected_name
+
+            # the user opted to save the selected name as an 'alias'
             if dialog.remember_alias:
                 self._target_whitelist.append(module_name)
 
@@ -714,12 +744,48 @@ class CoverageDirector(object):
         target_name = target_name.lower()
 
         #
+        # 0. Pre-process module names, strip filepath if present
+        #
+
+        clean_module_names = {}
+        for module_name_raw in coverage_file.modules:
+
+            # trim 'path' from a 'module name' entry... if present (uncommon)
+            module_name = os.path.basename(module_name_raw)
+
+            #
+            # if this triggers, it's probably because the coverage file is
+            # using full filepaths for 'module names', and that there was
+            # two unique filepaths with the same module name, eg:
+            #
+            #   - C:\foo.dll
+            #   - C:\bar\foo.dll
+            #
+            # this should be super rare, but we'll just revert to using the
+            # full / unprocessed paths and bail...
+            #
+
+            if module_name in clean_module_names:
+                clean_module_names = {name: name for name in coverage_file.modules}
+                break
+
+            clean_module_names[module_name] = module_name_raw
+
+        #
         # 1. exact, case-insensitive filename matching
         #
 
-        for module_name in coverage_file.modules:
+        for module_name in clean_module_names:
             if target_name == module_name.lower():
-                return module_name
+                return clean_module_names[module_name]
+
+        #
+        # 2. exact, case-insensitive filename matching
+        #
+
+        for module_name in clean_module_names:
+            if target_name == module_name.lower():
+                return clean_module_names[module_name]
 
         #
         # 2. cleave the extension from the target module name (the source)
@@ -727,9 +793,9 @@ class CoverageDirector(object):
         #
 
         target_name, extension = os.path.splitext(target_name)
-        for module_name in coverage_file.modules:
+        for module_name in clean_module_names:
             if target_name == module_name.lower():
-                return module_name
+                return clean_module_names[module_name]
 
         # too risky to do fuzzy matching on short names...
         if len(target_name) < 6:
@@ -737,13 +803,13 @@ class CoverageDirector(object):
 
         #
         # 3. try to match *{target_name}*{extension} in module_name, assuming
-        # target_name is more than 6 characters and there is no othe ambiguity
+        # target_name is more than 6 characters and there is no other ambiguity
         #
 
         possible_names = []
-        for module_name in coverage_file.modules:
+        for module_name in clean_module_names:
             if target_name in module_name.lower() and extension in module_name.lower():
-                possible_names.append(module_name)
+                possible_names.append(clean_module_names[module_name])
 
         # there were no matches on the wildcarding, so we're done
         if not possible_names:

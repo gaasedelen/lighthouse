@@ -30,10 +30,17 @@ class ModuleSelector(QtWidgets.QDialog):
 
         # dialog attributes
         self.selected_name = None
-        self.remember_alias = False
 
         # configure the widget for use
         self._ui_init()
+
+    @property
+    def remember_alias(self):
+        return self._checkbox_remember.isChecked()
+
+    @property
+    def ignore_missing(self):
+        return self._checkbox_ignore_missing.isChecked()
 
     #--------------------------------------------------------------------------
     # Initialization - UI
@@ -81,6 +88,10 @@ class ModuleSelector(QtWidgets.QDialog):
         # a checkbox to save the user selected alias to the database
         self._checkbox_remember = QtWidgets.QCheckBox("Remember target module alias for this session")
         self._checkbox_remember.setFont(self._font)
+
+        # a checkbox to ignore future 'missing coverage' / select module warnings
+        self._checkbox_ignore_missing = QtWidgets.QCheckBox("Suppress this dialog for the remaining coverage files")
+        self._checkbox_ignore_missing.setFont(self._font)
 
     def _ui_init_table(self):
         """
@@ -134,6 +145,7 @@ class ModuleSelector(QtWidgets.QDialog):
         layout.addWidget(self._label_description)
         layout.addWidget(self._table)
         layout.addWidget(self._checkbox_remember)
+        layout.addWidget(self._checkbox_ignore_missing)
 
         # scale widget dimensions based on DPI
         height = get_dpi_scale() * 250
@@ -153,5 +165,4 @@ class ModuleSelector(QtWidgets.QDialog):
         A cell/row has been double clicked in the module table.
         """
         self.selected_name = self._table.item(row, 0).text()
-        self.remember_alias = self._checkbox_remember.isChecked()
         self.accept()
