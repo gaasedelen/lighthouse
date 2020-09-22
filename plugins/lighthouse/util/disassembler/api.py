@@ -357,6 +357,9 @@ class DisassemblerContextAPI(object):
         """
         pass
 
+    @abc.abstractmethod
+    def get_code_refs_from_block(self, start_addr, end_addr):
+        pass
     #--------------------------------------------------------------------------
     # Hooks API
     #--------------------------------------------------------------------------

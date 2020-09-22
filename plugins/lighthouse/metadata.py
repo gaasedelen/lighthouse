@@ -16,9 +16,10 @@ from lighthouse.util.debug import catch_errors
 
 logger = logging.getLogger("Lighthouse.Metadata")
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Metadata
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 #
 #    To aid in performance, Lighthouse lifts and indexes an in-memory limited
 #    representation of the disassembler's open database. This is commonly
@@ -56,9 +57,9 @@ logger = logging.getLogger("Lighthouse.Metadata")
 #    reasonably low cost refresh.
 #
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Database Metadata
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class DatabaseMetadata(object):
     """
@@ -103,23 +104,23 @@ class DatabaseMetadata(object):
         self._go_synchronous = False
 
         # a scheduled callback to watch for specific database changes
-        self._scheduled_interval = 2000 # ms
+        self._scheduled_interval = 2000  # ms
         self._scheduled_timer = QtCore.QTimer()
         self._scheduled_timer.setInterval(self._scheduled_interval)
         self._scheduled_timer.setSingleShot(True)
         self._scheduled_timer.timeout.connect(self._scheduled_worker)
 
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         # Callbacks
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
 
         self._metadata_modified_callbacks = []
         self._function_renamed_callbacks = []
         self._rebased_callbacks = []
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Subsystem Lifetime
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def start(self):
         """
@@ -148,16 +149,16 @@ class DatabaseMetadata(object):
         del self._rebased_callbacks
         self._clear_cache()
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Providers
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def get_instructions_slice(self, start_address, end_address):
         """
         Get the instructions addresses that fall within a given range.
         """
         index_start = bisect.bisect_left(self.instructions, start_address)
-        index_end   = bisect.bisect_left(self.instructions, end_address)
+        index_end = bisect.bisect_left(self.instructions, end_address)
         return self.instructions[index_start:index_end]
 
     def get_instruction_size(self, address):
@@ -216,7 +217,7 @@ class DatabaseMetadata(object):
         #
 
         if not (node_metadata and address in node_metadata.instructions):
-            node_metadata = self.nodes.get(self._node_addresses[index-1], None)
+            node_metadata = self.nodes.get(self._node_addresses[index - 1], None)
 
             # double fault, let's just dip...
             if not (node_metadata and address in node_metadata.instructions):
@@ -300,7 +301,7 @@ class DatabaseMetadata(object):
 
         # select the two candidate addresses
         before = self._function_addresses[index - 1]
-        after  = self._function_addresses[index]
+        after = self._function_addresses[index]
 
         # return the function closest to the given address
         if after - address < address - before:
@@ -314,9 +315,9 @@ class DatabaseMetadata(object):
         """
         return len(self.functions) > 50000
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Refresh
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def refresh(self, progress_callback=None):
         """
@@ -430,9 +431,9 @@ class DatabaseMetadata(object):
           - get_function(ea)
 
         """
-        self._last_node = lambda: None # XXX blank node hack, see other ref to _last_node
+        self._last_node = lambda: None  # XXX blank node hack, see other ref to _last_node
         self._last_node.instructions = []
-        self._name2func = { f.name: f.address for f in itervalues(self.functions) }
+        self._name2func = {f.name: f.address for f in itervalues(self.functions)}
         self._node_addresses = sorted(self.nodes.keys())
         self._function_addresses = sorted(self.functions.keys())
         for function_metadata in itervalues(self.functions):
@@ -447,9 +448,9 @@ class DatabaseMetadata(object):
         """
         self._go_synchronous = True
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Metadata Collection
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @not_mainthread
     def _refresh_async(self, result_queue, progress_callback=None):
@@ -505,7 +506,7 @@ class DatabaseMetadata(object):
         total = len(function_addresses)
 
         start = time.time()
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
 
         # refresh the core database metadata asynchronously
         if is_async and self._async_collect_metadata(function_addresses, progress_callback):
@@ -516,7 +517,7 @@ class DatabaseMetadata(object):
         completed = total - len(function_addresses)
         self._sync_collect_metadata(function_addresses, progress_callback, completed)
 
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         end = time.time()
         logger.debug("Metadata collection took %s seconds" % (end - start))
 
@@ -526,7 +527,7 @@ class DatabaseMetadata(object):
         # refresh the internal function/node fast lookup lists
         self._refresh_lookup()
 
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
 
         # reinstall the rename listener hooks now that the refresh is done
         self._rename_hooks.hook()
@@ -637,7 +638,7 @@ class DatabaseMetadata(object):
 
             # attempt to 'lift' the function from the database
             try:
-                function_metadata = FunctionMetadata(address, disassembler_ctx)
+                function_metadata = FunctionMetadata(address, disassembler_ctx, self.get_function)
 
             #
             # this is not exactly a good thing but it indicates that the
@@ -658,9 +659,9 @@ class DatabaseMetadata(object):
             self.nodes.update(function_metadata.nodes)
             self.functions[address] = function_metadata
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Signal Handlers
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _name_changed(self, address, new_name):
         """
@@ -685,9 +686,9 @@ class DatabaseMetadata(object):
         # notify metadata listeners of the rename event
         self._notify_function_renamed()
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Callbacks
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def metadata_modified(self, callback):
         """
@@ -725,9 +726,9 @@ class DatabaseMetadata(object):
         """
         notify_callback(self._rebased_callbacks)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Scheduled
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @disassembler.execute_read
     def _scheduled_worker(self):
@@ -750,16 +751,39 @@ class DatabaseMetadata(object):
         if self._scheduled_timer:
             self._scheduled_timer.start(self._scheduled_interval)
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Function Metadata
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+class Locker(object):
+    def __init__(self, is_locked=False):
+        self.is_locked = is_locked
+
+    def locked(self):
+        return self.is_locked
+
+    def acquire(self):
+        self.is_locked = True
+
+    def release(self):
+        if not self.is_locked:
+            raise ValueError("can't release not acquired resource")
+
+        self.is_locked = False
+
+    def __enter__(self):
+        self.acquire()
+
+    def __exit__(self, xc_type, exc_value, exc_traceback):
+        self.release()
+
 
 class FunctionMetadata(object):
     """
     Function level metadata cache.
     """
 
-    def __init__(self, address, disassembler_ctx=None):
+    def __init__(self, address, disassembler_ctx=None, addr_to_function_metadata=None):
 
         # function metadata
         self.address = address
@@ -776,13 +800,57 @@ class FunctionMetadata(object):
         self.instruction_count = 0
         self.cyclomatic_complexity = 0
 
-        # collect metdata from the underlying database
+        self.addr_to_functionMetadata = addr_to_function_metadata
+        self.called_addresses = []
+        self._accumulated_edge_count = None
+        self._accumulated_instruction_count = None
+        self.__lock_accumulated_calculation_edge = Locker(False)
+        self.__lock_accumulated_calculation_instruction = Locker(False)
+
+        # collect metadata from the underlying database
         self._cache_function(disassembler_ctx)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Properties
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
+    def __metadata_accumulated_val(self, locker, internal_member_name, external_property_name, initial_value):
+        if self.__getattribute__(internal_member_name) is not None:
+            return self.__getattribute__(internal_member_name)
+
+        if self.addr_to_functionMetadata is None:
+            raise ValueError("can't resolve accumulated_variable_count")
+
+        # There is a loop, return 0 because the real value of the count will be calculated in the locked part.
+        if locker.locked():
+            logger.info("calculating accumulated value for {function_name} reached loop".format(function_name=self.name))
+            return 0
+
+        with locker as _:
+            accumulated_generic_count = initial_value
+            for func_addr in self.called_addresses:
+                metadata_called_func = self.addr_to_functionMetadata(func_addr)
+                if metadata_called_func is not None:
+                    accumulated_generic_count += metadata_called_func.__getattribute__(external_property_name)
+                else:
+                    logger.warning("In function {func_addr} code ref {external_func_addr} could not find metadata object"
+                                   " for accumulated calculation - can it be external function?".format(func_addr=hex(self.address), external_func_addr=hex(func_addr)))
+
+            self.__setattr__(internal_member_name, accumulated_generic_count)
+
+        return self.__getattribute__(internal_member_name)
+
+    @property
+    def accumulated_edge_count(self):
+        return self.__metadata_accumulated_val(self.__lock_accumulated_calculation_edge,
+                                      "_accumulated_edge_count",
+                                      "accumulated_edge_count", initial_value=len(self.edges))
+
+    @property
+    def accumulated_instruction_count(self):
+        return self.__metadata_accumulated_val(self.__lock_accumulated_calculation_edge,
+                                      "_accumulated_instruction_count",
+                                      "accumulated_instruction_count", initial_value=self.instruction_count)
     @property
     def instructions(self):
         """
@@ -797,9 +865,9 @@ class FunctionMetadata(object):
         """
         return self.size == 0
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Metadata Population
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _cache_function(self, disassembler_ctx):
         """
@@ -817,7 +885,7 @@ class FunctionMetadata(object):
         """
         raise RuntimeError("This function should have been monkey patched...")
 
-    def _ida_refresh_nodes(self, _):
+    def _ida_refresh_nodes(self, disassembler_ctx):
         """
         Refresh function node metadata against an open IDA database.
         """
@@ -825,7 +893,7 @@ class FunctionMetadata(object):
         function_metadata.nodes = {}
 
         # get function & flowchart object from IDA database
-        function  = idaapi.get_func(self.address)
+        function = idaapi.get_func(self.address)
         flowchart = idaapi.qflow_chart_t("", function, idaapi.BADADDR, idaapi.BADADDR, 0)
 
         #
@@ -847,8 +915,9 @@ class FunctionMetadata(object):
                 continue
 
             # create a new metadata object for this node
-            node_metadata = NodeMetadata(node.start_ea, node.end_ea, node_id)
-
+            node_code_refs = disassembler_ctx.get_code_refs_from_block(node.start_ea, node.end_ea)
+            node_metadata = NodeMetadata(node.start_ea, node.end_ea, node_id, addr_code_refs=node_code_refs)
+            self.called_addresses += node_code_refs
             #
             # establish a relationship between this node (basic block) and
             # this function metadata (its parent)
@@ -905,11 +974,12 @@ class FunctionMetadata(object):
 
             for i in range(0, count.value):
                 if edges[i].target:
-                    function_metadata.edges[edge_src].append(node._create_instance(BNNewBasicBlockReference(edges[i].target), bv).start)
+                    function_metadata.edges[edge_src].append(
+                        node._create_instance(BNNewBasicBlockReference(edges[i].target), bv).start)
             core.BNFreeBasicBlockEdgeList(edges, count.value)
 
             # NOTE/PERF ~28% of metadata collection time alone...
-            #for edge in node.outgoing_edges:
+            # for edge in node.outgoing_edges:
             #    function_metadata.edges[edge_src].append(edge.target.start)
 
     def _compute_complexity(self):
@@ -959,13 +1029,13 @@ class FunctionMetadata(object):
 
             # update the map of confirmed (walked) edges
             confirmed_edges[current_src] = self.edges.pop(current_src)
-            
+
         #
         # retain only the 'confirmed' edges. this may differ from the
         # original edge map because we are only keeping edges that can be
         # walked from the function entry. (eg, no ida exception handlers)
         #
-        
+
         self.edges = confirmed_edges
 
         # compute the final cyclomatic complexity for the function
@@ -983,9 +1053,16 @@ class FunctionMetadata(object):
         self.instruction_count = sum(node.instruction_count for node in itervalues(self.nodes))
         self.cyclomatic_complexity = self._compute_complexity()
 
-    #--------------------------------------------------------------------------
+        # Clean cache
+        with self.__lock_accumulated_calculation_edge as _:
+            self._accumulated_edge_count = None
+
+        with self.__lock_accumulated_calculation_instruction as _:
+            self._accumulated_instruction_count = None
+
+    # --------------------------------------------------------------------------
     # Operator Overloads
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def __eq__(self, other):
         """
@@ -1000,16 +1077,17 @@ class FunctionMetadata(object):
         result &= viewkeys(self.nodes) == viewkeys(other.nodes)
         return result
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Node Metadata
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class NodeMetadata(object):
     """
     Node (basic block) level metadata cache.
     """
 
-    def __init__(self, start_ea, end_ea, node_id=None, disassembler_ctx=None):
+    def __init__(self, start_ea, end_ea, node_id=None, disassembler_ctx=None, addr_code_refs=None):
 
         # node metadata
         self.size = end_ea - start_ea
@@ -1023,14 +1101,19 @@ class NodeMetadata(object):
         # instruction addresses
         self.instructions = {}
 
-        #----------------------------------------------------------------------
+        if addr_code_refs is None:
+            addr_code_refs = []
+
+        # list of code refs from this block (to calculate accumulated blocks)
+        self.addr_code_refs = addr_code_refs
+        # ----------------------------------------------------------------------
 
         # collect metadata from the underlying database
         self._cache_node(disassembler_ctx)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Metadata Population
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _cache_node(self, disassembler_ctx):
         """
@@ -1092,15 +1175,15 @@ class NodeMetadata(object):
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Operator Overloads
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def __str__(self):
         """
         Printable NodeMetadata.
         """
-        output  = ""
+        output = ""
         output += "Node 0x%08X Info:\n" % self.address
         output += " Address: 0x%08X\n" % self.address
         output += " Size: %u\n" % self.size
@@ -1130,9 +1213,10 @@ class NodeMetadata(object):
         result &= self.id == other.id
         return result
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Async Metadata Helpers
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 @disassembler.execute_ui
 def metadata_progress(completed, total):
@@ -1143,9 +1227,10 @@ def metadata_progress(completed, total):
         "Collected metadata for %u/%u Functions" % (completed, total)
     )
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # MONKEY PATCHING
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 #
 #   We use 'monkey patching' to modify the Metadata class definitions at
 #   runtime. Specifically, we use it to swap in metadata collection routines
@@ -1160,6 +1245,7 @@ def metadata_progress(completed, total):
 if disassembler.NAME == "IDA":
     import idaapi
     import idautils
+
     FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
     NodeMetadata._cache_node = NodeMetadata._ida_cache_node
 
@@ -1170,6 +1256,7 @@ elif disassembler.NAME == "BINJA":
     import ctypes
     import binaryninja
     from binaryninja import core
+
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
     NodeMetadata._cache_node = NodeMetadata._binja_cache_node
 
