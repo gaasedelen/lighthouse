@@ -41,11 +41,13 @@ jobs:
       - name: Extract Intel Pin
         run: tar zxvf ~/pin.tar.gz
 
-      - name: Compile time
+      - name: Set ENV
+        run: echo "$PIN_ROOT" >> $GITHUB_PATH
+
+      - name: Build
         working-directory: coverage/pin
         env: 
           PIN_ROOT: ~/pin
-          PATH: $PATH:$PIN_ROOT
         run: make 
           
       # This should fail for now...  
