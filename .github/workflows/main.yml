@@ -25,12 +25,6 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      - name: Update apt
-        run:  sudo apt update -y -qq
-
-      - name: Install build-essential
-        run: sudo apt install build-essential make -y -qq
-        
       - name: Download Intel Pin
         run: wget https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.17-98314-g0c048d619-gcc-linux.tar.gz -O ~/pin.tar.gz
       
