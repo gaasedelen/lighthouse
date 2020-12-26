@@ -32,10 +32,12 @@ jobs:
         run: tar zxvf ~/pin.tar.gz
        
       - name: Set ENV
-        run: echo "$HOME/pin" >> $GITHUB_PATH
-
-      - name: Set Path
-        run: echo "PATH=$PATH:$GITHUB_PATH" >> $GITHUB_ENV
+        run: |
+            echo PATH $PATH
+            echo PIN_ROOT $PIN_ROOT
+            export PIN_HOME=$HOME/pin
+            echo "PIN_HOME=${PIN_HOME}" >> $GITHUB_ENV
+            echo "${PIN_HOME}/bin" >> $GITHUB_PATH
 
       - name: Build
         working-directory: coverage/pin
