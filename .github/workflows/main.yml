@@ -37,10 +37,10 @@ jobs:
 
       - name: Compile time
         working-directory: coverage/pin
-        run: | 
-          export PIN_ROOT=~/pin
-          export PATH=$PATH:$PIN_ROOT
-          make
+        env: 
+          PIN_ROOT: ~/pin
+          PATH: $PATH:$PIN_ROOT
+        run: make 
           
       # This should fail for now...  
       - name: Run test
