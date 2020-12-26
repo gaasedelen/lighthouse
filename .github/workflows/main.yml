@@ -30,10 +30,6 @@ jobs:
 
       - name: Install build-essential
         run: sudo apt install build-essential make -y -qq
-
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
         
       - name: Download Intel Pin
         run: wget https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.17-98314-g0c048d619-gcc-linux.tar.gz -O ~/pin.tar.gz
@@ -42,7 +38,7 @@ jobs:
         run: tar zxvf ~/pin.tar.gz
 
       - name: Set ENV
-        run: echo "$PIN_ROOT" >> $GITHUB_PATH
+        run: echo "${HOME}/pin" >> $GITHUB_PATH
 
       - name: Build
         working-directory: coverage/pin
