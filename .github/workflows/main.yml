@@ -25,8 +25,11 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
+      - name: Update apt
+        run:  sudo apt update -y -qq
+
       - name: Install build-essential
-        run: apt install build-essential make 
+        run: sudo apt install build-essential make -y -qq
 
       # Runs a single command using the runners shell
       - name: Run a one-line script
