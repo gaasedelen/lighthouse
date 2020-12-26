@@ -36,10 +36,10 @@ jobs:
         run: tar zxvf ~/pin.tar.gz
 
       - name: Compile time
+        working-directory: coverage/pin
         run: | 
           export PIN_ROOT=~/pin
           export PATH=$PATH:$PIN_ROOT
-          cd coverage/pin
           make
           
       # This should fail for now...  
