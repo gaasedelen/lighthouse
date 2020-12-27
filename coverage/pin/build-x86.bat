@@ -2,8 +2,8 @@
 cls
 
 cl ^
-    /c /EHa- /EHs- /GR- /GS- /Gd /Gm- /Gy /MT /O2 /Oi- /Oy- /TP /W3 /WX- /Zc:forScope /Zc:inline /Zc:wchar_t /fp:precise /nologo /wd4316  ^
-    /DTARGET_IA32 /DHOST_IA32 /DTARGET_WINDOWS /DBIGARRAY_MULTIPLIER=1 /DWIN32 /D__PIN__=1 /DPIN_CRT=1 /D__i386__ ^
+    /c /Fo /nologo /EHa- /EHs- /GR- /GS- /Gd /Gm- /Gy /MD /O2 /Oi- /Oy- /TP /W3 /WX- /Zc:forScope /Zc:inline /Zc:wchar_t /wd4316 /wd4530 /fp:precise ^
+    /DTARGET_IA32 /DHOST_IA32 /DTARGET_WINDOWS /DWIN32 /D__PIN__=1 /DPIN_CRT=1 /D_STLP_IMPORT_IOSTREAMS /D__i386__ ^
     /I"%PIN_ROOT%\extras\xed-ia32\include\xed" ^
     /I%PIN_ROOT%\source\include\pin ^
     /I%PIN_ROOT%\source\include\pin\gen ^
@@ -28,7 +28,7 @@ link ^
     /LIBPATH:%PIN_ROOT%\ia32\lib ^
     /LIBPATH:"%PIN_ROOT%\ia32\lib-ext" ^
     /LIBPATH:"%PIN_ROOT%\extras\xed-ia32\lib" ^
-    /LIBPATH:%PIN_ROOT%\ia32\runtime\pincrt pin.lib xed.lib pinvm.lib kernel32.lib "stlport-static.lib" "m-static.lib" "c-static.lib" "os-apis.lib" "ntdll-32.lib" crtbeginS.obj ^
+    /LIBPATH:%PIN_ROOT%\ia32\runtime\pincrt pin.lib xed.lib pinvm.lib pincrt.lib ntdll-32.lib kernel32.lib crtbeginS.obj ^
     /NODEFAULTLIB ^
     /MANIFEST:NO ^
     /OPT:NOREF ^
