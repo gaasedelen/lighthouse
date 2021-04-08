@@ -192,7 +192,7 @@ class DrcovData(CoverageFile):
         data_name, version = version_data.split(" ")
         #assert data_name == "version"
         self.module_table_version = int(version)
-        if not self.module_table_version in [2, 3, 4]:
+        if not self.module_table_version in [2, 3, 4, 5]:
             raise ValueError("Unsupported (new?) drcov log format...")
 
         # parse module count in table from 'count Y'
@@ -376,6 +376,8 @@ class DrcovModule(object):
             self._parse_module_v3(data)
         elif version == 4:
             self._parse_module_v4(data)
+        elif version == 5:
+            self._parse_module_v5(data)
         else:
             raise ValueError("Unknown module format (v%u)" % version)
 
@@ -435,6 +437,25 @@ class DrcovModule(object):
         self.path          = str(data[-1])
         self.size          = self.end-self.base
         self.filename      = os.path.basename(self.path.replace('\\', os.sep))
+
+    def _parse_module_v5(self, data):
+        """
+        Parse a module table v5 entry.
+        """
+        self.id            = int(data[0])
+        self.containing_id = int(data[1])
+        self.base          = int(data[2], 16)
+        self.end           = int(data[3], 16)
+        self.entry         = int(data[4], 16)
+        self.offset        = int(data[5], 16)
+        self.preferred_base= int(data[6], 16)
+        if len(data) > 8: # Windows Only
+            self.checksum  = int(data[7], 16)
+            self.timestamp = int(data[8], 16)
+        self.path          = str(data[-1])
+        self.size          = self.end-self.base
+        self.filename      = os.path.basename(self.path.replace('\\', os.sep))
+
 
 #------------------------------------------------------------------------------
 # drcov basic block parser
