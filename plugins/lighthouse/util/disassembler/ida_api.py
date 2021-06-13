@@ -228,9 +228,14 @@ class IDACoreAPI(DisassemblerCoreAPI):
         idaapi.gen_file(idaapi.OFILE_LST, ida_fd, imagebase, imagebase+0x20, idaapi.GENFLG_GENHTML)
         idaapi.eclose(ida_fd)
 
-        # read the dumped text
-        with open(path, "r") as fd:
-            html = fd.read()
+        try:
+            # read the dumped text
+            with open(path, "r") as fd:
+                html = fd.read()
+        except Exception as e:
+            with open(path, "rb") as fd:
+                htmlb = fd.read()
+            html = ''.join([chr(i) if i < 128 else '' for i in htmlb])
 
         # delete the temp file from disk
         try:
