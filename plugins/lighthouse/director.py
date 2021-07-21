@@ -666,7 +666,7 @@ class CoverageDirector(object):
         #
 
         block_ratio = len(basic_blocks) / float(len(instructions))
-        block_trace_confidence = 0.90
+        block_trace_confidence = 0.80
         logger.debug("Block confidence %f" % block_ratio)
 
         #
