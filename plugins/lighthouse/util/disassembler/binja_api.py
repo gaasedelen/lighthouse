@@ -380,7 +380,10 @@ if QT_AVAILABLE:
             if not view_frame:
                 return False
 
-            import shiboken2 as shiboken
+            if USING_PYSIDE6:
+                import shiboken6 as shiboken
+            else:
+                import shiboken2 as shiboken
             vf_ptr = shiboken.getCppPointer(view_frame)[0]
             return self._visible_for_view[vf_ptr]
 
@@ -392,7 +395,10 @@ if QT_AVAILABLE:
                 self._active_view = None
                 return
 
-            import shiboken2 as shiboken
+            if USING_PYSIDE6:
+                import shiboken6 as shiboken
+            else:
+                import shiboken2 as shiboken
             self._active_view = shiboken.getCppPointer(view_frame)[0]
             if self.visible:
                 dock_handler = DockHandler.getActiveDockHandler()

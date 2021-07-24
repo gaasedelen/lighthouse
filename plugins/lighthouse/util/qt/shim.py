@@ -21,6 +21,7 @@ QT_AVAILABLE = False
 
 USING_PYQT5 = False
 USING_PYSIDE2 = False
+USING_PYSIDE6 = False
 
 #------------------------------------------------------------------------------
 # PyQt5 Compatibility
@@ -64,3 +65,26 @@ if QT_AVAILABLE == False:
     except ImportError:
         pass
 
+#------------------------------------------------------------------------------
+# PySide6 Compatibility
+#------------------------------------------------------------------------------
+
+# If all else fails, try to load PySide6
+if QT_AVAILABLE == False:
+    try:
+        import PySide6.QtGui as QtGui
+        import PySide6.QtCore as QtCore
+        import PySide6.QtWidgets as QtWidgets
+
+        # alias for less PySide6 <--> PyQt5 shimming
+        QtCore.pyqtSignal = QtCore.Signal
+        QtCore.pyqtSlot = QtCore.Slot
+        QtWidgets.QAction = QtGui.QAction
+
+        # importing went okay, PySide must be available for use
+        QT_AVAILABLE = True
+        USING_PYSIDE6 = True
+
+    # import failed. No Qt / UI bindings available...
+    except ImportError:
+        pass
