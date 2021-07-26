@@ -91,7 +91,6 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
         else: # commercial, personal
             disassembler_version = version_string.split(" ", 1)[0]
 
-        major, minor, patch = map(int, disassembler_version.split("."))
         major, minor, patch, *_= disassembler_version.split(".") + ['0']
 
         # save the version number components for later use
