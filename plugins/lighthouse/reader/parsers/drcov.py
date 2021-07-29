@@ -310,22 +310,30 @@ class DrcovData(CoverageFile):
 
         # parse the plaintext basic block entries one by one
         else:
+            self._parse_bb_table_text_entries(f)
+
+    def _parse_bb_table_text_entries(self, f):
+        """
+        Parse drcov log basic block table text entries from filestream.
+        """
+        table_header = f.readline().decode('utf-8').strip()
+
+        if table_header != "module id, start, size:":
+            raise ValueError("Invalid BB header: %r" % table_header)
+
+        pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-fA-F]+)\,\s*(?P<size>[0-9]+)$")
+        for i, bb in enumerate(self.bbs):
             text_entry = f.readline().decode('utf-8').strip()
+            if not text_entry:
+                continue
 
-            if text_entry != "module id, start, size:":
-                raise ValueError("Invalid BB header: %r" % text_entry)
+            match = pattern.match(text_entry)
+            if not match:
+                raise ValueError("Invalid BB entry: %r" % text_entry)
 
-            pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-fA-F]+)\,\s*(?P<size>[0-9]+)$")
-            for bb in self.bbs:
-                text_entry = f.readline().decode('utf-8').strip()
-
-                match = pattern.match(text_entry)
-                if not match:
-                    raise ValueError("Invalid BB entry: %r" % text_entry)
-
-                bb.start = int(match.group("start"), 16)
-                bb.size = int(match.group("size"), 10)
-                bb.mod_id = int(match.group("mod"), 10)
+            bb.start = int(match.group("start"), 16)
+            bb.size = int(match.group("size"), 10)
+            bb.mod_id = int(match.group("mod"), 10)
 
 #------------------------------------------------------------------------------
 # drcov module parser
