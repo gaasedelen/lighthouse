@@ -25,6 +25,8 @@ class LighthouseBinja(LighthouseCore):
     def get_context(self, dctx, startup=True):
         """
         Get the LighthouseContext object for a given database context.
+
+        In Binary Ninja, a dctx is a BinaryView (BV).
         """
         dctx_id = ctypes.addressof(dctx.handle.contents)
 
@@ -64,6 +66,30 @@ class LighthouseBinja(LighthouseCore):
 
         # return the lighthouse context object for this database ctx / bv
         return lctx
+
+    def binja_close_context(self, dctx):
+        """
+        Attempt to close / spin-down the LighthouseContext for the given dctx.
+
+        In Binary Ninja, a dctx is a BinaryView (BV).
+        """
+        dctx_id = ctypes.addressof(dctx.handle.contents)
+
+        # fetch the LighthouseContext for the closing BNDB
+        try:
+            lctx = self.lighthouse_contexts.pop(dctx_id)
+
+        #
+        # if lighthouse was not actually used for this BNDB / session, then
+        # the lookup will fail as there is nothing to spindown
+        #
+
+        except KeyError:
+            return
+
+        # spin down the closing context (stop threads, cleanup qt state, etc)
+        logger.info("Closing a LighthouseContext...")
+        lctx.terminate()
 
     #--------------------------------------------------------------------------
     # UI Integration (Internal)

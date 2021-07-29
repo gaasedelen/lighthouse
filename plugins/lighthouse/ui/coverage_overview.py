@@ -275,6 +275,22 @@ class EventProxy(QtCore.QObject):
 
         if int(event.type()) == self.EventDestroy:
             source.removeEventFilter(self)
+
+            #
+            # XXX/V35: This is pretty hacky annoying stuff, but the lifetime
+            # of the CoverageOverview widget is managed internally by binja
+            # and gets deleted/cleaned up *after* a database is closed.
+            #
+            # it's best we just unload the lighthouse context in binja after
+            # the UI widgets have been destroyed (which aligns with IDA)
+            #
+
+            if disassembler.NAME == "BINJA":
+                lctx = self._target.lctx
+                core = lctx.core
+                core.binja_close_context(lctx.dctx)
+
+            # cleanup the UI / qt references for the CoverageOverview elements
             self._target.terminate()
 
         #
