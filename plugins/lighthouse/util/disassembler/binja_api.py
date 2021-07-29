@@ -384,6 +384,7 @@ if QT_AVAILABLE:
                 import shiboken6 as shiboken
             else:
                 import shiboken2 as shiboken
+
             vf_ptr = shiboken.getCppPointer(view_frame)[0]
             return self._visible_for_view[vf_ptr]
 
@@ -399,7 +400,9 @@ if QT_AVAILABLE:
                 import shiboken6 as shiboken
             else:
                 import shiboken2 as shiboken
+
             self._active_view = shiboken.getCppPointer(view_frame)[0]
+
             if self.visible:
                 dock_handler = DockHandler.getActiveDockHandler()
                 dock_handler.setVisible(self.m_name, True)
