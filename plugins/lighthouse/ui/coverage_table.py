@@ -261,7 +261,12 @@ class CoverageTableView(QtWidgets.QTableView):
             return
 
         # show the popup menu to the user, and wait for their selection
-        action = ctx_menu.exec_(self.viewport().mapToGlobal(position))
+        if USING_PYSIDE6:
+            exec_func = getattr(ctx_menu, "exec")
+        else:
+            exec_func = getattr(ctx_menu, "exec_")
+
+        action = exec_func(self.viewport().mapToGlobal(position))
 
         # process the user action
         self._process_table_ctx_menu_action(action)
@@ -281,7 +286,11 @@ class CoverageTableView(QtWidgets.QTableView):
             return
 
         # show the popup menu to the user, and wait for their selection
-        action = ctx_menu.exec_(hh.viewport().mapToGlobal(position))
+        if USING_PYSIDE6:
+            exec_func = getattr(ctx_menu, "exec")
+        else:
+            exec_func = getattr(ctx_menu, "exec_")
+        action = exec_func(hh.viewport().mapToGlobal(position))
 
         # process the user action
         self._process_header_ctx_menu_action(action, column)
