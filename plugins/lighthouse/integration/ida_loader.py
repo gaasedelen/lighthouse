@@ -88,7 +88,7 @@ class LighthouseIDAPlugin(idaapi.plugin_t):
         except Exception as e:
             logger.exception("Failed to cleanly unload Lighthouse from IDA.")
         end = time.time()
-        print("-"*50)
+        logger.debug("-"*50)
 
         logger.debug("IDA term done... (%.3f seconds...)" % (end-start))
 
