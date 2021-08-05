@@ -43,6 +43,32 @@ except ImportError:
     USING_NEW_BINJA = False
     USING_OLD_BINJA = False
 
+USING_PYSIDE2 = False
+
+#------------------------------------------------------------------------------
+# PySide2 Compatibility
+#------------------------------------------------------------------------------
+
+# if PyQt5 did not import, try to load PySide
+if QT_AVAILABLE == False:
+    try:
+        import PySide2.QtGui as QtGui
+        import PySide2.QtCore as QtCore
+        import PySide2.QtWidgets as QtWidgets
+
+        # alias for less PySide2 <--> PyQt5 shimming
+        QtCore.pyqtSignal = QtCore.Signal
+        QtCore.pyqtSlot = QtCore.Slot
+
+        # importing went okay, PySide must be available for use
+        QT_AVAILABLE = True
+        USING_PYSIDE2 = True
+        USING_PYQT5 = True
+
+    # import failed. No Qt / UI bindings available...
+    except ImportError:
+        pass
+
 #------------------------------------------------------------------------------
 # PyQt5 Compatibility
 #------------------------------------------------------------------------------

@@ -361,8 +361,8 @@ class DisassemblerContextAPI(object):
     # Hooks API
     #--------------------------------------------------------------------------
 
-    @abc.abstractmethod
-    def create_rename_hooks(self, function_address, new_name):
+    #def create_rename_hooks(self, function_address, new_name):
+    def create_rename_hooks(self):
         """
         Returns a hooking object that can capture rename events for this context.
         """

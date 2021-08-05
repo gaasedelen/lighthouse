@@ -325,7 +325,7 @@ class EventProxy(QtCore.QObject):
             if self._target.visible and self._first_hit:
                 self._first_hit = False
 
-                if disassembler.NAME == "BINJA":
+                if disassembler.NAME == "BINJA" or disassembler.NAME == 'CUTTER':
                     self._target.lctx.start()
 
                 if not self._target.director.metadata.cached:

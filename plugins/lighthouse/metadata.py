@@ -912,6 +912,52 @@ class FunctionMetadata(object):
             #for edge in node.outgoing_edges:
             #    function_metadata.edges[edge_src].append(edge.target.start)
 
+    def _cutter_refresh_nodes(self, dctx):
+        """
+        Refresh function node metadata using Cutter/radare2 API
+        """
+        function_metadata = self
+        function_metadata.nodes = {}
+
+        # get the function from the Cutter database
+        # TODO Use Cutter cache/API
+        #function = cutter.get_function_at(self.address)
+        function = cutter.cmdj('afbj @ ' + str(self.address))
+
+        #
+        # now we will walk the flowchart for this function, collecting
+        # information on each of its nodes (basic blocks) and populating
+        # the function & node metadata objects.
+        #
+
+        for bb in function:
+
+            # create a new metadata object for this node
+            node_metadata = NodeMetadata(bb['addr'], bb['addr'] + bb['size'],
+                                         dctx)
+            #
+            # establish a relationship between this node (basic block) and
+            # this function metadata (its parent)
+            #
+
+            node_metadata.function = function_metadata
+            function_metadata.nodes[bb['addr']] = node_metadata
+
+        #
+        # TODO/CUTTER: is there a better api for this? like xref from edge_src?
+        # we have to do it down here (unlike binja) because radare does not
+        # guarantee a its edges will land within the current function CFG...
+        #
+
+        # compute all of the edges between nodes in the current function
+        for node_metadata in itervalues(function_metadata.nodes):
+            edge_src = node_metadata.edge_out
+            for bb in function:
+                if bb.get('jump', -1) in function_metadata.nodes:
+                    function_metadata.edges[edge_src].append(bb.get('jump'))
+                if bb.get('fail', -1) in function_metadata.nodes:
+                    function_metadata.edges[edge_src].append(bb.get('fail'))
+
     def _compute_complexity(self):
         """
         Walk the function CFG to determine approximate cyclomatic complexity.
@@ -1092,6 +1138,25 @@ class NodeMetadata(object):
         # save the number of instructions in this block
         self.instruction_count = len(self.instructions)
 
+    def _cutter_cache_node(self, disassembler_ctx):
+        """
+        Collect node metadata from the underlying database.
+        """
+        current_address = self.address
+        node_end = self.address + self.size
+
+        while current_address < node_end:
+            # TODO Use/implement Cutter API for both commands (that's very dirty)
+            instruction_size = cutter.cmdj('aoj')[0]['size']
+            self.instructions[current_address] = instruction_size
+            current_address += int(cutter.cmd('?v $l @ ' + str(current_address)), 16)
+
+        # the source of the outward edge
+        self.edge_out = current_address - instruction_size
+
+        ## save the number of instructions in this block
+        self.instruction_count = len(self.instructions)
+
     #--------------------------------------------------------------------------
     # Operator Overloads
     #--------------------------------------------------------------------------
@@ -1176,6 +1241,13 @@ elif disassembler.NAME == "BINJA":
     # pull hot funcs out of module for faster access... (perf)
     BNGetInstructionLength = core.BNGetInstructionLength
     BNNewBasicBlockReference = core.BNNewBasicBlockReference
+
+elif disassembler.NAME == "CUTTER":
+    import cutter
+    import CutterBindings
+    FunctionMetadata._refresh_nodes = FunctionMetadata._cutter_refresh_nodes
+    #NodeMetadata._build_metadata = NodeMetadata._cutter_build_metadata
+    NodeMetadata._cache_node = NodeMetadata._cutter_cache_node
 
 else:
     raise NotImplementedError("DISASSEMBLER-SPECIFIC SHIM MISSING")

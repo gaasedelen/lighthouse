@@ -4,6 +4,7 @@ import struct
 import shutil
 import logging
 import traceback
+import PySide2
 
 # NOTE: Py2/Py3 compat
 try:
@@ -549,7 +550,8 @@ class LighthousePalette(object):
         if disassembler.NAME == "BINJA":
             test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)
         else:
-            test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
+            #test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html
+            test_widget.setAttribute(PySide2.QtCore.Qt.WidgetAttribute(103))
 
 
         # render the (invisible) widget
