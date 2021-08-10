@@ -1,5 +1,11 @@
-# Binary Ninja 'Plugin Manager' Stub
+# Lighthouse - A Coverage Explorer for Reverse Engineers
 
-This directory contains a simple, alternative loading stub which is automatically used when Lighthouse is installed through the Binary Ninja 'Plugin Manager'.
+<p align="center">
+<img alt="Lighthouse Plugin" src="https://raw.githubusercontent.com/gaasedelen/lighthouse/master/screenshots/overview.gif"/>
+</p>
 
-There is no reason for you to install this manually, or even be reading this README :-)
+## Overview
+
+Lighthouse is a powerful code coverage explorer for [IDA Pro](https://www.hex-rays.com/products/ida/) and [Binary Ninja](https://binary.ninja/), providing software researchers with uniquely interactive controls to study execution maps for native applications without requiring symbols or source.
+
+For additional usage information, please check out the full [README](https://github.com/gaasedelen/lighthouse) on GitHub.
