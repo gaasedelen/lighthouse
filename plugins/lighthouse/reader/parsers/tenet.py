@@ -2,7 +2,7 @@ import collections
 from ..coverage_file import CoverageFile
 
 # 'known' instruction pointer labels from Tenet traces
-INSTRUCTION_POINTERS = ['RIP', 'PC']
+INSTRUCTION_POINTERS = ['EIP', 'RIP', 'PC']
 
 class TenetData(CoverageFile):
     """
