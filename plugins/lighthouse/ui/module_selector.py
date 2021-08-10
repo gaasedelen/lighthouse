@@ -74,11 +74,11 @@ class ModuleSelector(QtWidgets.QDialog):
         description_text = \
         "Lighthouse could not automatically identify the target module in the given coverage file:<br />" \
         "<br />" \
-        "-- <b>Target:</b> %s<br />" \
-        "-- <b>Coverage File:</b> %s<br />" \
+        "-- <b>Target:</b> {0}<br />" \
+        "-- <b>Coverage File:</b> {1}<br />" \
         "<br />" \
         "Please double click the name of the module that matches this database, or close this dialog<br />" \
-        "if you do not see your binary listed in the table below..." % (self._target_name, self._coverage_file)
+        "if you do not see your binary listed in the table below...".format(self._target_name, self._coverage_file)
 
         self._label_description = QtWidgets.QLabel(description_text)
         self._label_description.setTextFormat(QtCore.Qt.RichText)

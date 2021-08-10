@@ -26,9 +26,9 @@ class LighthouseCore(object):
     # Plugin Metadata
     #--------------------------------------------------------------------------
 
-    PLUGIN_VERSION = "0.9.1"
+    PLUGIN_VERSION = "0.9.2"
     AUTHORS        = "Markus Gaasedelen"
-    DATE           = "2020"
+    DATE           = "2021"
 
     #--------------------------------------------------------------------------
     # Initialization
@@ -87,14 +87,10 @@ class LighthouseCore(object):
 
         # build the main banner title
         banner_params = (self.PLUGIN_VERSION, self.AUTHORS, self.DATE)
-        banner_title  = "Lighthouse v%s - (c) %s - %s" % banner_params
+        banner_title  = "v%s - (c) %s - %s" % banner_params
 
         # print plugin banner
-        lmsg("")
-        lmsg("-"*75)
-        lmsg("---[ %s" % banner_title)
-        lmsg("-"*75)
-        lmsg("")
+        lmsg("Loaded %s" % banner_title)
 
     #--------------------------------------------------------------------------
     # Disassembler / Database Context Selector

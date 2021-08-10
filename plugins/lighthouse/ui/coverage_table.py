@@ -261,7 +261,12 @@ class CoverageTableView(QtWidgets.QTableView):
             return
 
         # show the popup menu to the user, and wait for their selection
-        action = ctx_menu.exec_(self.viewport().mapToGlobal(position))
+        if USING_PYSIDE6:
+            exec_func = getattr(ctx_menu, "exec")
+        else:
+            exec_func = getattr(ctx_menu, "exec_")
+
+        action = exec_func(self.viewport().mapToGlobal(position))
 
         # process the user action
         self._process_table_ctx_menu_action(action)
@@ -281,7 +286,11 @@ class CoverageTableView(QtWidgets.QTableView):
             return
 
         # show the popup menu to the user, and wait for their selection
-        action = ctx_menu.exec_(hh.viewport().mapToGlobal(position))
+        if USING_PYSIDE6:
+            exec_func = getattr(ctx_menu, "exec")
+        else:
+            exec_func = getattr(ctx_menu, "exec_")
+        action = exec_func(hh.viewport().mapToGlobal(position))
 
         # process the user action
         self._process_header_ctx_menu_action(action, column)
@@ -728,7 +737,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # initialize a monospace font to use for table row / cell text
         self._entry_font = MonospaceFont()
-        self._entry_font.setStyleStrategy(QtGui.QFont.ForceIntegerMetrics)
+        if not USING_PYSIDE6:
+            #TODO Figure out if this matters?
+            self._entry_font.setStyleStrategy(QtGui.QFont.ForceIntegerMetrics)
         self._entry_font.setPointSizeF(normalize_to_dpi(10))
 
         # use the default / system font for the column titles

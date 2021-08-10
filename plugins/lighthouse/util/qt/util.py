@@ -19,7 +19,7 @@ def MonospaceFont():
     Convenience alias for creating a monospace Qt font object.
     """
     font = QtGui.QFont("Courier New")
-    font.setStyleHint(QtGui.QFont.TypeWriter)
+    font.setStyleHint(QtGui.QFont.Monospace)
     return font
 
 #------------------------------------------------------------------------------

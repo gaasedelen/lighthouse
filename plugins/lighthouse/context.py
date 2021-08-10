@@ -66,6 +66,8 @@ class LighthouseContext(object):
         """
         Spin down any session subsystems before the session is deleted.
         """
+        if not self._started:
+            return
         self.painter.terminate()
         self.director.terminate()
         self.metadata.terminate()

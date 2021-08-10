@@ -238,16 +238,30 @@ class IDACoreAPI(DisassemblerCoreAPI):
         except OSError:
             pass
 
-        # attempt to parse the user's disassembly background color from the html
+        # attempt to parse the user's disassembly background color from the html (7.0?)
         bg_color_text = get_string_between(html, '<body bgcolor="', '">')
         if bg_color_text:
             logger.debug(" - Extracted bgcolor '%s' from regex!" % bg_color_text)
             return QtGui.QColor(bg_color_text)
 
-        # sometimes the above one isn't present... so try this one
+        #
+        # sometimes the above one isn't present... so try this one (7.1 - 7.4 maybe?)
+        #
+        # TODO: IDA 7.5 says c1 is /* line-fg-default */ ... but it's possible c1
+        # had the bg color of the line in other builds of 7.x? I'm not sure but
+        # this should be double checked at some point and can maybe just be removed
+        # in favor of c41 (line-bg-default) as that's what we really want
+        #
+
         bg_color_text = get_string_between(html, '.c1 \{ background-color: ', ';')
         if bg_color_text:
-            logger.debug(" - Extracted background-color '%s' from regex!" % bg_color_text)
+            logger.debug(" - Extracted background-color '%s' from line-fg-default!" % bg_color_text)
+            return QtGui.QColor(bg_color_text)
+
+        # -- IDA 7.5 says c41 is /* line-bg-default */, a.k.a the bg color for disassembly text
+        bg_color_text = get_string_between(html, '.c41 \{ background-color: ', ';')
+        if bg_color_text:
+            logger.debug(" - Extracted background-color '%s' from line-bg-default!" % bg_color_text)
             return QtGui.QColor(bg_color_text)
 
         logger.debug(" - HTML color regex failed...")

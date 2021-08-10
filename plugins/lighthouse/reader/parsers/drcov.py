@@ -192,7 +192,7 @@ class DrcovData(CoverageFile):
         data_name, version = version_data.split(" ")
         #assert data_name == "version"
         self.module_table_version = int(version)
-        if not self.module_table_version in [2, 3, 4]:
+        if not self.module_table_version in [2, 3, 4, 5]:
             raise ValueError("Unsupported (new?) drcov log format...")
 
         # parse module count in table from 'count Y'
@@ -310,22 +310,30 @@ class DrcovData(CoverageFile):
 
         # parse the plaintext basic block entries one by one
         else:
+            self._parse_bb_table_text_entries(f)
+
+    def _parse_bb_table_text_entries(self, f):
+        """
+        Parse drcov log basic block table text entries from filestream.
+        """
+        table_header = f.readline().decode('utf-8').strip()
+
+        if table_header != "module id, start, size:":
+            raise ValueError("Invalid BB header: %r" % table_header)
+
+        pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-fA-F]+)\,\s*(?P<size>[0-9]+)$")
+        for i, bb in enumerate(self.bbs):
             text_entry = f.readline().decode('utf-8').strip()
+            if not text_entry:
+                continue
 
-            if text_entry != "module id, start, size:":
-                raise ValueError("Invalid BB header: %r" % text_entry)
+            match = pattern.match(text_entry)
+            if not match:
+                raise ValueError("Invalid BB entry: %r" % text_entry)
 
-            pattern = re.compile(r"^module\[\s*(?P<mod>[0-9]+)\]\:\s*(?P<start>0x[0-9a-fA-F]+)\,\s*(?P<size>[0-9]+)$")
-            for bb in self.bbs:
-                text_entry = f.readline().decode('utf-8').strip()
-
-                match = pattern.match(text_entry)
-                if not match:
-                    raise ValueError("Invalid BB entry: %r" % text_entry)
-
-                bb.start = int(match.group("start"), 16)
-                bb.size = int(match.group("size"), 10)
-                bb.mod_id = int(match.group("mod"), 10)
+            bb.start = int(match.group("start"), 16)
+            bb.size = int(match.group("size"), 10)
+            bb.mod_id = int(match.group("mod"), 10)
 
 #------------------------------------------------------------------------------
 # drcov module parser
@@ -376,6 +384,8 @@ class DrcovModule(object):
             self._parse_module_v3(data)
         elif version == 4:
             self._parse_module_v4(data)
+        elif version == 5:
+            self._parse_module_v5(data)
         else:
             raise ValueError("Unknown module format (v%u)" % version)
 
@@ -435,6 +445,25 @@ class DrcovModule(object):
         self.path          = str(data[-1])
         self.size          = self.end-self.base
         self.filename      = os.path.basename(self.path.replace('\\', os.sep))
+
+    def _parse_module_v5(self, data):
+        """
+        Parse a module table v5 entry.
+        """
+        self.id            = int(data[0])
+        self.containing_id = int(data[1])
+        self.base          = int(data[2], 16)
+        self.end           = int(data[3], 16)
+        self.entry         = int(data[4], 16)
+        self.offset        = int(data[5], 16)
+        self.preferred_base= int(data[6], 16)
+        if len(data) > 8: # Windows Only
+            self.checksum  = int(data[7], 16)
+            self.timestamp = int(data[8], 16)
+        self.path          = str(data[-1])
+        self.size          = self.end-self.base
+        self.filename      = os.path.basename(self.path.replace('\\', os.sep))
+
 
 #------------------------------------------------------------------------------
 # drcov basic block parser

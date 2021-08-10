@@ -1,13 +1,14 @@
-# Lighthouse - A Code Coverage Explorer for Reverse Engineers
+# Lighthouse - A Coverage Explorer for Reverse Engineers
+
 <p align="center">
 <img alt="Lighthouse Plugin" src="screenshots/overview.gif"/>
 </p>
 
 ## Overview
 
-Lighthouse is a powerful code coverage plugin for [IDA Pro](https://www.hex-rays.com/products/ida/) and [Binary Ninja](https://binary.ninja/). As an extension of the leading disassemblers, this plugin enables one to interactively explore code coverage data in new and innovative ways when symbols or source may not be available for a given binary.
+Lighthouse is a powerful code coverage explorer for [IDA Pro](https://www.hex-rays.com/products/ida/) and [Binary Ninja](https://binary.ninja/), providing software researchers with uniquely interactive controls to study execution maps for native applications without requiring symbols or source.
 
-This plugin is labeled only as a prototype & code resource for the community. 
+This project placed 2nd in IDA's [2017 Plug-In Contest](https://hex-rays.com/contests_details/contest2017/) and was later [nominated](https://pwnies.com/lighthouse/) in the 2021 Pwnie Awards for its contributions to the security research industry.
 
 Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 
@@ -27,11 +28,31 @@ Special thanks to [@0vercl0k](https://twitter.com/0vercl0k) for the inspiration.
 
 Lighthouse is a cross-platform (Windows, macOS, Linux) Python 2/3 plugin. It takes zero third party dependencies, making the code both portable and easy to install.
 
-1. From your disassembler's python console, run the following command to find its plugin directory:
-   - **IDA Pro**: `os.path.join(idaapi.get_user_idadir(), "plugins")`
-   - **Binary Ninja**: `binaryninja.user_plugin_path()`
+Use the instructions below for your respective disassembler.
 
-2. Copy the contents of this repository's `/plugin/` folder to the listed directory.
+## IDA Installation
+
+1. From IDA's Python console, run the following command to find its plugin directory:
+    - `import idaapi, os; print(os.path.join(idaapi.get_user_idadir(), "plugins"))`
+2. Copy the contents of this repository's `/plugins/` folder to the listed directory.
+3. Restart your disassembler.
+
+## Binary Ninja Installation
+
+Lighthouse can be installed through the plugin manager on newer versions of Binary Ninja (>2.4.2918). The plugin will have to be installed manually on older versions.
+
+### Auto Install
+
+1. Open Binary Ninja's plugin manager by navigating the following submenus:
+    - `Edit` -> `Preferences` -> `Manage Plugins`
+2. Search for Lighthouse in the plugin manager, and click the `Enable` button in the bottom right.
+3. Restart your disassembler.
+
+### Manual Install
+
+1. Open Binary Ninja's plugin folder by navigating the following submenus:
+    - `Tools` -> `Open Plugins Folder...`
+2. Copy the contents of this repository's `/plugins/` folder to the listed directory.
 3. Restart your disassembler.
 
 # Usage
@@ -76,7 +97,7 @@ If there are any other actions that you think might be useful to add to this con
 
 ## Coverage ComboBox
 
-Loaded coverage data and user constructed compositions can be selected or deleted through the coverage combobox.
+Loaded coverage and user constructed compositions can be selected or deleted through the coverage combobox.
 
 <p align="center">
 <img alt="Lighthouse Coverage ComboBox" src="screenshots/combobox.gif"/>
@@ -84,8 +105,7 @@ Loaded coverage data and user constructed compositions can be selected or delete
 
 ## HTML Coverage Report
 
-Lighthouse can generate a rudimentary HTML coverage report of the active coverage. 
-A sample report can be seen [here](https://rawgit.com/gaasedelen/lighthouse/master/testcase/report.html).
+Lighthouse can generate rudimentary HTML coverage reports. A sample report can be seen [here](https://rawgit.com/gaasedelen/lighthouse/master/testcase/report.html).
 
 <p align="center">
 <img alt="Lighthouse HTML Report" src="screenshots/html_report.gif"/>

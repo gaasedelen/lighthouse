@@ -30,4 +30,3 @@ try:
 except Exception as e:
     lmsg("Failed to initialize Lighthouse")
     logger.exception("Exception details:")
-
