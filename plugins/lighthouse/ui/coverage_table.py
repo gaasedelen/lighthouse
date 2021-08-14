@@ -13,9 +13,10 @@ from lighthouse.coverage import FunctionCoverage, BADADDR
 
 logger = logging.getLogger("Lighthouse.UI.Table")
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # CoverageTableView
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class CoverageTableView(QtWidgets.QTableView):
     """
@@ -51,8 +52,8 @@ class CoverageTableView(QtWidgets.QTableView):
             "  outline: none; "
             "} " +
             "QHeaderView::section { "
-            "  padding: 1ex;"  \
-            "  margin: 0;"  \
+            "  padding: 1ex;" \
+            "  margin: 0;" \
             "} " +
             "QTableView::item:selected {"
             "  color: white; "
@@ -60,9 +61,9 @@ class CoverageTableView(QtWidgets.QTableView):
             "}"
         )
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # QTableView Overloads
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def keyPressEvent(self, event):
         """
@@ -91,9 +92,9 @@ class CoverageTableView(QtWidgets.QTableView):
         self.repaint()
         flush_qt_events()
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Initialization - UI
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _ui_init(self):
         """
@@ -136,7 +137,6 @@ class CoverageTableView(QtWidgets.QTableView):
 
         # set the initial column widths based on their title or contents
         for i in xrange(self._model.columnCount()):
-
             # determine the pixel width of the column header text
             title_rect = self._model.headerData(i, QtCore.Qt.Horizontal, QtCore.Qt.SizeHintRole)
 
@@ -145,7 +145,7 @@ class CoverageTableView(QtWidgets.QTableView):
             entry_rect = entry_fm.boundingRect(entry_text)
 
             # select the larger of the two potential column widths
-            column_width = max(title_rect.width(), entry_rect.width()*1.2)
+            column_width = max(title_rect.width(), entry_rect.width() * 1.2)
 
             # save the final column width
             self.setColumnWidth(i, column_width)
@@ -165,8 +165,8 @@ class CoverageTableView(QtWidgets.QTableView):
         vh.hide()
 
         # stretch last table column (which is blank) to fill remaining space
-        #hh.setStretchLastSection(True)
-        #hh.setCascadingSectionResizes(True)
+        # hh.setStretchLastSection(True)
+        # hh.setCascadingSectionResizes(True)
         hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
 
         # disable bolding of table column headers when table is selected
@@ -190,8 +190,8 @@ class CoverageTableView(QtWidgets.QTableView):
         # specify the fixed pixel height for the table rows
         # NOTE: don't ask too many questions about this voodoo math :D
         spacing = entry_fm.height() - entry_fm.xHeight()
-        tweak = (17*get_dpi_scale() - spacing)/get_dpi_scale()
-        vh.setDefaultSectionSize(entry_fm.height()+tweak)
+        tweak = (17 * get_dpi_scale() - spacing) / get_dpi_scale()
+        vh.setDefaultSectionSize(entry_fm.height() + tweak)
 
     def _ui_init_table_ctx_menu_actions(self):
         """
@@ -237,9 +237,9 @@ class CoverageTableView(QtWidgets.QTableView):
         hh.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         hh.customContextMenuRequested.connect(self._ui_header_ctx_menu_handler)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Signal Handlers
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _ui_entry_double_click(self, index):
         """
@@ -295,9 +295,9 @@ class CoverageTableView(QtWidgets.QTableView):
         # process the user action
         self._process_header_ctx_menu_action(action, column)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Context Menu (Table Rows)
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _populate_table_ctx_menu(self):
         """
@@ -385,9 +385,9 @@ class CoverageTableView(QtWidgets.QTableView):
         elif action == self._action_clear_prefix:
             self._controller.clear_function_prefixes(rows)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Context Menu (Table Header)
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _populate_header_ctx_menu(self):
         """
@@ -412,9 +412,10 @@ class CoverageTableView(QtWidgets.QTableView):
         if action == self._action_alignment:
             self._controller.toggle_column_alignment(column)
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # CoverageTableController
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class CoverageTableController(object):
     """
@@ -426,9 +427,9 @@ class CoverageTableController(object):
         self._model = model
         self._last_directory = None
 
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Renaming
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     @mainthread
     def rename_table_function(self, row):
@@ -445,7 +446,7 @@ class CoverageTableController(object):
             "Please enter function name",
             "Rename Function",
             original_name
-           )
+        )
 
         #
         # if the user clicked cancel, or the name they entered
@@ -469,7 +470,7 @@ class CoverageTableController(object):
             "Please enter a function prefix",
             "Prefix Function(s)",
             "MyPrefix"
-           )
+        )
 
         # bail if the user clicked cancel or failed to enter a prefix
         if not (ok and prefix):
@@ -487,9 +488,9 @@ class CoverageTableController(object):
         function_addresses = self._get_function_addresses(rows)
         disassembler[self.lctx].clear_prefixes(function_addresses)
 
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Copy-to-Clipboard
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     @mainthread
     def copy_name(self, rows):
@@ -536,9 +537,9 @@ class CoverageTableController(object):
         copy_to_clipboard(function_name_and_address.rstrip())
         return function_name_and_address
 
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Misc
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     def navigate_to_function(self, row):
         """
@@ -605,11 +606,11 @@ class CoverageTableController(object):
 
         # we construct kwargs here for cleaner PySide/PyQt5 compatibility
         kwargs = \
-        {
-            "filter": "HTML Files (*.html)",
-            "caption": "Save HTML Report",
-            "directory": suggested_filepath
-        }
+            {
+                "filter": "HTML Files (*.html)",
+                "caption": "Save HTML Report",
+                "directory": suggested_filepath
+            }
 
         # prompt the user with the file dialog, and await their chosen filename(s)
         filename, _ = file_dialog.getSaveFileName(**kwargs)
@@ -625,9 +626,9 @@ class CoverageTableController(object):
 
         lmsg("Saved HTML report to %s" % filename)
 
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Internal
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     def _get_function_addresses(self, rows):
         """
@@ -639,9 +640,10 @@ class CoverageTableController(object):
             function_addresses.append(address)
         return function_addresses
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # CoverageTableModel
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class CoverageTableModel(QtCore.QAbstractTableModel):
     """
@@ -649,64 +651,74 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
     """
 
     # named constants for coverage table column indexes
-    COV_PERCENT  = 0
-    FUNC_NAME    = 1
-    FUNC_ADDR    = 2
-    BLOCKS_HIT   = 3
-    INST_HIT     = 4
-    FUNC_SIZE    = 5
-    COMPLEXITY   = 6
+    COV_PERCENT = 0
+    FUNC_NAME = 1
+    FUNC_ADDR = 2
+    BLOCKS_HIT = 3
+    INST_HIT = 4
+    FUNC_SIZE = 5
+    COMPLEXITY = 6
+    ACCUMULATED_BLOCK_HITS = 7
+    ACCUMULATED_INSTRUCTION_HITS = 8
 
     METADATA_ATTRIBUTES = [FUNC_NAME, FUNC_ADDR, FUNC_SIZE, COMPLEXITY]
-    COVERAGE_ATTRIBUTES = [COV_PERCENT, BLOCKS_HIT, INST_HIT]
+    COVERAGE_ATTRIBUTES = [COV_PERCENT, BLOCKS_HIT, INST_HIT, ACCUMULATED_BLOCK_HITS, ACCUMULATED_INSTRUCTION_HITS]
 
     # column index -> object attribute mapping
     COLUMN_TO_FIELD = \
-    {
-        COV_PERCENT:  "instruction_percent",
-        FUNC_NAME:    "name",
-        FUNC_ADDR:    "address",
-        BLOCKS_HIT:   "nodes_executed",
-        INST_HIT:     "instructions_executed",
-        FUNC_SIZE:    "size",
-        COMPLEXITY:   "cyclomatic_complexity"
-    }
+        {
+            COV_PERCENT: "instruction_percent",
+            FUNC_NAME: "name",
+            FUNC_ADDR: "address",
+            BLOCKS_HIT: "nodes_executed",
+            INST_HIT: "instructions_executed",
+            FUNC_SIZE: "size",
+            COMPLEXITY: "cyclomatic_complexity",
+            ACCUMULATED_BLOCK_HITS: "accumulated_edge_executed",
+            ACCUMULATED_INSTRUCTION_HITS: "accumulated_instruction_executed",
+        }
 
     # column headers of the table
     COLUMN_HEADERS = \
-    {
-        COV_PERCENT:  "Cov %",
-        FUNC_NAME:    "Func Name",
-        FUNC_ADDR:    "Address",
-        BLOCKS_HIT:   "Blocks Hit",
-        INST_HIT:     "Instr. Hit",
-        FUNC_SIZE:    "Func Size",
-        COMPLEXITY:   "CC",
-    }
+        {
+            COV_PERCENT: "Cov %",
+            FUNC_NAME: "Func Name",
+            FUNC_ADDR: "Address",
+            BLOCKS_HIT: "Blocks Hit",
+            INST_HIT: "Instr. Hit",
+            FUNC_SIZE: "Func Size",
+            COMPLEXITY: "CC",
+            ACCUMULATED_BLOCK_HITS: "A-Block Hits",
+            ACCUMULATED_INSTRUCTION_HITS: "A-Instr. Hits",
+        }
 
     # column header tooltips
     COLUMN_TOOLTIPS = \
-    {
-        COV_PERCENT:  "Coverage Percent",
-        FUNC_NAME:    "Function Name",
-        FUNC_ADDR:    "Function Address",
-        BLOCKS_HIT:   "Number of Basic Blocks Executed",
-        INST_HIT:     "Number of Instructions Executed",
-        FUNC_SIZE:    "Function Size (bytes)",
-        COMPLEXITY:   "Cyclomatic Complexity",
-    }
+        {
+            COV_PERCENT: "Coverage Percent",
+            FUNC_NAME: "Function Name",
+            FUNC_ADDR: "Function Address",
+            BLOCKS_HIT: "Number of Basic Blocks Executed",
+            INST_HIT: "Number of Instructions Executed",
+            FUNC_SIZE: "Function Size (bytes)",
+            COMPLEXITY: "Cyclomatic Complexity",
+            ACCUMULATED_BLOCK_HITS: "Accumulated number of Basic Blocks Executed",
+            ACCUMULATED_INSTRUCTION_HITS: "Accumulated number of Instructions Executed",
+        }
 
     # sample column
     SAMPLE_CONTENTS = \
-    [
-        " 100.00 ",
-        " sub_140001B20 ",
-        " 0x140001b20 ",
-        " 100 / 100 ",
-        " 1000 / 1000 ",
-        " 100000 ",
-        " 1000 ",
-    ]
+        [
+            " 100.00 ",
+            " sub_140001B20 ",
+            " 0x140001b20 ",
+            " 100 / 100 ",
+            " 1000 / 1000 ",
+            " 100000 ",
+            " 1000 ",
+            " 200 / 500 ",
+            " 5000 / 10000 ",
+        ]
 
     def __init__(self, lctx, parent=None):
         super(CoverageTableModel, self).__init__(parent)
@@ -746,17 +758,17 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._title_font = QtGui.QFont()
         self._title_font.setPointSizeF(normalize_to_dpi(10))
 
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         # Sorting
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
 
         # attributes to track the model's last known (column) sort state
         self._last_sort = self.FUNC_ADDR
         self._last_sort_order = QtCore.Qt.AscendingOrder
 
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         # Filters
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
 
         # OPTION: display 0% coverage entries
         self._hide_zero = False
@@ -764,9 +776,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # OPTION: display functions matching search_string (substring)
         self._search_string = ""
 
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         # Signals
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
 
         # register for cues from the director
         self._director.coverage_switched(self._internal_refresh)
@@ -782,9 +794,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._blank_coverage.coverage_color = self.lctx.palette.table_coverage_none
         self._data_changed()
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # QAbstractTableModel Overloads
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def flags(self, index):
         return QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable
@@ -829,7 +841,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         if role == QtCore.Qt.SizeHintRole:
             title_fm = QtGui.QFontMetricsF(self._title_font)
             title_rect = title_fm.boundingRect(self.COLUMN_HEADERS[column])
-            padded = QtCore.QSize(int(title_rect.width()*1.45), int(title_rect.height()*1.75))
+            padded = QtCore.QSize(int(title_rect.width() * 1.45), int(title_rect.height() * 1.75))
             return padded
 
         # unhandeled header request
@@ -848,7 +860,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
             # lookup the function info for this row
             try:
-                function_address  = self.row2func[index.row()]
+                function_address = self.row2func[index.row()]
                 function_metadata = self.lctx.metadata.functions[function_address]
 
             #
@@ -882,7 +894,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
             # Coverage % - (by instruction execution)
             if column == self.COV_PERCENT:
-                return "%5.2f" % (function_coverage.instruction_percent*100)
+                return "%5.2f" % (function_coverage.instruction_percent * 100)
 
             # Function Name
             elif column == self.FUNC_NAME:
@@ -910,9 +922,19 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             elif column == self.COMPLEXITY:
                 return "%u" % function_metadata.cyclomatic_complexity
 
+            elif column == self.ACCUMULATED_BLOCK_HITS:
+                return "{accumulated_block_executed} / {accumulated_blocks}".format(
+                    accumulated_block_executed=function_coverage.accumulated_edge_executed,
+                    accumulated_blocks=function_metadata.accumulated_edge_count)
+
+            elif column == self.ACCUMULATED_INSTRUCTION_HITS:
+                return "{accumulated_instructions_executed} / {accumulated_instructions}".format(
+                    accumulated_instructions_executed=function_coverage.accumulated_instruction_executed,
+                    accumulated_instructions=function_metadata.accumulated_instruction_count)
+
         # cell background color request
         elif role == QtCore.Qt.BackgroundRole:
-            function_address  = self.row2func[index.row()]
+            function_address = self.row2func[index.row()]
             function_coverage = self._director.coverage.functions.get(
                 function_address,
                 self._blank_coverage
@@ -930,9 +952,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # unhandeled request, nothing to do
         return None
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Sorting
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def sort(self, column, sort_order):
         """
@@ -1012,9 +1034,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._last_sort = column
         self._last_sort_order = sort_order
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Public
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def set_column_alignment(self, column, alignment):
         """
@@ -1041,11 +1063,11 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         )
 
         # compute coverage percentage of the visible functions
-        return (float(instructions_executed) / (instruction_count or 1))*100
+        return (float(instructions_executed) / (instruction_count or 1)) * 100
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # HTML Export
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def to_html(self):
         """
@@ -1063,7 +1085,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         body_elements = [summary_html, table_html]
         body_html = "<body>%s</body>" % '\n'.join(body_elements)
         body_css = \
-        """
+            """
         body {{
             font-family: Arial, Helvetica, sans-serif;
 
@@ -1071,9 +1093,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             background-color: {page_bg};
         }}
         """.format(
-            page_fg=palette.table_text.name(),
-            page_bg=palette.html_page_background.name()
-        )
+                page_fg=palette.table_text.name(),
+                page_bg=palette.html_page_background.name()
+            )
 
         # HTML <head> tag
         css_elements = [body_css, summary_css, table_css]
@@ -1099,21 +1121,21 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         title_html = "<h1>Lighthouse Coverage Report</h1>"
 
         # summary details
-        detail = lambda x,y: '<li><span class="detail">%s:</span> %s</li>' % (x,y)
-        database_percent = coverage.instruction_percent*100
+        detail = lambda x, y: '<li><span class="detail">%s:</span> %s</li>' % (x, y)
+        database_percent = coverage.instruction_percent * 100
         table_percent = self.get_modeled_coverage_percent()
         details = \
-        [
-            detail("Target Binary", metadata.filename),
-            detail("Coverage Name", coverage.name),
-            detail("Coverage File", coverage.filepath),
-            detail("Database Coverage", "%1.2f%%" % database_percent),
-            detail("Table Coverage", "%1.2f%%" % table_percent),
-            detail("Timestamp", time.ctime()),
-        ]
+            [
+                detail("Target Binary", metadata.filename),
+                detail("Coverage Name", coverage.name),
+                detail("Coverage File", coverage.filepath),
+                detail("Database Coverage", "%1.2f%%" % database_percent),
+                detail("Table Coverage", "%1.2f%%" % table_percent),
+                detail("Timestamp", time.ctime()),
+            ]
         list_html = "<ul>%s</ul>" % '\n'.join(details)
         list_css = \
-        """
+            """
         .detail {{
             font-weight: bold;
             color: {page_fg};
@@ -1122,9 +1144,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             color: {detail_fg};
         }}
         """.format(
-            page_fg=palette.table_text.name(),
-            detail_fg=palette.html_summary_text.name()
-        )
+                page_fg=palette.table_text.name(),
+                detail_fg=palette.html_summary_text.name()
+            )
 
         # title + summary
         summary_html = title_html + list_html
@@ -1140,7 +1162,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # generate the table's column title row
         header_cells = []
-        for i in xrange(self.columnCount()-1):
+        for i in xrange(self.columnCount() - 1):
             header_cells.append(
                 "<th>%s</th>" % self.headerData(i, QtCore.Qt.Horizontal)
             )
@@ -1149,7 +1171,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # generate the table's coverage rows
         for row in xrange(self.rowCount()):
             row_cells = []
-            for column in xrange(self.columnCount()-1):
+            for column in xrange(self.columnCount() - 1):
                 index = self.index(row, column)
                 row_cells.append("<td>%s</td>" % self.data(index))
             row_color = self.data(index, QtCore.Qt.BackgroundRole).name()
@@ -1164,7 +1186,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # generate the final HTML table
         table_html = "<table>%s</table>" % '\n'.join(html_rows)
         table_css = \
-        """
+            """
         table {{
             text-align: center;
             white-space: pre;
@@ -1192,15 +1214,15 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             padding: 1ex 1em 1ex 1em;
         }}
         """.format(
-            table_bg=palette.table_background.name(),
-            table_fg=palette.table_text.name()
-        )
+                table_bg=palette.table_background.name(),
+                table_fg=palette.table_text.name()
+            )
 
         return (table_html, table_css)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Filters
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def filter_zero_coverage(self, hide):
         """
@@ -1228,9 +1250,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         self._search_string = search_string
         self._internal_refresh()
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Refresh
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def refresh(self):
         """
@@ -1285,9 +1307,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # loop through *all* the functions as defined in the active metadata
         for function_address in metadata.functions:
 
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
             # Filters - START
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
 
             # OPTION: ignore items with 0% coverage items
             if self._hide_zero and not function_address in coverage.functions:
@@ -1297,9 +1319,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             if not self._search_string in normalize(metadata.functions[function_address].name):
                 continue
 
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
             # Filters - END
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
 
             # store a reference to the listed function's metadata
             self._visible_metadata[function_address] = metadata.functions[function_address]
@@ -1322,9 +1344,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # bake the final number of rows into the model
         self._row_count = len(self.row2func)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Qt Notifications
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @disassembler.execute_ui
     def _data_changed(self):

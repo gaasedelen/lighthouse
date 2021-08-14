@@ -8,13 +8,14 @@ import collections
 
 from lighthouse.util import *
 from lighthouse.util.qt import compute_color_on_gradiant
-from lighthouse.metadata import DatabaseMetadata
+from lighthouse.metadata import DatabaseMetadata, Locker
 
 logger = logging.getLogger("Lighthouse.Coverage")
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Coverage Mapping
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 #
 #    When raw runtime data (eg, coverage or trace data) is passed into the
 #    director, it is stored internally in DatabaseCoverage objects. A
@@ -33,9 +34,9 @@ logger = logging.getLogger("Lighthouse.Coverage")
 #    get updated or refreshed by the user.
 #
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Database Coverage
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class DatabaseCoverage(object):
     """
@@ -177,9 +178,9 @@ class DatabaseCoverage(object):
 
         self._weak_self = weakref.proxy(self)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Properties
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @property
     def data(self):
@@ -220,7 +221,7 @@ class DatabaseCoverage(object):
             bad += 1
 
         # compute a percentage of the 'bad nodes'
-        percent = (bad/float(total))*100
+        percent = (bad / float(total)) * 100
         logger.debug("SUSPICIOUS: %5.2f%% (%u/%u)" % (percent, bad, total))
 
         #
@@ -234,9 +235,9 @@ class DatabaseCoverage(object):
 
         return percent > 2.0
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Metadata Population
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def update_metadata(self, metadata, delta=None):
         """
@@ -277,7 +278,7 @@ class DatabaseCoverage(object):
         #
 
         elif rebase_offset:
-            self._hitmap = { (address + rebase_offset): hits for address, hits in iteritems(self._hitmap) }
+            self._hitmap = {(address + rebase_offset): hits for address, hits in iteritems(self._hitmap)}
             self._imagebase = self._metadata.imagebase
 
         #
@@ -302,7 +303,7 @@ class DatabaseCoverage(object):
         self._update_coverage_hash()
 
         # dump the unmappable coverage data
-        #self.dump_unmapped()
+        # self.dump_unmapped()
 
     def refresh_theme(self):
         """
@@ -369,9 +370,9 @@ class DatabaseCoverage(object):
         # save the computed percentage of database instructions executed (0 to 1.0)
         self.instruction_percent = float(executed) / total
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Data Operations
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def add_data(self, data, update=True):
         """
@@ -464,9 +465,9 @@ class DatabaseCoverage(object):
         else:
             self.coverage_hash = 0
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Coverage Mapping
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def _map_coverage(self):
         """
@@ -648,33 +649,34 @@ class DatabaseCoverage(object):
         self._unmapped_data = set(self._hitmap.keys())
         self._unmapped_data.add(BADADDR)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Debug
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def dump_unmapped(self):
         """
         Dump the unmapped coverage data.
         """
         lmsg("Unmapped coverage data for %s:" % self.name)
-        if len(self._unmapped_data) == 1: # 1 is going to be BADADDR
+        if len(self._unmapped_data) == 1:  # 1 is going to be BADADDR
             lmsg(" * (there is no unmapped data!)")
             return
 
         for address in self._unmapped_data:
             lmsg(" * 0x%X" % address)
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Function Coverage
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class FunctionCoverage(object):
     """
     Function level coverage mapping.
     """
 
-    def __init__(self, function_address, database=None):
-        self.database = database
+    def __init__(self, function_address, metadata_database=None):
+        self.database = metadata_database
         self.address = function_address
 
         # addresses of nodes executed
@@ -687,9 +689,66 @@ class FunctionCoverage(object):
         # baked colors
         self.coverage_color = 0
 
-    #--------------------------------------------------------------------------
+        self._accumulated_instruction_executed = None
+        self._accumulated_edge_executed = None
+        self.__accumulated_edge_locker = Locker(False)
+        self.__accumulated_instruction_locker = Locker(False)
+
+    # --------------------------------------------------------------------------
     # Properties
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+
+    def __coverage_accumulated_val(self, locker, internal_member_name, external_property_name, initial_value):
+        if self.__getattribute__(internal_member_name) is not None:
+            return self.__getattribute__(internal_member_name)
+
+        if self.database is None:
+            if self.address == BADADDR:
+                logger.debug("coverage_variable_count")
+            else:
+                raise ValueError("can't resolve addr_to_function_coverage")
+            return 0
+
+        # There is a loop, return 0 because the real value of the count will be calculated in the locked part.
+        if locker.locked():
+            logger.info(
+                "calculating accumulated value for {function_name} reached loop".format(function_name=hex(self.address)))
+            return 0
+
+        with locker as _:
+            accumulated_generic_count = initial_value
+            function_metadata = self.database._metadata.functions[self.address]
+            for func_addr in function_metadata.called_addresses:
+                if func_addr not in self.database.functions:
+                    logger.warning("In function addr:{func_addr} called {external_func_addr} could not find code ref "
+                                   "object for coverage accumulated calculation - can it be external function?".format(
+                                    func_addr=hex(self.address), external_func_addr=hex(func_addr)))
+                    continue
+
+                metadata_called_func = self.database.functions[func_addr]
+                accumulated_generic_count += metadata_called_func.__getattribute__(external_property_name)
+
+
+            logger.debug("setting value {} in {}".format(accumulated_generic_count, internal_member_name))
+            self.__setattr__(internal_member_name, accumulated_generic_count)
+
+        return self.__getattribute__(internal_member_name)
+
+    @property
+    def accumulated_edge_executed(self):
+        logger.info("called edge executed node_executed {}".format(self.nodes_executed))
+        return self.__coverage_accumulated_val(self.__accumulated_edge_locker,
+                                      "_accumulated_edge_executed",
+                                      "accumulated_edge_executed",
+                                               self.nodes_executed)
+
+    @property
+    def accumulated_instruction_executed(self):
+        logger.info("called instructions executed {}".format(self.instructions_executed))
+        return self.__coverage_accumulated_val(self.__accumulated_edge_locker,
+                                      "_accumulated_instruction_executed",
+                                      "accumulated_instruction_executed",
+                                               self.instructions_executed)
 
     @property
     def hits(self):
@@ -719,9 +778,9 @@ class FunctionCoverage(object):
         """
         return set([ea for node in itervalues(self.nodes) for ea in node.executed_instructions.keys()])
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Controls
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def mark_node(self, node_coverage):
         """
@@ -754,10 +813,18 @@ class FunctionCoverage(object):
             self.database.palette.table_coverage_bad,
             self.database.palette.table_coverage_good
         )
+        logger.info("called finalize inst {} nodes {}".format(self.instructions_executed, len(self.nodes)))
+        # clean cache
+        with self.__accumulated_edge_locker as _:
+            self._accumulated_edge_executed = None
 
-#------------------------------------------------------------------------------
+        with self.__accumulated_instruction_locker as _:
+            self._accumulated_instruction_executed = None
+
+
+# ------------------------------------------------------------------------------
 # Node Coverage
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 class NodeCoverage(object):
     """
@@ -770,9 +837,9 @@ class NodeCoverage(object):
         self.executed_instructions = {}
         self.instructions_executed = 0
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Properties
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @property
     def hits(self):
@@ -781,9 +848,9 @@ class NodeCoverage(object):
         """
         return sum(itervalues(self.executed_instructions))
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Controls
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def finalize(self):
         """

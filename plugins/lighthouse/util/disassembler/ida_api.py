@@ -339,6 +339,7 @@ class IDAContextAPI(DisassemblerContextAPI):
 
     def __init__(self, dctx):
         super(IDAContextAPI, self).__init__(dctx)
+        self.__external_functions_addresses = None
 
     @property
     def busy(self):
@@ -379,6 +380,45 @@ class IDAContextAPI(DisassemblerContextAPI):
     def set_function_name_at(self, function_address, new_name):
         idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
 
+    def is_function_is_external(self, address):
+        def add_external_func_cb(ea, _, __):
+            self.__external_functions_addresses.add(ea)
+            # True for continue enumeration
+            return True
+
+        # static function variable that should be calculated only once.
+        if self.__external_functions_addresses is None:
+            self.__external_functions_addresses = set()  # optimizations, in list it will take a lot of time
+            number_of_imports = idaapi.get_import_module_qty()
+            for i in range(number_of_imports):
+                name = idaapi.get_import_module_name(i)
+                if not name:
+                    logger.info("Failed to get import module name for #%d" % i)
+                    continue
+
+                idaapi.enum_import_names(i, add_external_func_cb)
+
+        if address in self.__external_functions_addresses:
+            return True
+
+        return False
+
+    def get_code_refs_from_block(self, start_addr, end_addr):
+        code_refs_from_block = []
+        for current_addr in idautils.Heads(start_addr, end_addr):
+            for result in idautils.XrefsFrom(current_addr, idaapi.fl_CN):
+                type_xref = idautils.XrefTypeName(result.type).lower()
+                # to ignore Jumps
+                if "code" not in type_xref or "call" not in type_xref:
+                    continue
+
+                addr_call_to = result.to
+                if self.is_function_is_external(addr_call_to):  # external references outside the PE are ignored
+                    continue
+
+                code_refs_from_block.append(addr_call_to)
+
+        return code_refs_from_block
     #--------------------------------------------------------------------------
     # Hooks API
     #--------------------------------------------------------------------------
