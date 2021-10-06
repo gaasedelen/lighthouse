@@ -247,7 +247,7 @@ class IDAPainter(DatabasePainter):
 
             #
             # if we did not get *everything* that we needed, then it is
-            # possible the database changesd, or the coverage set changed...
+            # possible the database changed, or the coverage set changed...
             #
             # this is kind of what we get for not using locks :D but that's
             # okay, just stop painting here and let the painter sort it out

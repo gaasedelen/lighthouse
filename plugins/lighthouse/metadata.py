@@ -403,19 +403,6 @@ class DatabaseMetadata(object):
         if join:
             worker.join()
 
-    def _refresh_instructions(self):
-        """
-        Refresh the list of database instructions (from function metadata).
-        """
-        instructions = []
-        for function_metadata in itervalues(self.functions):
-            instructions.append(function_metadata.instructions)
-        instructions = list(set(itertools.chain.from_iterable(instructions)))
-        instructions.sort()
-
-        # commit the updated instruction list
-        self.instructions = instructions
-
     def _refresh_lookup(self):
         """
         Refresh the internal fast lookup address lists.
@@ -470,7 +457,7 @@ class DatabaseMetadata(object):
 
     def _clear_cache(self):
         """
-        Cleare the metadata cache of all collected info.
+        Clear the metadata cache of all collected info.
         """
         self.nodes = {}
         self.functions = {}
@@ -519,9 +506,6 @@ class DatabaseMetadata(object):
         #----------------------------------------------------------------------
         end = time.time()
         logger.debug("Metadata collection took %s seconds" % (end - start))
-
-        # regenerate the instruction list from collected metadata
-        self._refresh_instructions()
 
         # refresh the internal function/node fast lookup lists
         self._refresh_lookup()
@@ -573,6 +557,8 @@ class DatabaseMetadata(object):
             if progress_callback:
                 completed += CHUNK_SIZE if function_addresses else len(addresses_chunk)
                 progress_callback(completed, total)
+
+        self._cache_instructions()
 
     @not_mainthread
     def _async_collect_metadata(self, function_addresses, progress_callback):
@@ -657,6 +643,59 @@ class DatabaseMetadata(object):
             # add the updated info
             self.nodes.update(function_metadata.nodes)
             self.functions[address] = function_metadata
+
+    def _cache_instructions(self):
+        """
+        This will be replaced with a disassembler-specific function at runtime.
+
+        NOTE: Read the 'MONKEY PATCHING' section at the end of this file.
+        """
+        raise RuntimeError("This function should have been monkey patched...")
+
+    def _binja_cache_instructions(self):
+        """
+        Cache the list of instructions by doing a full scrape of the Binary Ninja database.
+        """
+        instructions = []
+
+        #
+        # since 'code' does not exist outside of functions in binary ninja,
+        # just scrape instructions from our existing cached nodes
+        #
+
+        for function_metadata in itervalues(self.functions):
+            instructions.append(function_metadata.instructions)
+
+        # commit the updated instruction list
+        self.instructions = sorted(list(set(itertools.chain.from_iterable(instructions))))
+
+    def _ida_cache_instructions(self):
+        """
+        Cache the list of instructions by doing a full scrape of the IDA database.
+        """
+        instructions = []
+
+        # alias for speed
+        ida_is_code = idaapi.is_code
+        ida_get_flags = idaapi.get_flags
+        ida_next_head = idaapi.next_head
+        append_instruction = instructions.append
+
+        # scrape instruction addresses from the database
+        for seg_address in idautils.Segments():
+            seg = idaapi.getseg(seg_address)
+
+            current_address = seg_address
+            end_address = seg.end_ea
+
+            # save the address of each defined instruction in the segment
+            while current_address < end_address:
+                if ida_is_code(ida_get_flags(current_address)):
+                    append_instruction(current_address)
+                current_address = ida_next_head(current_address, end_address)
+
+        # commit the updated instruction list
+        self.instructions = sorted(instructions)
 
     #--------------------------------------------------------------------------
     # Signal Handlers
@@ -1160,6 +1199,7 @@ def metadata_progress(completed, total):
 if disassembler.NAME == "IDA":
     import idaapi
     import idautils
+    DatabaseMetadata._cache_instructions = DatabaseMetadata._ida_cache_instructions
     FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
     NodeMetadata._cache_node = NodeMetadata._ida_cache_node
 
@@ -1170,6 +1210,7 @@ elif disassembler.NAME == "BINJA":
     import ctypes
     import binaryninja
     from binaryninja import core
+    DatabaseMetadata._cache_instructions = DatabaseMetadata._binja_cache_instructions
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
     NodeMetadata._cache_node = NodeMetadata._binja_cache_node
 

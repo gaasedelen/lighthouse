@@ -198,6 +198,10 @@ class CoverageTableView(QtWidgets.QTableView):
         Initialize the right click context menu actions for the table view.
         """
 
+        # misc actions
+        self._action_dump_orphan = QtWidgets.QAction("Dump orphan addresses", None)
+        self._action_dump_internal = QtWidgets.QAction("Dump internal addresses (Debug)", None)
+
         # function actions
         self._action_rename = QtWidgets.QAction("Rename", None)
         self._action_copy_name = QtWidgets.QAction("Copy name", None)
@@ -307,8 +311,8 @@ class CoverageTableView(QtWidgets.QTableView):
         """
 
         # get the list rows currently selected in the coverage table
-        selected_rows = self.selectionModel().selectedRows()
-        if len(selected_rows) == 0:
+        selected_row_indexes = self.selectionModel().selectedRows()
+        if len(selected_row_indexes) == 0:
             return None
 
         # the context menu we will dynamically populate
@@ -320,13 +324,25 @@ class CoverageTableView(QtWidgets.QTableView):
         # copy function name, address, or renaming the function.
         #
 
-        if len(selected_rows) == 1:
-            ctx_menu.addAction(self._action_rename)
-            ctx_menu.addSeparator()
-            ctx_menu.addAction(self._action_copy_name)
-            ctx_menu.addAction(self._action_copy_address)
-            ctx_menu.addAction(self._action_copy_name_and_address)
-            ctx_menu.addSeparator()
+        if len(selected_row_indexes) == 1:
+
+            row = selected_row_indexes[0].row()
+            function_address = self._model.row2func[row]
+
+            # special handling for right click of orphan coverage row
+            if function_address == BADADDR:
+                ctx_menu.addAction(self._action_dump_orphan)
+                ctx_menu.addAction(self._action_dump_internal)
+                return ctx_menu
+
+            # normal right click of a function row
+            else:
+                ctx_menu.addAction(self._action_rename)
+                ctx_menu.addSeparator()
+                ctx_menu.addAction(self._action_copy_name)
+                ctx_menu.addAction(self._action_copy_address)
+                ctx_menu.addAction(self._action_copy_name_and_address)
+                ctx_menu.addSeparator()
 
         #
         # if multiple functions are selected then show actions available
@@ -385,6 +401,14 @@ class CoverageTableView(QtWidgets.QTableView):
         elif action == self._action_clear_prefix:
             self._controller.clear_function_prefixes(rows)
 
+        # handle the 'Dump orphan addresses' action
+        elif action == self._action_dump_orphan:
+            self._controller.dump_orphan()
+
+        # handle the 'Dump internal addresses' action
+        elif action == self._action_dump_internal:
+            self._controller.dump_internal()
+
     #--------------------------------------------------------------------------
     # Context Menu (Table Header)
     #--------------------------------------------------------------------------
@@ -438,6 +462,9 @@ class CoverageTableController(object):
 
         # retrieve details about the function targeted for rename
         function_address = self._model.row2func[row]
+        if function_address == BADADDR:
+            return
+
         original_name = disassembler[self.lctx].get_function_raw_name_at(function_address)
 
         # prompt the user for a new function name
@@ -536,6 +563,38 @@ class CoverageTableController(object):
         copy_to_clipboard(function_name_and_address.rstrip())
         return function_name_and_address
 
+    #--------------------------------------------------------------------------
+    # Dumping
+    #--------------------------------------------------------------------------
+
+    def dump_orphan(self):
+        """
+        Dump the orphan coverage data.
+        """
+        coverage = self.lctx.director.coverage
+        lmsg("Orphan coverage addresses for %s:" % coverage.name)
+        self._dump_addresses(coverage.orphan_addresses)
+
+    def dump_internal(self):
+        """
+        Dump the internal coverage data.
+        """
+        coverage = self.lctx.director.coverage
+        lmsg("Internal coverage addresses for %s:" % coverage.name)
+        self._dump_addresses(coverage.unmapped_addresses)
+
+    def _dump_addresses(self, coverage_addresses):
+        """
+        Dump the given list of addresses to the terminal.
+        """
+        coverage_addresses = sorted(coverage_addresses)
+        if not coverage_addresses:
+            lmsg(" * (there is no addresses to dump)")
+            return
+
+        for address in coverage_addresses:
+            lmsg(" * 0x%X" % address)
+
     #---------------------------------------------------------------------------
     # Misc
     #---------------------------------------------------------------------------
@@ -547,6 +606,8 @@ class CoverageTableController(object):
 
         # get the clicked function address
         function_address = self._model.row2func[row]
+        if function_address == BADADDR:
+            return
 
         #
         # if there is actually coverage in the function, attempt to locate the
@@ -636,7 +697,8 @@ class CoverageTableController(object):
         function_addresses = []
         for row_number in rows:
             address = self._model.row2func[row_number]
-            function_addresses.append(address)
+            if address != BADADDR:
+                function_addresses.append(address)
         return function_addresses
 
 #------------------------------------------------------------------------------
@@ -834,6 +896,87 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # unhandeled header request
         return None
+    
+    def _data_function_display(self, function_address, column):
+        """
+        Return a string to diplay in the requested column of the given function.
+        """
+
+        # lookup the function info for the given function
+        try:
+            function_metadata = self.lctx.metadata.functions[function_address]
+
+        #
+        # if we hit a KeyError, it is probably because the database metadata
+        # is being refreshed and the model (this object) has yet to be
+        # updated.
+        #
+        # this should only ever happen as a result of the user using the
+        # right click 'Refresh metadata' action. And even then, only when
+        # a function they undefined in the IDB is visible in the coverage
+        # overview table view.
+        #
+        # In theory, the table should get refreshed *after* the metadata
+        # refresh completes. So for now, we simply return return the filler
+        # string '?'
+        #
+
+        except KeyError:
+            return "?"
+
+        #
+        # remember, if a function does *not* have coverage data, it will
+        # not have an entry in the coverage map. that means we should
+        # yield a default, 'blank', coverage item in these instances
+        #
+
+        function_coverage = self._director.coverage.functions.get(
+            function_address,
+            self._blank_coverage
+        )
+
+        # Coverage % - (by instruction execution)
+        if column == self.COV_PERCENT:
+            return "%5.2f" % (function_coverage.instruction_percent*100)
+
+        # Function Name
+        elif column == self.FUNC_NAME:
+            return function_metadata.name
+
+        # Function Address
+        elif column == self.FUNC_ADDR:
+            return "0x%X" % function_metadata.address
+
+        # Basic Blocks
+        elif column == self.BLOCKS_HIT:
+            return "%3u / %-3u" % (function_coverage.nodes_executed,
+                                   function_metadata.node_count)
+
+        # Instructions Hit
+        elif column == self.INST_HIT:
+            return "%4u / %-4u" % (function_coverage.instructions_executed,
+                                   function_metadata.instruction_count)
+
+        # Function Size
+        elif column == self.FUNC_SIZE:
+            return "%u" % function_metadata.size
+
+        # Cyclomatic Complexity
+        elif column == self.COMPLEXITY:
+            return "%u" % function_metadata.cyclomatic_complexity
+
+        # unhandeled? maybe make this an assert?
+        return None
+
+    def _data_orphan_display(self, column):
+        """
+        Return a string to be displayed by the table
+        """
+        if column == self.FUNC_NAME:
+            return "Orphan Coverage"
+        elif column == self.INST_HIT:
+            return "%u" % len(self._director.coverage.orphan_addresses)
+        return "N/A"
 
     def data(self, index, role=QtCore.Qt.DisplayRole):
         """
@@ -843,80 +986,31 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # a request has been made for what text to show in a table cell
         if role == QtCore.Qt.DisplayRole:
 
-            # alias the requested column number once, for readability & perf
             column = index.column()
+            function_address = self.row2func[index.row()]
 
-            # lookup the function info for this row
-            try:
-                function_address  = self.row2func[index.row()]
-                function_metadata = self.lctx.metadata.functions[function_address]
-
-            #
-            # if we hit a KeyError, it is probably because the database metadata
-            # is being refreshed and the model (this object) has yet to be
-            # updated.
-            #
-            # this should only ever happen as a result of the user using the
-            # right click 'Refresh metadata' action. And even then, only when
-            # a function they undefined in the IDB is visible in the coverage
-            # overview table view.
-            #
-            # In theory, the table should get refreshed *after* the metadata
-            # refresh completes. So for now, we simply return return the filler
-            # string '?'
-            #
-
-            except KeyError:
-                return "?"
-
-            #
-            # remember, if a function does *not* have coverage data, it will
-            # not have an entry in the coverage map. that means we should
-            # yield a default, 'blank', coverage item in these instances
-            #
-
-            function_coverage = self._director.coverage.functions.get(
-                function_address,
-                self._blank_coverage
-            )
-
-            # Coverage % - (by instruction execution)
-            if column == self.COV_PERCENT:
-                return "%5.2f" % (function_coverage.instruction_percent*100)
-
-            # Function Name
-            elif column == self.FUNC_NAME:
-                return function_metadata.name
-
-            # Function Address
-            elif column == self.FUNC_ADDR:
-                return "0x%X" % function_metadata.address
-
-            # Basic Blocks
-            elif column == self.BLOCKS_HIT:
-                return "%3u / %-3u" % (function_coverage.nodes_executed,
-                                       function_metadata.node_count)
-
-            # Instructions Hit
-            elif column == self.INST_HIT:
-                return "%4u / %-4u" % (function_coverage.instructions_executed,
-                                       function_metadata.instruction_count)
-
-            # Function Size
-            elif column == self.FUNC_SIZE:
-                return "%u" % function_metadata.size
-
-            # Cyclomatic Complexity
-            elif column == self.COMPLEXITY:
-                return "%u" % function_metadata.cyclomatic_complexity
+            if function_address == BADADDR:
+                return self._data_orphan_display(column)
+            else:
+                return self._data_function_display(function_address, column)
 
         # cell background color request
         elif role == QtCore.Qt.BackgroundRole:
             function_address  = self.row2func[index.row()]
+
+            # special handling for 'orphan' coverage
+            if function_address == BADADDR:
+
+                # if there was *ANY* coverage, color the 'orphan' line red
+                if self._director.coverage.orphan_addresses:
+                    return self.lctx.palette.table_coverage_bad
+
+            # normal handling
             function_coverage = self._director.coverage.functions.get(
                 function_address,
                 self._blank_coverage
             )
+
             return function_coverage.coverage_color
 
         # cell font style format request
@@ -1005,6 +1099,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # finally, rebuild the row2func mapping and notify views of this change
         self.row2func = dict(zip(xrange(len(sorted_functions)), sorted_addresses))
+        self.row2func[len(self.row2func)] = BADADDR
         self.func2row = {v: k for k, v in iteritems(self.row2func)}
         self.layoutChanged.emit()
 
@@ -1315,6 +1410,9 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
             # map the function address to a visible row # for easy lookup
             self.row2func[row] = function_address
             row += 1
+
+        # add a special entry for 'orphan coverage'
+        self.row2func[len(self.row2func)] = BADADDR
 
         # build the inverse func --> row mapping
         self.func2row = {v: k for k, v in iteritems(self.row2func)}
