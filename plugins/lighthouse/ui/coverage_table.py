@@ -1450,11 +1450,8 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # nested function for edges wrapping.
         def edge_wrapper(num, source, target):
             # escape XML special characters in source and target
-            escape_mapping = {"<": " &lt; ", ">": " &gt; ", "&": " &amp; "}
-            escape_trans_table = source.maketrans(escape_mapping)
-            source = source.translate(escape_trans_table)
-            escape_trans_table = target.maketrans(escape_mapping)
-            target = target.translate(escape_trans_table)
+            source = source.replace("&", " &amp; ").replace("<", " &lt; ").replace(">", " &gt; ")
+            target = target.replace("&", " &amp; ").replace("<", " &lt; ").replace(">", " &gt; ")
             # we need two tabs indent for edge tag, don't need to do anything with leading tabs here
             return """\
         <edge id="e{num}" source="{source}" target="{target}"/>\n""".format(num=num,
@@ -1518,11 +1515,8 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # nested function for nodes wrapping
         def node_wrapper(func_metadata, coverage_percentage, shape_vertices):
             # escape XML special characters in names
-            escape_mapping = {"<": " &lt; ", ">": " &gt; ", "&": " &amp; "}
-            escape_trans_table = func_metadata.raw_name.maketrans(escape_mapping)
-            raw_name = func_metadata.raw_name.translate(escape_trans_table)
-            escape_trans_table = func_metadata.name.maketrans(escape_mapping)
-            name = func_metadata.name.translate(escape_trans_table)
+            raw_name = func_metadata.raw_name.replace("&", " &amp; ").replace("<", " &lt; ").replace(">", " &gt; ")
+            name = func_metadata.name.replace("&", " &amp; ").replace("<", " &lt; ").replace(">", " &gt; ")
             # we need two tabs indent for node tag, don't need to do anything with leading tabs here
             return """\
         <node id="{raw_name}">
