@@ -621,6 +621,19 @@ class DatabaseMetadata(object):
 
         for address in addresses_chunk:
 
+            #
+            # check that address belongs to a code segment.
+            #
+            # it is not always so, as, for example, data from a segment of
+            # externals objects might belongs to a list of functions in
+            # disassembler, but these "functions" are data and cannot be
+            # covered. Such thing happens, for example in IDA Pro for
+            # ELF binaries
+            #
+
+            if not disassembler_ctx.is_code_segment(address):
+                continue
+
             # attempt to 'lift' the function from the database
             try:
                 function_metadata = FunctionMetadata(address, disassembler_ctx)

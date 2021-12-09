@@ -357,6 +357,13 @@ class DisassemblerContextAPI(object):
         """
         pass
 
+    @abc.abstractmethod
+    def is_code_segment(self, address):
+        """
+        Check if the given address belongs to a code segment.
+        """
+        pass
+
     #--------------------------------------------------------------------------
     # Hooks API
     #--------------------------------------------------------------------------

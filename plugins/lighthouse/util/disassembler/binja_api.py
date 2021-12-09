@@ -298,6 +298,10 @@ class BinjaContextAPI(DisassemblerContextAPI):
             new_name = None
         func.name = new_name
 
+    def is_code_segment(self, address):
+        # Binja is not supported yet, return True
+        return True
+
     #--------------------------------------------------------------------------
     # Hooks API
     #--------------------------------------------------------------------------
