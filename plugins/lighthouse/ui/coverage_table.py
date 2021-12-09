@@ -2,6 +2,7 @@ import os
 import time
 import string
 import logging
+from textwrap import dedent
 from operator import itemgetter, attrgetter
 
 from lighthouse.util import lmsg
@@ -207,6 +208,7 @@ class CoverageTableView(QtWidgets.QTableView):
         self._action_copy_name = QtWidgets.QAction("Copy name", None)
         self._action_copy_address = QtWidgets.QAction("Copy address", None)
         self._action_copy_name_and_address = QtWidgets.QAction("Copy name and address", None)
+        self._action_export_graphml = QtWidgets.QAction("Export coverage graph as GraphML", None)
 
         self._action_copy_names = QtWidgets.QAction("Copy names", None)
         self._action_copy_addresses = QtWidgets.QAction("Copy addresses", None)
@@ -343,6 +345,8 @@ class CoverageTableView(QtWidgets.QTableView):
                 ctx_menu.addAction(self._action_copy_address)
                 ctx_menu.addAction(self._action_copy_name_and_address)
                 ctx_menu.addSeparator()
+                ctx_menu.addAction(self._action_export_graphml)
+                ctx_menu.addSeparator()
 
         #
         # if multiple functions are selected then show actions available
@@ -392,6 +396,10 @@ class CoverageTableView(QtWidgets.QTableView):
         # handle the 'Copy name and address' or 'Copy names and addresses' action
         elif action in [self._action_copy_name_and_address, self._action_copy_names_and_addresses]:
             self._controller.copy_name_and_address(rows)
+
+        # handle the 'Export to GraphML' action (only applies to a single function)
+        elif action == self._action_export_graphml and len(rows) == 1:
+            self._controller.export_to_graphml(rows[0])
 
         # handle the 'Prefix functions' action
         elif action == self._action_prefix:
@@ -686,6 +694,48 @@ class CoverageTableController(object):
 
         lmsg("Saved HTML report to %s" % filename)
 
+    def export_to_graphml(self, row):
+        """
+        Export the coverage representation to GraphML format, using
+        selected row (function) in coverage table as a graph root.
+        """
+        if not self._last_directory:
+            self._last_directory = disassembler[self.lctx].get_database_directory()
+
+        # build filename for the report based on the coverage name and root function name
+        name, _ = os.path.splitext(self.lctx.director.coverage_name)
+        name += "_" + self._model.data(self._model.index(row, self._model.FUNC_NAME))
+        filename = name + ".graphml"
+        suggested_filepath = os.path.join(self._last_directory, filename)
+
+        # create & configure a Qt File Dialog for immediate use
+        file_dialog = QtWidgets.QFileDialog()
+        file_dialog.setFileMode(QtWidgets.QFileDialog.AnyFile)
+
+        # we construct kwargs here for cleaner PySide/PyQt5 compatibility
+        kwargs = \
+            {
+                "filter": "GraphML Files (*.graphml)",
+                "caption": "Save GraphML Coverage Representation",
+                "directory": suggested_filepath
+            }
+
+        # prompt the user with the file dialog, and await their chosen filename(s)
+        filename, _ = file_dialog.getSaveFileName(**kwargs)
+        if not filename:
+            return
+
+        # remember the last directory we were in (parsed from the saved file)
+        self._last_directory = os.path.dirname(filename) + os.sep
+
+        # write the generated GraphML representation to a disk
+        with open(filename, "w") as fd:
+            # get the clicked function address
+            function_address = self._model.row2func[row]
+            fd.write(self._model.to_graphml(function_address))
+
+        lmsg("Saved GraphML coverage representation to %s" % filename)
+
     #---------------------------------------------------------------------------
     # Internal
     #---------------------------------------------------------------------------
@@ -896,7 +946,7 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
 
         # unhandeled header request
         return None
-    
+
     def _data_function_display(self, function_address, column):
         """
         Return a string to diplay in the requested column of the given function.
@@ -1292,6 +1342,281 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         )
 
         return (table_html, table_css)
+
+    #--------------------------------------------------------------------------
+    # GraphML Export
+    #--------------------------------------------------------------------------
+    #
+    # Export to GraphML representation can be used for analyzing code coverage
+    # as a system of functions. Exported file is a graph of all reachable code
+    # from specified by the user function.
+    # Graph details:
+    # - Graph is a directed graph;
+    # - Nodes are functions;
+    # - Edges are set from caller function to callee function;
+    # - Each node contains the following information:
+    #   * Function size (in bytes);
+    #   * Function coverage percentage;
+    #   * Cyclomatic complexity value;
+    #   * Amount of memory read/write references;
+    #   * Number of polygon vertices that can be used as a shape of the node.
+    #
+    # Notes about the number of polygon vertices that can be used as a shape
+    # of the node:
+    # The number of such vertices reflects the corresponding cyclomatic
+    # complexity value, so cyclomatic complexity can be visualized as the
+    # shape of the corresponding node - the more cyclomatic complexity is the
+    # more vertices polygon has. During the export, the relation between
+    # cyclomatic complexity value and number of polygon vertices is computed
+    # based on overall complexity of all current graph functions in order to
+    # achieve efficient distribution of polygon vertices.
+    #
+
+    def to_graphml(self, start_function_address):
+        """
+        Generate a GraphML representation of the active coverage, using
+        start_function_address as a graph root.
+        """
+        metadata = self._director.metadata
+
+        #
+        # GraphML header data and node properties declaration.
+        # We use textwrap.dedent() in order to delete common leading
+        # whitespaces and make string lines up with the left edge of
+        # the display
+        #
+
+        graphml_data = dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <graphml xmlns="http://graphml.graphdrawing.org/xmlns"  
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns 
+                 http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+            <key id="polygon" for="node" attr.name="Polygon" attr.type="int">
+                <default>0</default>
+            </key>
+            <key id="label" for="node" attr.name="Label" attr.type="string"/>
+            <key id="fsize" for="node" attr.name="FuncSize" attr.type="int"/>
+            <key id="cov" for="node" attr.name="Coverage" attr.type="double"/>
+            <key id="cc" for="node" attr.name="Complexity" attr.type="int"/>
+            <key id="mem_ref" for="node" attr.name="MemReferenceCount" attr.type="int"/>
+            <graph edgedefault="directed">
+        """)
+
+        start_func_metadata = metadata.functions.get(start_function_address)
+        if start_func_metadata is None:
+            return None
+
+        #
+        # generate GraphML edges.
+        # NOTE: we generate edges and nodes separately in order to compute
+        # correct number of vertices of polygons which can be used as shapes of
+        # the graph nodes
+        #
+
+        graph_nodes, graphml_edges_data = self._generate_graphml_edges(start_func_metadata)
+        graphml_data += graphml_edges_data
+        # generate GraphML nodes
+        graphml_data += self._generate_graphml_nodes(graph_nodes)
+
+        # enclosing GraphML tags
+        graphml_data += dedent("""\
+            </graph>
+        </graphml>
+        """)
+
+        # return final GraphML representation
+        return graphml_data
+
+    def _generate_graphml_edges(self, start_function_metadata):
+        """
+        Traverse functions referenced from start function and
+        generate GraphML edges data.
+        """
+        metadata = self._director.metadata
+
+        # queue for breadth-first traversal of the graph
+        nodes_queue = queue.Queue()
+        # list to store already traversed nodes
+        nodes_traversed = []
+        edges_num = 0
+
+        graphml_edges_data = ""
+
+        # nested function for edges wrapping.
+        def edge_wrapper(num, source, target):
+            # escape XML special characters in source and target
+            escape_mapping = {"<": " &lt; ", ">": " &gt; ", "&": " &amp; "}
+            escape_trans_table = source.maketrans(escape_mapping)
+            source = source.translate(escape_trans_table)
+            escape_trans_table = target.maketrans(escape_mapping)
+            target = target.translate(escape_trans_table)
+            # we need two tabs indent for edge tag, don't need to do anything with leading tabs here
+            return """\
+        <edge id="e{num}" source="{source}" target="{target}"/>\n""".format(num=num,
+                                                                            source=source,
+                                                                            target=target)
+
+        nodes_queue.put(start_function_metadata)
+
+        #
+        # let's build the graph.
+        # NOTE: during that traversal we will not add graph nodes (only edges)
+        # information to the output data, because we need to collect the information
+        # about all nodes first in order to calculate proper number of vertices of polygon,
+        # which can be the shape of graph nodes. That's all because we want to distribute
+        # the number of polygon vertices efficiently based on actual complexity of graph functions.
+        # That's because GraphML edges and nodes generation is split into different functions
+        #
+
+        while not nodes_queue.empty():
+            src_func_metadata = nodes_queue.get()
+            if src_func_metadata in nodes_traversed:
+                continue
+            else:
+                nodes_traversed.append(src_func_metadata)
+
+            for dst_func_address in src_func_metadata.xrefs_to:
+                dst_func_metadata = metadata.functions.get(dst_func_address)
+                # don't have metadata or address doesn't point to function start address, skip it
+                if dst_func_metadata is None:
+                    continue
+
+                # add GraphML edge to output data, using unique raw names as nodes ids
+                graphml_edges_data += edge_wrapper(edges_num,
+                                                   src_func_metadata.raw_name,
+                                                   dst_func_metadata.raw_name)
+                edges_num += 1
+                nodes_queue.put(dst_func_metadata)
+
+        return nodes_traversed, graphml_edges_data
+
+    def _generate_graphml_nodes(self, graph_nodes):
+        """
+        Generate GraphML nodes data.
+        """
+        coverage = self._director.coverage
+
+        # constants for polygon shapes vertices computation
+        extreme_nodes_percentage = 0.05
+        # disk has zero vertices, so...
+        disk_shape = 0
+        max_polygon_vertices = 8
+        # value can't be lower than 3
+        min_polygon_vertices = 3
+
+        graphml_nodes_data = ""
+
+        # nested function for nodes wrapping
+        def node_wrapper(func_metadata, coverage_percentage, shape_vertices):
+            # escape XML special characters in names
+            escape_mapping = {"<": " &lt; ", ">": " &gt; ", "&": " &amp; "}
+            escape_trans_table = func_metadata.raw_name.maketrans(escape_mapping)
+            raw_name = func_metadata.raw_name.translate(escape_trans_table)
+            escape_trans_table = func_metadata.name.maketrans(escape_mapping)
+            name = func_metadata.name.translate(escape_trans_table)
+            # we need two tabs indent for node tag, don't need to do anything with leading tabs here
+            return """\
+        <node id="{raw_name}">
+            <data key="label">{name}</data>
+            <data key="fsize">{fsize}</data>
+            <data key="cov">{cov:.2f}</data>
+            <data key="cc">{cc}</data>
+            <data key="mem_ref">{mem_ref}</data>
+            <data key="polygon">{polygon}</data>
+        </node>\n""".format(raw_name=raw_name,
+                            name=name,
+                            fsize=func_metadata.size,
+                            cov=coverage_percentage,
+                            cc=func_metadata.cyclomatic_complexity,
+                            mem_ref=func_metadata.read_refs_count + func_metadata.write_refs_count,
+                            polygon=shape_vertices)
+
+        # sort nodes by complexity to distribute the number of vertices in polygon-shaped nodes
+        graph_nodes.sort(key=lambda function: function.cyclomatic_complexity)
+
+        #
+        # efficient distribution of nodes with some percentage of min and max "extreme" values
+        #
+
+        # take defined percentage of extreme complexity nodes for extreme number of polygon vertices
+        extreme_nodes_num = int(len(graph_nodes) * extreme_nodes_percentage)
+        if extreme_nodes_num > 0:
+
+            #
+            # to avoid the case when adjacent nodes with the same complexity have different
+            # shapes we will increase extreme nodes num until adjacent nodes have the same
+            # complexity
+            #
+
+            num = extreme_nodes_num
+            while num < len(graph_nodes) and \
+                    graph_nodes[num - 1].cyclomatic_complexity == graph_nodes[num].cyclomatic_complexity:
+                num += 1
+            # generate GraphML nodes for nodes with smallest complexity
+            for func_metadata in graph_nodes[:num]:
+                coverage_percent = coverage.functions.get(func_metadata.address,
+                                                          self._blank_coverage).instruction_percent
+                # add function as GraphML node to the output data
+                graphml_nodes_data += node_wrapper(func_metadata,
+                                                   coverage_percent * 100,
+                                                   disk_shape)
+            # delete extreme nodes from the list for convenience
+            del graph_nodes[:num]
+            if not graph_nodes:
+                return graphml_nodes_data
+
+            #
+            # we need to check that max/min regions were not overlapped
+            # during the addition of adjacent nodes to min region. As min nodes were deleted,
+            # overlapping can be detected by checking that extreme_nodes_num is
+            # greater than new length of graph_nodes
+            #
+
+            num = min(extreme_nodes_num, len(graph_nodes))
+            # check adjacent nodes as for minimum region
+            while num < len(graph_nodes) and \
+                    graph_nodes[-num].cyclomatic_complexity == graph_nodes[-num - 1].cyclomatic_complexity:
+                num += 1
+            # generate GraphML nodes for nodes with largest complexity
+            for func_metadata in graph_nodes[-num:]:
+                coverage_percent = coverage.functions.get(func_metadata.address,
+                                                          self._blank_coverage).instruction_percent
+                # add function as GraphML node to the output data
+                graphml_nodes_data += node_wrapper(func_metadata,
+                                                   coverage_percent * 100,
+                                                   max_polygon_vertices)
+            max_polygon_vertices -= 1
+            # delete extreme nodes from the list for convenience
+            del graph_nodes[-num:]
+            if not graph_nodes:
+                return graphml_nodes_data
+
+        #
+        # efficient distribution of other nodes
+        #
+
+        min_complexity = graph_nodes[0].cyclomatic_complexity
+        max_complexity = graph_nodes[-1].cyclomatic_complexity
+        # chunks interval length, based on complexity min/max values
+        complexity_interval = \
+            (max_complexity - min_complexity) / (max_polygon_vertices - min_polygon_vertices + 1)
+        cur_polygon_vertices = min_polygon_vertices
+        cur_complexity_bound = min_complexity + complexity_interval
+        for func_metadata in graph_nodes:
+            # check that node is still inside current interval
+            while func_metadata.cyclomatic_complexity > cur_complexity_bound:
+                cur_polygon_vertices += 1
+                cur_complexity_bound += complexity_interval
+
+            coverage_percent = coverage.functions.get(func_metadata.address,
+                                                  self._blank_coverage).instruction_percent
+            # add function as GraphML node to the output data
+            graphml_nodes_data += node_wrapper(func_metadata,
+                                               coverage_percent * 100,
+                                               cur_polygon_vertices)
+
+        return graphml_nodes_data
 
     #--------------------------------------------------------------------------
     # Filters

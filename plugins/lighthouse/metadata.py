@@ -816,6 +816,7 @@ class FunctionMetadata(object):
         # function metadata
         self.address = address
         self.name = None
+        self.raw_name = None
 
         # node metadata
         self.nodes = {}
@@ -827,6 +828,13 @@ class FunctionMetadata(object):
         self.edge_count = 0
         self.instruction_count = 0
         self.cyclomatic_complexity = 0
+
+        # memory read/write references metrics
+        self.read_refs_count = 0
+        self.write_refs_count = 0
+
+        # references to other functions
+        self.xrefs_to = set()
 
         # collect metdata from the underlying database
         self._cache_function(disassembler_ctx)
@@ -858,7 +866,9 @@ class FunctionMetadata(object):
         Collect function metadata from the underlying database.
         """
         self.name = disassembler_ctx.get_function_name_at(self.address)
+        self.raw_name = disassembler_ctx.get_function_raw_name_at(self.address)
         self._refresh_nodes(disassembler_ctx)
+        self._refresh_xrefs(disassembler_ctx)
         self._finalize()
 
     def _refresh_nodes(self, disassembler_ctx):
@@ -964,6 +974,53 @@ class FunctionMetadata(object):
             #for edge in node.outgoing_edges:
             #    function_metadata.edges[edge_src].append(edge.target.start)
 
+    def _refresh_xrefs(self, disassembler_ctx):
+        """
+        This will be replaced with a disassembler-specific function at runtime.
+
+        NOTE: Read the 'MONKEY PATCHING' section at the end of this file.
+        """
+        raise RuntimeError("This function should have been monkey patched...")
+
+    def _ida_refresh_xrefs(self, _):
+        """
+        Refresh function xrefs metadata against an open IDA database.
+        """
+        # IDA Pro xrefs types constants
+        code_xref_types = [idaapi.fl_CF,  # Call Far
+                           idaapi.fl_CN,  # Call Near
+                           idaapi.fl_JF,  # Jump Far
+                           idaapi.fl_JN]  # Jump Near
+        data_read_xref = idaapi.dr_R
+        data_write_xref = idaapi.dr_W
+
+        function_metadata = self
+        function_metadata.xrefs_to = set()
+        function_metadata.read_refs_count = 0
+        function_metadata.write_refs_count = 0
+
+        # compute read/write references and references to other functions
+        for node_metadata in itervalues(function_metadata.nodes):
+            for instruction_address in node_metadata.instructions:
+                for xref in idautils.XrefsFrom(instruction_address):
+                    # if reference is a data read reference, just update counter
+                    if xref.type == data_read_xref:
+                        function_metadata.read_refs_count += 1
+
+                    # the same for data write reference
+                    elif xref.type == data_write_xref:
+                        function_metadata.write_refs_count += 1
+
+                    # if reference is code ref and doesn't point inside current function, add it
+                    elif xref.type in code_xref_types and xref.to not in function_metadata.nodes:
+                        function_metadata.xrefs_to.add(xref.to)
+
+    def _binja_refresh_xrefs(self, _):
+        """
+        This feature is not supported for Binary Ninja.
+        """
+        pass
+
     def _compute_complexity(self):
         """
         Walk the function CFG to determine approximate cyclomatic complexity.
@@ -1045,6 +1102,7 @@ class FunctionMetadata(object):
         """
         result = True
         result &= self.name == other.name
+        result &= self.raw_name == other.raw_name
         result &= self.size == other.size
         result &= self.address == other.address
         result &= self.node_count == other.node_count
@@ -1214,6 +1272,7 @@ if disassembler.NAME == "IDA":
     import idautils
     DatabaseMetadata._cache_instructions = DatabaseMetadata._ida_cache_instructions
     FunctionMetadata._refresh_nodes = FunctionMetadata._ida_refresh_nodes
+    FunctionMetadata._refresh_xrefs = FunctionMetadata._ida_refresh_xrefs
     NodeMetadata._cache_node = NodeMetadata._ida_cache_node
 
     # pull hot funcs out of module for faster access... (perf)
@@ -1225,6 +1284,7 @@ elif disassembler.NAME == "BINJA":
     from binaryninja import core
     DatabaseMetadata._cache_instructions = DatabaseMetadata._binja_cache_instructions
     FunctionMetadata._refresh_nodes = FunctionMetadata._binja_refresh_nodes
+    FunctionMetadata._refresh_xrefs = FunctionMetadata._binja_refresh_xrefs
     NodeMetadata._cache_node = NodeMetadata._binja_cache_node
 
     # pull hot funcs out of module for faster access... (perf)
