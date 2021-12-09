@@ -704,7 +704,8 @@ class CoverageTableController(object):
 
         # build filename for the report based on the coverage name and root function name
         name, _ = os.path.splitext(self.lctx.director.coverage_name)
-        name += "_" + self._model.data(self._model.index(row, self._model.FUNC_NAME))
+        func_name = self._model.data(self._model.index(row, self._model.FUNC_NAME))
+        name += "_" + func_name
         filename = name + ".graphml"
         suggested_filepath = os.path.join(self._last_directory, filename)
 
@@ -732,9 +733,11 @@ class CoverageTableController(object):
         with open(filename, "w") as fd:
             # get the clicked function address
             function_address = self._model.row2func[row]
-            fd.write(self._model.to_graphml(function_address))
+            graphml_data, coverage_percentage = self._model.to_graphml(function_address)
+            fd.write(graphml_data)
 
         lmsg("Saved GraphML coverage representation to %s" % filename)
+        lmsg("Coverage of a reachable code from %s is %.2f" % (func_name, coverage_percentage * 100))
 
     #---------------------------------------------------------------------------
     # Internal
@@ -1417,7 +1420,8 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         graph_nodes, graphml_edges_data = self._generate_graphml_edges(start_func_metadata)
         graphml_data += graphml_edges_data
         # generate GraphML nodes
-        graphml_data += self._generate_graphml_nodes(graph_nodes)
+        coverage_percentage, graphml_nodes_data = self._generate_graphml_nodes(graph_nodes)
+        graphml_data += graphml_nodes_data
 
         # enclosing GraphML tags
         graphml_data += dedent("""\
@@ -1425,8 +1429,8 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         </graphml>
         """)
 
-        # return final GraphML representation
-        return graphml_data
+        # return final GraphML representation and the coverage percentage
+        return graphml_data, coverage_percentage
 
     def _generate_graphml_edges(self, start_function_metadata):
         """
@@ -1505,6 +1509,10 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
         # value can't be lower than 3
         min_polygon_vertices = 3
 
+        # the amount of a reachable code and the covered one
+        reachable_instruction_count = 0
+        instructions_covered = 0
+
         graphml_nodes_data = ""
 
         # nested function for nodes wrapping
@@ -1555,16 +1563,18 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
                 num += 1
             # generate GraphML nodes for nodes with smallest complexity
             for func_metadata in graph_nodes[:num]:
-                coverage_percent = coverage.functions.get(func_metadata.address,
-                                                          self._blank_coverage).instruction_percent
+                func_coverage = coverage.functions.get(func_metadata.address, self._blank_coverage)
                 # add function as GraphML node to the output data
                 graphml_nodes_data += node_wrapper(func_metadata,
-                                                   coverage_percent * 100,
+                                                   func_coverage.instruction_percent * 100,
                                                    disk_shape)
+                reachable_instruction_count += func_metadata.instruction_count
+                instructions_covered += func_coverage.instructions_executed
             # delete extreme nodes from the list for convenience
             del graph_nodes[:num]
             if not graph_nodes:
-                return graphml_nodes_data
+                # return GraphML data together with the coverage percentage of a reachable code
+                return float(instructions_covered) / reachable_instruction_count, graphml_nodes_data
 
             #
             # we need to check that max/min regions were not overlapped
@@ -1580,17 +1590,19 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
                 num += 1
             # generate GraphML nodes for nodes with largest complexity
             for func_metadata in graph_nodes[-num:]:
-                coverage_percent = coverage.functions.get(func_metadata.address,
-                                                          self._blank_coverage).instruction_percent
+                func_coverage = coverage.functions.get(func_metadata.address, self._blank_coverage)
                 # add function as GraphML node to the output data
                 graphml_nodes_data += node_wrapper(func_metadata,
-                                                   coverage_percent * 100,
+                                                   func_coverage.instruction_percent * 100,
                                                    max_polygon_vertices)
+                reachable_instruction_count += func_metadata.instruction_count
+                instructions_covered += func_coverage.instructions_executed
             max_polygon_vertices -= 1
             # delete extreme nodes from the list for convenience
             del graph_nodes[-num:]
             if not graph_nodes:
-                return graphml_nodes_data
+                # return GraphML data together with the coverage percentage of a reachable code
+                return float(instructions_covered) / reachable_instruction_count, graphml_nodes_data
 
         #
         # efficient distribution of other nodes
@@ -1609,14 +1621,16 @@ class CoverageTableModel(QtCore.QAbstractTableModel):
                 cur_polygon_vertices += 1
                 cur_complexity_bound += complexity_interval
 
-            coverage_percent = coverage.functions.get(func_metadata.address,
-                                                  self._blank_coverage).instruction_percent
+            func_coverage = coverage.functions.get(func_metadata.address, self._blank_coverage)
             # add function as GraphML node to the output data
             graphml_nodes_data += node_wrapper(func_metadata,
-                                               coverage_percent * 100,
+                                               func_coverage.instruction_percent * 100,
                                                cur_polygon_vertices)
+            reachable_instruction_count += func_metadata.instruction_count
+            instructions_covered += func_coverage.instructions_executed
 
-        return graphml_nodes_data
+        # return GraphML data together with the coverage percentage of a reachable code
+        return float(instructions_covered) / reachable_instruction_count, graphml_nodes_data
 
     #--------------------------------------------------------------------------
     # Filters
