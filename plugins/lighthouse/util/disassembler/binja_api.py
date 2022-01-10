@@ -334,7 +334,7 @@ class RenameHooks(binaryview.BinaryDataNotification):
 
     def __symbol_handler(self, view, symbol):
         func = self._bv.get_function_at(symbol.address)
-        if not func.start == symbol.address:
+        if not func or not func.start == symbol.address:
             return
         self.name_changed(symbol.address, symbol.name)
 
