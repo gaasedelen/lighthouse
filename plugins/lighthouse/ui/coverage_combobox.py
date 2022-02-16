@@ -118,7 +118,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         self.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
-        self.setMaximumHeight(self._font_metrics.height()*1.75)
+        self.setMaximumHeight(int(self._font_metrics.height()*1.75))
 
         # draw the QComboBox with a 'Windows'-esque style
         self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
@@ -533,7 +533,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         delete_icon = QtGui.QPixmap(plugin_resource("icons/delete_coverage.png"))
 
         # compute the appropriate size for the deletion icon
-        icon_height = self._font_metrics.height()*0.75
+        icon_height = int(self._font_metrics.height()*0.75)
         icon_width  = icon_height
 
         # scale the icon as appropriate (very likely scaling it down)

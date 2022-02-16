@@ -62,7 +62,7 @@ class WaitBox(QtWidgets.QDialog):
         # configure the main widget / form
         self.setSizeGripEnabled(False)
         self.setModal(True)
-        self._dpi_scale = get_dpi_scale()*5.0
+        self._dpi_scale = get_dpi_scale()*5
 
         # initialize abort button
         self._abort_button = QtWidgets.QPushButton("Cancel")
