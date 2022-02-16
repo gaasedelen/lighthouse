@@ -1045,7 +1045,7 @@ class ComposingLine(QtWidgets.QPlainTextEdit):
         # set the height of the textbox based on some arbitrary math :D
         LINE_PADDING = self.document().documentMargin()*2
         line_height = self._font_metrics.height() + LINE_PADDING + 2
-        self.setFixedHeight(line_height)
+        self.setFixedHeight(int(line_height))
 
     #--------------------------------------------------------------------------
     # QPlainTextEdit Overloads

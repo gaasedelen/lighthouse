@@ -145,7 +145,7 @@ class CoverageTableView(QtWidgets.QTableView):
             entry_rect = entry_fm.boundingRect(entry_text)
 
             # select the larger of the two potential column widths
-            column_width = max(title_rect.width(), entry_rect.width()*1.2)
+            column_width = int(max(title_rect.width(), entry_rect.width()*1.2))
 
             # save the final column width
             self.setColumnWidth(i, column_width)
@@ -191,7 +191,7 @@ class CoverageTableView(QtWidgets.QTableView):
         # NOTE: don't ask too many questions about this voodoo math :D
         spacing = entry_fm.height() - entry_fm.xHeight()
         tweak = (17*get_dpi_scale() - spacing)/get_dpi_scale()
-        vh.setDefaultSectionSize(entry_fm.height()+tweak)
+        vh.setDefaultSectionSize(int(entry_fm.height()+tweak))
 
     def _ui_init_table_ctx_menu_actions(self):
         """

@@ -69,7 +69,7 @@ def get_dpi_scale():
     fm = QtGui.QFontMetricsF(font)
 
     # xHeight is expected to be 40.0 at normal DPI
-    return fm.height() / 173.0
+    return int(fm.height() / 173.0)
 
 def compute_color_on_gradiant(percent, color1, color2):
     """
@@ -79,9 +79,9 @@ def compute_color_on_gradiant(percent, color1, color2):
     r2, g2, b2, _ = color2.getRgb()
 
     # compute the new color across the gradiant of color1 -> color 2
-    r = r1 + percent * (r2 - r1)
-    g = g1 + percent * (g2 - g1)
-    b = b1 + percent * (b2 - b1)
+    r = r1 + int(percent * (r2 - r1))
+    g = g1 + int(percent * (g2 - g1))
+    b = b1 + int(percent * (b2 - b1))
 
     # return the new color
     return QtGui.QColor(r,g,b)
