@@ -6,7 +6,7 @@ import itertools
 import collections
 
 from lighthouse.util import *
-from lighthouse.util.qt import compute_color_on_gradiant
+from lighthouse.util.qt import compute_color_on_gradient
 from lighthouse.metadata import DatabaseMetadata
 
 logger = logging.getLogger("Lighthouse.Coverage")
@@ -311,7 +311,7 @@ class DatabaseCoverage(object):
         Does not require @disassembler.execute_ui decorator as no Qt is touched.
         """
         for function in self.functions.values():
-            function.coverage_color = compute_color_on_gradiant(
+            function.coverage_color = compute_color_on_gradient(
                 function.instruction_percent,
                 self.palette.table_coverage_bad,
                 self.palette.table_coverage_good
@@ -798,7 +798,7 @@ class FunctionCoverage(object):
         self.executions = float(node_sum) / function_metadata.node_count
 
         # bake colors
-        self.coverage_color = compute_color_on_gradiant(
+        self.coverage_color = compute_color_on_gradient(
             self.instruction_percent,
             self.database.palette.table_coverage_bad,
             self.database.palette.table_coverage_good

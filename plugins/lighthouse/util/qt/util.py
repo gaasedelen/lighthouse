@@ -71,14 +71,14 @@ def get_dpi_scale():
     # xHeight is expected to be 40.0 at normal DPI
     return int(fm.height() / 173.0)
 
-def compute_color_on_gradiant(percent, color1, color2):
+def compute_color_on_gradient(percent, color1, color2):
     """
     Compute the color specified by a percent between two colors.
     """
     r1, g1, b1, _ = color1.getRgb()
     r2, g2, b2, _ = color2.getRgb()
 
-    # compute the new color across the gradiant of color1 -> color 2
+    # compute the new color across the gradient of color1 -> color 2
     r = r1 + int(percent * (r2 - r1))
     g = g1 + int(percent * (g2 - g1))
     b = b1 + int(percent * (b2 - b1))
