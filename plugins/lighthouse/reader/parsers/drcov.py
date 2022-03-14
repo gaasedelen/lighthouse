@@ -40,6 +40,7 @@ class DrcovData(CoverageFile):
         self.module_table_count = 0
         self.module_table_version = 0
         self.modules = {}
+        self.modules_by_id = {}
 
         # drcov basic block data
         self.bbs = []
@@ -249,11 +250,13 @@ class DrcovData(CoverageFile):
         Parse drcov log modules in the module table from filestream.
         """
         modules = collections.defaultdict(list)
+        self.modules_by_id = {}
 
         # loop through each *expected* line in the module table and parse it
         for i in range(self.module_table_count):
             module = DrcovModule(f.readline().decode('utf-8').strip(), self.module_table_version)
             modules[module.filename].append(module)
+            self.modules_by_id[module.id] = module
 
         self.modules = modules
 
@@ -334,6 +337,15 @@ class DrcovData(CoverageFile):
             bb.start = int(match.group("start"), 16)
             bb.size = int(match.group("size"), 10)
             bb.mod_id = int(match.group("mod"), 10)
+
+            # In new DynamoRIO versions (e.g. 8.0.18897) there is a change
+            # in BB description in BB table: module's offset is not added to BB start.
+            # So we make this addition here and only for new modules table version - 5,
+            # to prevent Lighthouse from failure on older modules table versions.
+            # Attention! Lighthouse will failed on older drcov files, but with new modules table version 5!
+            if self.module_table_version == 5:
+                bb.start += self.modules_by_id[bb.mod_id].offset
+
 
 #------------------------------------------------------------------------------
 # drcov module parser
