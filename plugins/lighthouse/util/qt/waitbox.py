@@ -83,7 +83,7 @@ class WaitBox(QtWidgets.QDialog):
         v_layout.setAlignment(QtCore.Qt.AlignCenter)
         v_layout.addWidget(self._text_label)
         if self._abort:
-            self._abort_button.clicked.connect(abort)
+            self._abort_button.clicked.connect(self._abort)
             v_layout.addWidget(self._abort_button)
 
         v_layout.setSpacing(self._dpi_scale*3)
