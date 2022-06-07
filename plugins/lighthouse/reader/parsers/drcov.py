@@ -137,7 +137,7 @@ class DrcovData(CoverageFile):
         flavor_line = f.readline().decode('utf-8').strip()
         self.flavor = flavor_line.split(":")[1]
 
-        assert self.version == 2, "Only drcov version 2 log files supported"
+        assert self.version == 2 or self.version == 3, "Only drcov version 2 or 3 log files supported"
 
     def _parse_module_table(self, f):
         """
