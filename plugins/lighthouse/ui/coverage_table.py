@@ -665,15 +665,12 @@ class CoverageTableController(object):
         file_dialog.setFileMode(QtWidgets.QFileDialog.AnyFile)
 
         # we construct kwargs here for cleaner PySide/PyQt5 compatibility
-        kwargs = \
-        {
-            "filter": "HTML Files (*.html)",
-            "caption": "Save HTML Report",
-            "directory": suggested_filepath
-        }
+        file_dialog.setNameFilter("HTML Files (*.html)")
+        file_dialog.setWindowTitle("Save HTML Report")
+        file_dialog.setDirectory(suggested_filepath)
 
         # prompt the user with the file dialog, and await their chosen filename(s)
-        filename, _ = file_dialog.getSaveFileName(**kwargs)
+        filename, _ = file_dialog.getSaveFileName()
         if not filename:
             return
 
