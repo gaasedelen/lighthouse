@@ -944,7 +944,7 @@ class FunctionMetadata(object):
 
             for i in range(0, count.value):
                 if edges[i].target:
-                    function_metadata.edges[edge_src].append(node._create_instance(BNNewBasicBlockReference(edges[i].target), bv).start)
+                    function_metadata.edges[edge_src].append(node._create_instance(BNNewBasicBlockReference(edges[i].target)).start)
             core.BNFreeBasicBlockEdgeList(edges, count.value)
 
             # NOTE/PERF ~28% of metadata collection time alone...
