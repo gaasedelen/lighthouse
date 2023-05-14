@@ -65,7 +65,7 @@ maps.map(function (e) {
 var filtered_maps = new ModuleMap(function (m) {
     if (whitelist.indexOf('all') >= 0) { return true; }
 
-    return whitelist.indexOf(m.name) >= 0;
+    return whitelist.some(item => m.name.toLowerCase().includes(item.toLowerCase()));
 });
 
 // This function takes a list of GumCompileEvents and converts it into a DRcov
