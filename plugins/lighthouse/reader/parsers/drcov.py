@@ -99,8 +99,13 @@ class DrcovData(CoverageFile):
         # extract the unique module ids that we need to collect blocks for
         mod_ids = [module.id for module in modules]
 
-        # loop through the coverage data and filter out data for the target ids
-        coverage_blocks = [(bb.start, bb.size) for bb in self.bbs if bb.mod_id in mod_ids]
+        if self.version > 2:
+            mod_bases = dict([[module.id, module.start-modules[0].start] for module in modules])
+            # drcov version 3 contains offset within the start of the region
+            coverage_blocks = [(bb.start+mod_bases[bb.mod_id], bb.size) for bb in self.bbs if bb.mod_id in mod_ids]
+        else:
+            # loop through the coverage data and filter out data for the target ids
+            coverage_blocks = [(bb.start, bb.size) for bb in self.bbs if bb.mod_id in mod_ids]
 
         # return the filtered coverage blocks
         return coverage_blocks
@@ -137,7 +142,7 @@ class DrcovData(CoverageFile):
         flavor_line = f.readline().decode('utf-8').strip()
         self.flavor = flavor_line.split(":")[1]
 
-        assert self.version == 2, "Only drcov version 2 log files supported"
+        assert self.version == 2 or self.version == 3, "Only drcov versions 2 and 3 log files supported"
 
     def _parse_module_table(self, f):
         """
