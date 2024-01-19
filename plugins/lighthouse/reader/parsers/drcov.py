@@ -99,13 +99,23 @@ class DrcovData(CoverageFile):
         # extract the unique module ids that we need to collect blocks for
         mod_ids = [module.id for module in modules]
 
-        if self.version > 2:
-            mod_bases = dict([[module.id, module.start-modules[0].start] for module in modules])
-            # drcov version 3 contains offset within the start of the region
-            coverage_blocks = [(bb.start+mod_bases[bb.mod_id], bb.size) for bb in self.bbs if bb.mod_id in mod_ids]
-        else:
-            # loop through the coverage data and filter out data for the target ids
+        # loop through the coverage data and filter out data for the target ids
+        if self.version < 3:
             coverage_blocks = [(bb.start, bb.size) for bb in self.bbs if bb.mod_id in mod_ids]
+
+        #
+        # drcov version 3 does not include the 'preferred' / sub-module base
+        # in the bb offset, so we must add that base offset before returning
+        # the block offsets to correctly normalize things
+        #
+        # it's unclear if the preferred_base for given sub-module segments
+        # will always be correct, so we opt to simply use the first segment
+        # in a given module as the base to compute the known runtime offset
+        #
+
+        else:
+            mod_bases = dict([(module.id, module.start - modules[0].start) for module in modules])
+            coverage_blocks = [(mod_bases[bb.mod_id] + bb.start, bb.size) for bb in self.bbs if bb.mod_id in mod_ids]
 
         # return the filtered coverage blocks
         return coverage_blocks
@@ -231,6 +241,12 @@ class DrcovData(CoverageFile):
              'Columns: id, containing_id, start, end, entry, offset, checksum, timestamp, path'
            Mac/Linux:
              'Columns: id, containing_id, start, end, entry, offset, path'
+
+        DynamoRIO v10.0.19734, table version 5:
+           Windows:
+             'Columns: id, containing_id, start, end, entry, offset, preferred_base, checksum, timestamp, path'
+           Mac/Linux:
+             'Columns: id, containing_id, start, end, entry, offset, preferred_base, path'
 
         """
 
@@ -455,19 +471,19 @@ class DrcovModule(object):
         """
         Parse a module table v5 entry.
         """
-        self.id            = int(data[0])
-        self.containing_id = int(data[1])
-        self.base          = int(data[2], 16)
-        self.end           = int(data[3], 16)
-        self.entry         = int(data[4], 16)
-        self.offset        = int(data[5], 16)
-        self.preferred_base= int(data[6], 16)
+        self.id             = int(data[0])
+        self.containing_id  = int(data[1])
+        self.base           = int(data[2], 16)
+        self.end            = int(data[3], 16)
+        self.entry          = int(data[4], 16)
+        self.offset         = int(data[5], 16)
+        self.preferred_base = int(data[6], 16)
         if len(data) > 8: # Windows Only
-            self.checksum  = int(data[7], 16)
-            self.timestamp = int(data[8], 16)
-        self.path          = str(data[-1])
-        self.size          = self.end-self.base
-        self.filename      = os.path.basename(self.path.replace('\\', os.sep))
+            self.checksum   = int(data[7], 16)
+            self.timestamp  = int(data[8], 16)
+        self.path           = str(data[-1])
+        self.size           = self.end-self.base
+        self.filename       = os.path.basename(self.path.replace('\\', os.sep))
 
 
 #------------------------------------------------------------------------------
