@@ -69,7 +69,7 @@ def get_dpi_scale():
     fm = QtGui.QFontMetricsF(font)
 
     # xHeight is expected to be 40.0 at normal DPI
-    return int(fm.height() / 173.0)
+    return fm.height() / 173.0
 
 def compute_color_on_gradient(percent, color1, color2):
     """
@@ -121,8 +121,8 @@ def prompt_string(label, title, default=""):
     dlg.setWindowTitle(title)
     dlg.setTextValue(default)
     dlg.resize(
-        dpi_scale*400,
-        dpi_scale*50
+        int(dpi_scale*400),
+        int(dpi_scale*50)
     )
     dlg.setModal(True)
     dlg.show()

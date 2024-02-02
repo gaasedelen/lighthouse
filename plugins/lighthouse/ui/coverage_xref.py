@@ -153,8 +153,8 @@ class CoverageXref(QtWidgets.QDialog):
         layout.addWidget(self._table)
 
         # scale widget dimensions based on DPI
-        height = get_dpi_scale() * 250
-        width = get_dpi_scale() * 600
+        height = int(get_dpi_scale() * 250)
+        width = int(get_dpi_scale() * 600)
         self.setMinimumHeight(height)
         self.setMinimumWidth(width)
 

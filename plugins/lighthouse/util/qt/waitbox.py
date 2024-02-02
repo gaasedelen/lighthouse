@@ -86,16 +86,16 @@ class WaitBox(QtWidgets.QDialog):
             self._abort_button.clicked.connect(self._abort)
             v_layout.addWidget(self._abort_button)
 
-        v_layout.setSpacing(self._dpi_scale*3)
+        v_layout.setSpacing(int(self._dpi_scale*3))
         v_layout.setContentsMargins(
-            self._dpi_scale*5,
-            self._dpi_scale,
-            self._dpi_scale*5,
-            self._dpi_scale
+            int(self._dpi_scale*5),
+            int(self._dpi_scale),
+            int(self._dpi_scale*5),
+            int(self._dpi_scale)
         )
 
         # scale widget dimensions based on DPI
-        height = self._dpi_scale * 15
+        height = int(self._dpi_scale * 15)
         self.setMinimumHeight(height)
 
         # compute the dialog layout

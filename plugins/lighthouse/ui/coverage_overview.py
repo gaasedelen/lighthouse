@@ -194,7 +194,7 @@ class CoverageOverview(object):
 
         # layout the major elements of our widget
         layout = QtWidgets.QGridLayout()
-        layout.setSpacing(get_dpi_scale()*5)
+        layout.setSpacing(int(get_dpi_scale()*5))
         layout.addWidget(self._table_view)
         layout.addWidget(self._toolbar)
 

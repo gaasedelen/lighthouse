@@ -148,8 +148,8 @@ class ModuleSelector(QtWidgets.QDialog):
         layout.addWidget(self._checkbox_ignore_missing)
 
         # scale widget dimensions based on DPI
-        height = get_dpi_scale() * 250
-        width = get_dpi_scale() * 400
+        height = int(get_dpi_scale() * 250)
+        width = int(get_dpi_scale() * 400)
         self.setMinimumHeight(height)
         self.setMinimumWidth(width)
 
