@@ -289,14 +289,18 @@ class BinjaContextAPI(DisassemblerContextAPI):
 
         return vi.navigateToFunction(func, address)
 
-    @BinjaCoreAPI.execute_write
     def set_function_name_at(self, function_address, new_name):
         func = self.bv.get_function_at(function_address)
+
         if not func:
             return
+
         if new_name == "":
             new_name = None
+
+        state = self.bv.begin_undo_actions()
         func.name = new_name
+        self.bv.commit_undo_actions(state)
 
     #--------------------------------------------------------------------------
     # Hooks API
