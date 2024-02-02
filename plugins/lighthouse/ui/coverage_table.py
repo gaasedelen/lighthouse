@@ -669,8 +669,12 @@ class CoverageTableController(object):
         {
             "filter": "HTML Files (*.html)",
             "caption": "Save HTML Report",
-            "directory": suggested_filepath
         }
+
+        if USING_PYQT5:
+            kwargs["directory"] = suggested_filepath
+        else:
+            kwargs["dir"] = suggested_filepath
 
         # prompt the user with the file dialog, and await their chosen filename(s)
         filename, _ = file_dialog.getSaveFileName(**kwargs)
