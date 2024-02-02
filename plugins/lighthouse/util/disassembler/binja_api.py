@@ -322,9 +322,6 @@ class RenameHooks(binaryview.BinaryDataNotification):
 
     def __init__(self, bv):
         self._bv = bv
-        self.symbol_added = self.__symbol_handler
-        self.symbol_updated = self.__symbol_handler
-        self.symbol_removed = self.__symbol_handler
 
     def hook(self):
         self._bv.register_notification(self)
@@ -332,11 +329,25 @@ class RenameHooks(binaryview.BinaryDataNotification):
     def unhook(self):
         self._bv.unregister_notification(self)
 
-    def __symbol_handler(self, view, symbol):
+    def symbol_added(self, *args):
+        self.__symbol_handler(*args)
+
+    def symbol_updated(self, *args):
+        self.__symbol_handler(*args)
+
+    def symbol_removed(self, *args):
+        self.__symbol_handler(*args, True)
+
+    def __symbol_handler(self, view, symbol, removed=False):
+
         func = self._bv.get_function_at(symbol.address)
         if not func or not func.start == symbol.address:
             return
-        self.name_changed(symbol.address, symbol.name)
+
+        if removed:
+            self.name_changed(symbol.address, "sub_%x" % symbol.address)
+        else:
+            self.name_changed(symbol.address, symbol.name)
 
     def name_changed(self, address, name):
         """
