@@ -537,8 +537,6 @@ class DatabasePainter(object):
                   a rebase occurs while the painter is running.
         """
         db_metadata = self.director.metadata
-        instructions = db_metadata.instructions
-        nodes = viewvalues(db_metadata.nodes)
 
         # a rebase has not occurred
         if not db_metadata.cached or (db_metadata.imagebase == self._imagebase):

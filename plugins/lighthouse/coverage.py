@@ -480,7 +480,7 @@ class DatabaseCoverage(object):
             return
 
         # bucketize the exploded coverage addresses
-        instructions = coverage_addresses & set(self._metadata.instructions)
+        instructions = coverage_addresses & self._metadata.instructions
         basic_blocks = instructions & viewkeys(self._metadata.nodes)
 
         #

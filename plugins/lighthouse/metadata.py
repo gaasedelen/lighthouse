@@ -78,7 +78,7 @@ class DatabaseMetadata(object):
         # the cache of key database structures
         self.nodes = {}
         self.functions = {}
-        self.instructions = []
+        self.instructions = set()
 
         # internal members to help index & navigate the cached metadata
         self._name2func = {}
@@ -151,14 +151,6 @@ class DatabaseMetadata(object):
     #--------------------------------------------------------------------------
     # Providers
     #--------------------------------------------------------------------------
-
-    def get_instructions_slice(self, start_address, end_address):
-        """
-        Get the instructions addresses that fall within a given range.
-        """
-        index_start = bisect.bisect_left(self.instructions, start_address)
-        index_end   = bisect.bisect_left(self.instructions, end_address)
-        return self.instructions[index_start:index_end]
 
     def get_instruction_size(self, address):
         """
@@ -461,7 +453,7 @@ class DatabaseMetadata(object):
         """
         self.nodes = {}
         self.functions = {}
-        self.instructions = []
+        self.instructions = set()
         self._node2func = collections.defaultdict(list)
         self._refresh_lookup()
         self.cached = False
@@ -667,19 +659,19 @@ class DatabaseMetadata(object):
             instructions.append(function_metadata.instructions)
 
         # commit the updated instruction list
-        self.instructions = sorted(list(set(itertools.chain.from_iterable(instructions))))
+        self.instructions = set(itertools.chain.from_iterable(instructions))
 
     def _ida_cache_instructions(self):
         """
         Cache the list of instructions by doing a full scrape of the IDA database.
         """
-        instructions = []
+        instructions = set()
 
         # alias for speed
         ida_is_code = idaapi.is_code
         ida_get_flags = idaapi.get_flags
         ida_next_head = idaapi.next_head
-        append_instruction = instructions.append
+        add_instruction = instructions.add
 
         # scrape instruction addresses from the database
         for seg_address in idautils.Segments():
@@ -691,11 +683,11 @@ class DatabaseMetadata(object):
             # save the address of each defined instruction in the segment
             while current_address < end_address:
                 if ida_is_code(ida_get_flags(current_address)):
-                    append_instruction(current_address)
+                    add_instruction(current_address)
                 current_address = ida_next_head(current_address, end_address)
 
-        # commit the updated instruction list
-        self.instructions = sorted(instructions)
+        # commit the updated instruction set
+        self.instructions = instructions
 
     #--------------------------------------------------------------------------
     # Signal Handlers
