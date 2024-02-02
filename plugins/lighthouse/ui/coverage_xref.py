@@ -116,7 +116,7 @@ class CoverageXref(QtWidgets.QDialog):
             name_entry.setToolTip(coverage.filepath)
             self._table.setItem(i, 2, name_entry)
             date_entry = QtWidgets.QTableWidgetItem()
-            date_entry.setData(QtCore.Qt.DisplayRole, QtCore.QDateTime.fromMSecsSinceEpoch(coverage.timestamp*1000))
+            date_entry.setData(QtCore.Qt.DisplayRole, QtCore.QDateTime.fromMSecsSinceEpoch(int(coverage.timestamp*1000)))
             self._table.setItem(i, 3, QtWidgets.QTableWidgetItem(date_entry))
 
         # filepaths
@@ -135,7 +135,7 @@ class CoverageXref(QtWidgets.QDialog):
             name_entry.setToolTip(filepath)
             self._table.setItem(i, 2, name_entry)
             date_entry = QtWidgets.QTableWidgetItem()
-            date_entry.setData(QtCore.Qt.DisplayRole, QtCore.QDateTime.fromMSecsSinceEpoch(timestamp*1000))
+            date_entry.setData(QtCore.Qt.DisplayRole, QtCore.QDateTime.fromMSecsSinceEpoch(int(timestamp*1000)))
             self._table.setItem(i, 3, date_entry)
 
         self._table.resizeColumnsToContents()
