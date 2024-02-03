@@ -23,7 +23,7 @@ def check_for_update(current_version, callback):
     update_thread = threading.Thread(
         target=async_update_check,
         args=(current_version, callback,),
-        name="UpdateChecker"
+        name="Lighthouse UpdateChecker"
     )
     update_thread.start()
 
@@ -42,7 +42,7 @@ def async_update_check(current_version, callback):
         logger.debug(" - Failed to reach GitHub for update check...")
         return
 
-    # convert vesrion #'s to integer for easy compare...
+    # convert version #'s to integer for easy compare...
     version_remote = int(''.join(re.findall('\d+', remote_version)))
     version_local = int(''.join(re.findall('\d+', current_version)))
 
