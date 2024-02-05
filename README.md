@@ -194,6 +194,7 @@ Lighthouse will remember your theme preference for future loads and uses.
 
 Time and motivation permitting, future work may include:
 
+* Nag Vector35 to fix HLIL highlighting ([bug](https://github.com/Vector35/binaryninja-api/issues/2584)) in Binary Ninja
 * ~~Asynchronous composition, painting, metadata collection~~
 * ~~Multifile/coverage support~~
 * Profiling based heatmaps/painting

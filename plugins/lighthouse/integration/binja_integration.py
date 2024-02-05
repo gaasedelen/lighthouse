@@ -209,6 +209,12 @@ class LighthouseBinja(LighthouseCore):
             return
         super(LighthouseBinja, self).open_coverage_overview(dctx)
 
+    def _stub(self, context):
+        # XXX: This was added as a last minute bodge prior to releasing v0.9.3,
+        # it fixes a crash-on-close that was manifesting on binja macOS, when
+        # using a lambda instead of a concrete function/stub like this.
+        return None
+
     #--------------------------------------------------------------------------
     # Binja Actions
     #--------------------------------------------------------------------------
@@ -235,7 +241,7 @@ class LighthouseBinja(LighthouseCore):
     def _install_open_coverage_xref(self):
         action = self.ACTION_COVERAGE_XREF
         UIAction.registerAction(action)
-        UIActionHandler.globalActions().bindAction(action, UIAction(lambda context: None, self._interactive_coverage_xref))
+        UIActionHandler.globalActions().bindAction(action, UIAction(self._stub, self._interactive_coverage_xref))
         Menu.mainMenu("Plugins").addAction(action, "Loading", 2)
 
     # NOTE/V35: Binja automatically creates View --> Show Coverage Overview
