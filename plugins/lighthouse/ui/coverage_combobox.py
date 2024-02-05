@@ -118,7 +118,7 @@ class CoverageComboBox(QtWidgets.QComboBox):
 
         self.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContentsOnFirstShow)
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
-        self.setMaximumHeight(self._font_metrics.height()*1.75)
+        self.setMaximumHeight(int(self._font_metrics.height()*1.75))
 
         # draw the QComboBox with a 'Windows'-esque style
         self.setStyle(QtWidgets.QStyleFactory.create("Windows"))
@@ -437,10 +437,7 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         #
 
         hh.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
         vh.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-
-        hh.setMinimumSectionSize(0)
         vh.setMinimumSectionSize(0)
 
         # get the column width hint from the model for the 'X' delete column
@@ -451,7 +448,9 @@ class CoverageComboBoxView(QtWidgets.QTableView):
         )
 
         # set the 'X' delete icon column width to a fixed size based on the hint
+        hh.setMinimumSectionSize(icon_column_width)
         hh.resizeSection(COLUMN_DELETE, icon_column_width)
+        hh.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
 
         # install a delegate to do some custom painting against the combobox
         self.setItemDelegate(ComboBoxDelegate(self))
@@ -533,7 +532,7 @@ class CoverageComboBoxModel(QtCore.QAbstractTableModel):
         delete_icon = QtGui.QPixmap(plugin_resource("icons/delete_coverage.png"))
 
         # compute the appropriate size for the deletion icon
-        icon_height = self._font_metrics.height()*0.75
+        icon_height = int(self._font_metrics.height()*0.75)
         icon_width  = icon_height
 
         # scale the icon as appropriate (very likely scaling it down)

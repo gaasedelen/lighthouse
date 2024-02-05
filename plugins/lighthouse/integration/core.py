@@ -1,4 +1,3 @@
-import os
 import abc
 import logging
 
@@ -7,10 +6,10 @@ import lighthouse
 from lighthouse.util import lmsg
 from lighthouse.util.qt import *
 from lighthouse.util.update import check_for_update
-from lighthouse.util.disassembler import disassembler, DisassemblerContextAPI
+from lighthouse.util.disassembler import disassembler
 
 from lighthouse.ui import *
-from lighthouse.metadata import DatabaseMetadata, metadata_progress
+from lighthouse.metadata import metadata_progress
 from lighthouse.exceptions import *
 
 logger = logging.getLogger("Lighthouse.Core")
@@ -26,9 +25,9 @@ class LighthouseCore(object):
     # Plugin Metadata
     #--------------------------------------------------------------------------
 
-    PLUGIN_VERSION = "0.9.2"
+    PLUGIN_VERSION = "0.9.3"
     AUTHORS        = "Markus Gaasedelen"
-    DATE           = "2021"
+    DATE           = "2024"
 
     #--------------------------------------------------------------------------
     # Initialization

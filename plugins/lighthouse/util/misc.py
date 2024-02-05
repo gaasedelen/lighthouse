@@ -207,33 +207,4 @@ def notify_callback(callback_list, *args):
     # remove the deleted callbacks
     for callback_ref in cleanup:
         callback_list.remove(callback_ref)
-
-#------------------------------------------------------------------------------
-# Coverage Util
-#------------------------------------------------------------------------------
-
-def build_hitmap(data):
-    """
-    Build a hitmap from the given list of address.
-
-    A hitmap is a map of address --> number of executions.
-
-    The list of input addresses can be any sort of runtime trace, coverage,
-    or profiling data that one would like to build a hitmap for.
-    """
-    output = collections.defaultdict(int)
-
-    # if there is no input data, simply return an empty hitmap
-    if not data:
-        return output
-
-    #
-    # walk through the given list of given addresses and build a
-    # corresponding hitmap for them
-    #
-
-    for address in data:
-        output[address] += 1
-
-    # return the hitmap
-    return output
+        

@@ -289,14 +289,18 @@ class BinjaContextAPI(DisassemblerContextAPI):
 
         return vi.navigateToFunction(func, address)
 
-    @BinjaCoreAPI.execute_write
     def set_function_name_at(self, function_address, new_name):
         func = self.bv.get_function_at(function_address)
+
         if not func:
             return
+
         if new_name == "":
             new_name = None
+
+        state = self.bv.begin_undo_actions()
         func.name = new_name
+        self.bv.commit_undo_actions(state)
 
     #--------------------------------------------------------------------------
     # Hooks API
@@ -322,9 +326,6 @@ class RenameHooks(binaryview.BinaryDataNotification):
 
     def __init__(self, bv):
         self._bv = bv
-        self.symbol_added = self.__symbol_handler
-        self.symbol_updated = self.__symbol_handler
-        self.symbol_removed = self.__symbol_handler
 
     def hook(self):
         self._bv.register_notification(self)
@@ -332,11 +333,25 @@ class RenameHooks(binaryview.BinaryDataNotification):
     def unhook(self):
         self._bv.unregister_notification(self)
 
-    def __symbol_handler(self, view, symbol):
+    def symbol_added(self, *args):
+        self.__symbol_handler(*args)
+
+    def symbol_updated(self, *args):
+        self.__symbol_handler(*args)
+
+    def symbol_removed(self, *args):
+        self.__symbol_handler(*args, True)
+
+    def __symbol_handler(self, view, symbol, removed=False):
+
         func = self._bv.get_function_at(symbol.address)
-        if not func.start == symbol.address:
+        if not func or not func.start == symbol.address:
             return
-        self.name_changed(symbol.address, symbol.name)
+
+        if removed:
+            self.name_changed(symbol.address, "sub_%x" % symbol.address)
+        else:
+            self.name_changed(symbol.address, symbol.name)
 
     def name_changed(self, address, name):
         """

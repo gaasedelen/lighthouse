@@ -68,10 +68,6 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_refresh_metadata.setToolTip("Refresh the database metadata and coverage mapping")
         self.addAction(self._action_refresh_metadata)
 
-        self._action_dump_unmapped = QtWidgets.QAction("Dump unmapped coverage", None)
-        self._action_dump_unmapped.setToolTip("Print all coverage data not mapped to a function")
-        self.addAction(self._action_dump_unmapped)
-
         self._action_export_html = QtWidgets.QAction("Generate HTML report", None)
         self._action_export_html.setToolTip("Export the coverage table to HTML")
         self.addAction(self._action_export_html)
@@ -91,7 +87,6 @@ class TableSettingsMenu(QtWidgets.QMenu):
         self._action_disable_paint.triggered[bool].connect(lambda x: lctx.painter.set_enabled(not x))
         self._action_force_clear.triggered.connect(lctx.painter.force_clear)
         self._action_export_html.triggered.connect(controller.export_to_html)
-        self._action_dump_unmapped.triggered.connect(lctx.director.dump_unmapped)
         lctx.painter.status_changed(self._ui_painter_changed_status)
 
     #--------------------------------------------------------------------------

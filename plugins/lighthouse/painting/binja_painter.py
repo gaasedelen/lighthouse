@@ -38,12 +38,19 @@ class BinjaPainter(DatabasePainter):
 
     def _clear_instructions(self, instructions):
         bv = disassembler[self.lctx].bv
+        state = bv.begin_undo_actions()
+
         for address in instructions:
             for func in bv.get_functions_containing(address):
                 func.set_auto_instr_highlight(address, HighlightStandardColor.NoHighlightColor)
         self._painted_partial -= set(instructions)
         self._painted_instructions -= set(instructions)
         self._action_complete.set()
+
+        if hasattr(bv, "forget_undo_actions"):
+            bv.forget_undo_actions(state)
+        else:
+            bv.commit_undo_actions(state)
 
     def _partial_paint(self, bv, instructions, color):
         for address in instructions:
@@ -56,6 +63,8 @@ class BinjaPainter(DatabasePainter):
         bv = disassembler[self.lctx].bv
         db_coverage = self.director.coverage
         db_metadata = self.director.metadata
+
+        state = bv.begin_undo_actions()
 
         r, g, b, _ = self.palette.coverage_paint.getRgb()
         color = HighlightColor(red=r, green=g, blue=b)
@@ -83,9 +92,16 @@ class BinjaPainter(DatabasePainter):
         self._painted_nodes |= (set(node_addresses) - partial_nodes)
         self._action_complete.set()
 
+        if hasattr(bv, "forget_undo_actions"):
+            bv.forget_undo_actions(state)
+        else:
+            bv.commit_undo_actions(state)
+
     def _clear_nodes(self, node_addresses):
         bv = disassembler[self.lctx].bv
         db_metadata = self.director.metadata
+
+        state = bv.begin_undo_actions()
 
         for node_address in node_addresses:
             node_metadata = db_metadata.nodes.get(node_address, None)
@@ -101,6 +117,11 @@ class BinjaPainter(DatabasePainter):
 
         self._painted_nodes -= set(node_addresses)
         self._action_complete.set()
+
+        if hasattr(bv, "forget_undo_actions"):
+            bv.forget_undo_actions(state)
+        else:
+            bv.commit_undo_actions(state)
 
     def _refresh_ui(self):
         pass

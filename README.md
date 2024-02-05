@@ -39,20 +39,11 @@ Use the instructions below for your respective disassembler.
 
 ## Binary Ninja Installation
 
-Lighthouse can be installed through the plugin manager on newer versions of Binary Ninja (>2.4.2918). The plugin will have to be installed manually on older versions.
-
-### Auto Install
+Lighthouse can be installed through the plugin manager on Binary Ninja, supporting v3.5 and newer.
 
 1. Open Binary Ninja's plugin manager by navigating the following submenus:
     - `Edit` -> `Preferences` -> `Manage Plugins`
 2. Search for Lighthouse in the plugin manager, and click the `Enable` button in the bottom right.
-3. Restart your disassembler.
-
-### Manual Install
-
-1. Open Binary Ninja's plugin folder by navigating the following submenus:
-    - `Tools` -> `Open Plugins Folder...`
-2. Copy the contents of this repository's `/plugins/` folder to the listed directory.
 3. Restart your disassembler.
 
 # Usage
@@ -203,6 +194,7 @@ Lighthouse will remember your theme preference for future loads and uses.
 
 Time and motivation permitting, future work may include:
 
+* Nag Vector35 to fix HLIL highlighting ([bug](https://github.com/Vector35/binaryninja-api/issues/2584)) in Binary Ninja
 * ~~Asynchronous composition, painting, metadata collection~~
 * ~~Multifile/coverage support~~
 * Profiling based heatmaps/painting

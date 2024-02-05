@@ -3,7 +3,6 @@ import time
 import string
 import logging
 import threading
-import traceback
 import collections
 
 from lighthouse.util.misc import *
@@ -417,9 +416,8 @@ class CoverageDirector(object):
         if not aggregate_addresses:
             return (None, errors)
 
-        # optimize the aggregated data (once) and save it to the director
-        coverage_data = self._optimize_coverage_data(aggregate_addresses)
-        coverage = self.create_coverage(batch_name, coverage_data)
+        # save the batched coverage data to the director
+        coverage = self.create_coverage(batch_name, aggregate_addresses)
 
         # evaluate coverage
         if not coverage.nodes:
@@ -472,7 +470,6 @@ class CoverageDirector(object):
             try:
                 coverage_file = self.reader.open(filepath)
                 coverage_addresses = self._extract_coverage_data(coverage_file)
-                coverage_data = self._optimize_coverage_data(coverage_addresses)
 
             # save and suppress warnings generated from loading coverage files
             except CoverageParsingError as e:
@@ -484,18 +481,18 @@ class CoverageDirector(object):
                 errors[CoverageMissingError].append(CoverageMissingError(filepath))
                 continue
 
-            # save the attribution data for this coverage data
-            for address in coverage_data:
-                if address in self.metadata.nodes:
-                    self.owners[address].add(filepath)
-
             #
             # request a name for the new coverage mapping that the director will
             # generate from the loaded coverage data
             #
 
             coverage_name = self._suggest_coverage_name(filepath)
-            coverage = self.create_coverage(coverage_name, coverage_data, filepath)
+            coverage = self.create_coverage(coverage_name, coverage_addresses, filepath)
+
+            # save the attribution data for this coverage data
+            for address in coverage.data:
+                if address in self.metadata.nodes: # TODO/UNMAPPED: support right click unmapped addrs
+                    self.owners[address].add(filepath)
 
             # evaluate coverage
             if not coverage.nodes:
@@ -620,81 +617,6 @@ class CoverageDirector(object):
 
         # well, this one is probably the fault of the CoverageFile author...
         raise NotImplementedError("Incomplete CoverageFile implementation")
-
-    def _optimize_coverage_data(self, coverage_addresses):
-        """
-        Optimize exploded coverage data to the current metadata cache.
-        """
-        logger.debug("Optimizing coverage data...")
-        addresses = set(coverage_addresses)
-
-        # bucketize the exploded coverage addresses
-        instructions = addresses & set(self.metadata.instructions)
-        basic_blocks = instructions & viewkeys(self.metadata.nodes)
-
-        if not instructions:
-            logger.debug("No mappable instruction addresses in coverage data")
-            return []
-
-        """
-        #
-        # TODO/LOADING: display undefined/misaligned data somehow?
-        #
-
-        unknown = addresses - instructions
-
-        # bucketize the uncategorized exploded addresses
-        undefined, misaligned = [], []
-        for address in unknown:
-
-            # size == -1 (undefined inst)
-            if self.metadata.get_instruction_size(address):
-                undefined.append(address)
-
-            # size == 0 (misaligned inst)
-            else:
-                misaligned.append(address)
-        """
-
-        #
-        # here we attempt to compute the ratio between basic block addresses,
-        # and instruction addresses in the incoming coverage data.
-        #
-        # this will help us determine if the existing instruction data is
-        # sufficient, or whether we need to explode/flatten the basic block
-        # addresses into their respective child instructions
-        #
-
-        block_ratio = len(basic_blocks) / float(len(instructions))
-        block_trace_confidence = 0.80
-        logger.debug("Block confidence %f" % block_ratio)
-
-        #
-        # a low basic block to instruction ratio implies the data is probably
-        # from an instruction trace, or a basic block trace has been flattened
-        # exploded already (eg, a drcov log)
-        #
-
-        if block_ratio < block_trace_confidence:
-            logger.debug("Optimized as instruction trace...")
-            return list(instructions)
-
-        #
-        # take each basic block address, and explode it into a list of all the
-        # instruction addresses contained within the basic block as determined
-        # by the database metadata cache
-        #
-        # it is *possible* that this may introduce 'inaccurate' paint should
-        # the user provide a basic block trace that crashes mid-block. but
-        # that is not something we can account for in a block trace...
-        #
-
-        block_instructions = set([])
-        for address in basic_blocks:
-            block_instructions |= set(self.metadata.nodes[address].instructions)
-
-        logger.debug("Optimized as basic block trace...")
-        return list(block_instructions | instructions)
 
     def _suggest_coverage_name(self, filepath):
         """
@@ -831,7 +753,7 @@ class CoverageDirector(object):
 
     def get_address_coverage(self, address):
         """
-        Return a list of coverage object containing the given address.
+        Return a list of database coverage objects containing the given address.
         """
         found = []
 
@@ -1051,12 +973,6 @@ class CoverageDirector(object):
         #
 
         return "%s - %s%% - %s" % (symbol, percent_str, coverage_name)
-
-    def dump_unmapped(self):
-        """
-        Dump the unmapped coverage data for the active set.
-        """
-        self.coverage.dump_unmapped()
 
     #----------------------------------------------------------------------
     # Aliases

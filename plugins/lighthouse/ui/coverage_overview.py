@@ -194,7 +194,7 @@ class CoverageOverview(object):
 
         # layout the major elements of our widget
         layout = QtWidgets.QGridLayout()
-        layout.setSpacing(get_dpi_scale()*5.0)
+        layout.setSpacing(int(get_dpi_scale()*5))
         layout.addWidget(self._table_view)
         layout.addWidget(self._toolbar)
 
@@ -214,8 +214,8 @@ class CoverageOverview(object):
             -1*self._settings_menu.sizeHint().height()
         )
         center = QtCore.QPoint(
-            self._settings_button.sizeHint().width()/2,
-            self._settings_button.sizeHint().height()/2
+            int(self._settings_button.sizeHint().width()/2),
+            int(self._settings_button.sizeHint().height()/2)
         )
         where = self._settings_button.mapToGlobal(center+delta)
         self._settings_menu.popup(where)

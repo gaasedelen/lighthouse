@@ -1,0 +1,69 @@
+{
+    "name": "Long Night",
+    "author": "https://github.com/ioncodes",
+
+    "colors":
+    {
+        "black":     [33, 33, 33],
+        "white":     [241, 239, 236],
+
+        "darkGray":  [20, 20, 20],
+        "darkGray2": [30, 30, 30],
+        "darkGray3": [54, 54, 54],
+
+        "gray":      [100, 100, 100],
+        "lightGray": [55, 55, 55],
+
+        "red":       [188, 101, 141],
+        "green":     [64, 255, 64],
+        "blue":      [104, 134, 197],
+        "lightBlue": [128, 200, 255],
+        "darkBlue":  [44, 44, 44],
+        "purple":    [121, 104, 197],
+
+        "focusRed":  [255, 83, 112],
+        "selection": [67, 67, 67]
+    },
+
+    "fields":
+    {
+        "coverage_paint":                ["darkBlue", "lightBlue"],
+
+        "table_text":                    "white",
+        "table_grid":                    "black",
+        "table_coverage_none":           "black",
+        "table_coverage_bad":            "red",
+        "table_coverage_good":           "blue",
+        "table_background":              "black",
+        "table_selection":               "purple",
+
+        "html_summary_text":             "white",
+        "html_table_header":             "white",
+        "html_page_background":          "black",
+
+        "shell_text":                    "white",
+        "shell_text_valid":              "lightBlue",
+        "shell_text_invalid":            "red",
+        "shell_highlight_invalid":       "red",
+
+        "shell_border":                  "lightGray",
+        "shell_border_focus":            "focusRed",
+        "shell_background":              "black",
+
+        "shell_hint_text":               "white",
+        "shell_hint_background":         "black",
+
+        "logic_token":                   "red",
+        "comma_token":                   "green",
+        "paren_token":                   "green",
+        "coverage_token":                "lightBlue",
+
+        "combobox_text":                 "white",
+        "combobox_selection_text":       "white",
+        "combobox_selection_background": "selection",
+
+        "combobox_border":               "lightGray",
+        "combobox_border_focus":         "focusRed",
+        "combobox_background":           "black"
+    }
+}

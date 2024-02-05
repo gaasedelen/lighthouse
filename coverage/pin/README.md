@@ -1,6 +1,6 @@
 # CodeCoverage Pintool
 
-The `CodeCoverage` pintool runs ontop of the [Intel Pin](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool) DBI framework and collects code coverage data in a log format compatible with [Lighthouse](https://github.com/gaasedelen/lighthouse). The log produced by this pintool emulates that of [drcov](http://dynamorio.org/docs/page_drcov.html) as shipped with [DynamoRIO](http://www.dynamorio.org). 
+The `CodeCoverage` pintool runs ontop of the [Intel Pin](https://software.intel.com/en-us/articles/pin-a-dynamic-binary-instrumentation-tool) DBI framework and collects code coverage data in a log format compatible with [Lighthouse](https://github.com/gaasedelen/lighthouse). The log produced by this pintool emulates that of [drcov](http://dynamorio.org/docs/page_drcov.html) as shipped with [DynamoRIO](http://www.dynamorio.org).
 
 This pintool is labeled only as a prototype.
 
@@ -12,7 +12,7 @@ Follow the build instructions below for your respective platform.
 
 ## Building for MacOS or Linux
 
-On MacOS or Liunux, one can compile the pintool using the following commands.
+On MacOS or Linux, one can compile the pintool using the following commands.
 
 ```
 # Location of this repo / pintool source
@@ -39,7 +39,11 @@ Launch a command prompt and build the pintool with the following commands.
 ### 32bit Pintool
 
 ```
-"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86
+REM If you are on VS 2022 or so you can run this line:
+"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x86
+
+REM VS 2015 or so you can run this line instead:
+REM "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86
 
 REM Location of this repo / pintool source
 cd C:\Users\user\lighthouse\coverage\pin
@@ -53,7 +57,11 @@ build-x86.bat
 ### 64bit Pintool
 
 ```
-"C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86_amd64
+REM If you are on VS 2022 or so you can run this line:
+"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x86_amd64
+
+REM VS 2015 or so you can run this line instead:
+REM "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86_amd64
 
 REM Location of this repo / pintool source
 cd C:\Users\user\lighthouse\coverage\pin
@@ -64,7 +72,7 @@ set PATH=%PATH%;%PIN_ROOT%
 build-x64.bat
 ```
 
-The resulting binaries will be labaled based on their architecture (eg, 64 is the 64bit pintool).
+The resulting binaries will be labeled based on their architecture (eg, 64 is the 64bit pintool).
 
 * CodeCoverage.dll
 * CodeCoverage64.dll

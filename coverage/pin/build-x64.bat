@@ -27,7 +27,7 @@ link ^
     /LIBPATH:%PIN_ROOT%\intel64\lib ^
     /LIBPATH:"%PIN_ROOT%\intel64\lib-ext" ^
     /LIBPATH:"%PIN_ROOT%\extras\xed-intel64\lib" ^
-    /LIBPATH:%PIN_ROOT%\intel64\runtime\pincrt pin.lib xed.lib pinvm.lib pincrt.lib ntdll-64.lib kernel32.lib crtbeginS.obj ^
+    /LIBPATH:%PIN_ROOT%\intel64\runtime\pincrt pin.lib xed.lib pinipc.lib pincrt.lib kernel32.lib crtbeginS.obj ^
     /NODEFAULTLIB ^
     /MANIFEST:NO ^
     /OPT:NOREF ^

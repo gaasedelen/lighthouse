@@ -28,7 +28,7 @@ link ^
     /LIBPATH:%PIN_ROOT%\ia32\lib ^
     /LIBPATH:"%PIN_ROOT%\ia32\lib-ext" ^
     /LIBPATH:"%PIN_ROOT%\extras\xed-ia32\lib" ^
-    /LIBPATH:%PIN_ROOT%\ia32\runtime\pincrt pin.lib xed.lib pinvm.lib pincrt.lib ntdll-32.lib kernel32.lib crtbeginS.obj ^
+    /LIBPATH:%PIN_ROOT%\ia32\runtime\pincrt pin.lib xed.lib pinipc.lib pincrt.lib kernel32.lib crtbeginS.obj ^
     /NODEFAULTLIB ^
     /MANIFEST:NO ^
     /OPT:NOREF ^
