@@ -1,9 +1,8 @@
 import os
 import json
-import struct
+import glob
 import shutil
 import logging
-import traceback
 
 # NOTE: Py2/Py3 compat
 try:
@@ -260,8 +259,13 @@ class LighthousePalette(object):
         user_theme_dir = self.get_user_theme_dir()
         makedirs(user_theme_dir)
 
+        # enumerate all in-box / default themes
+        plugin_theme_dir = self.get_plugin_theme_dir()
+        json_files = glob.glob(os.path.join(plugin_theme_dir, "*.json"))
+
         # copy the default themes into the user directory if they don't exist
-        for theme_name in self._default_themes.values():
+        for default_theme_file in json_files:
+            theme_name = os.path.basename(default_theme_file)
 
             #
             # check if lighthouse has copied the default themes into the user
@@ -274,8 +278,7 @@ class LighthousePalette(object):
                 continue
 
             # copy the in-box themes to the user theme directory
-            plugin_theme_file = os.path.join(self.get_plugin_theme_dir(), theme_name)
-            shutil.copy(plugin_theme_file, user_theme_file)
+            shutil.copy(default_theme_file, user_theme_file)
 
         #
         # if the user tries to switch themes, ensure the file dialog will start
