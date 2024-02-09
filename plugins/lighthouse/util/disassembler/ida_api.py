@@ -8,6 +8,7 @@ import functools
 
 import idaapi
 import idautils
+from ida_segment import segtype, SEG_CODE
 
 if int(idaapi.get_kernel_version()[0]) < 7:
     idaapi.warning("Lighthouse has deprecated support for IDA 6, please upgrade.")
@@ -378,6 +379,9 @@ class IDAContextAPI(DisassemblerContextAPI):
 
     def set_function_name_at(self, function_address, new_name):
         idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+
+    def is_code_segment(self, address):
+        return segtype(address) == SEG_CODE
 
     #--------------------------------------------------------------------------
     # Hooks API

@@ -102,6 +102,52 @@ Lighthouse can generate rudimentary HTML coverage reports. A sample report can b
 <img alt="Lighthouse HTML Report" src="screenshots/html_report.gif"/>
 </p>
 
+## GraphML Coverage Report
+
+Lighthouse can also generate a coverage graph of all reachable code from specified by the user function.
+The graph is a text file in GraphML format. Export to GraphML representation can be used for analyzing code coverage
+as a system of functions.
+
+<p align="center">
+<img alt="Lighthouse GraphML Report" src="screenshots/graphml_report.gif"/>
+</p>
+
+Graph description details:
+* Graph is a directed graph;
+* Graph nodes are functions;
+* Edges are from caller function to callee function;
+* Each node contains the following information:
+   * Function size;
+   * Function coverage percentage;
+   * Cyclomatic complexity;
+   * Amount of memory read/write references;
+   * Number of polygon vertices that can be used as a shape of the node.
+
+That data can be visualized in the following way:
+* Node color represents percent of coverage (<span style="color:green">green</span> - covered,
+  <span style="color:red">red</span> - not, and so on);
+* Size of a node represents size of a function;
+* Cyclomatic complexity of a function can be represented by the amount of vertices of polygon-shaped node.
+
+By using rules above, it is possible to get the following graph visualization example:
+
+<p align="center">
+<img alt="GraphML Report Visualization Example" src="testcase/graphml_report.png"/>
+</p>
+
+The image was obtained using [Gephi](https://gephi.org/). Here is a quick guide for transforming raw graph to the same
+view using Gephi:
+1. In *Overview -> Appearance -> Nodes -> Color -> Ranking* choose "**Coverage**" attribute, set colors
+   and click "**Apply**" in order to colorize the nodes;
+2. In *Overview -> Appearance -> Nodes -> Size -> Ranking* choose "**FuncSize**" attribute, set min/max values
+   and click "**Apply**" in order to change sizes of the nodes;
+3. Choose any graph layout that you find appropriate in *Overview -> Layout* or drag nodes manually.
+4. Install "**Polygon Shaped Nodes**" plugin in *Tools -> Plugins*. For now, you can set polygon-shaped nodes
+   in *Preview -> Settings -> Nodes*;
+
+Of course, you are not limited by Gephi and can use any other software that you like for analyzing
+and/or visualizing the graph.
+
 # Coverage Shell
 
 At the bottom of the coverage overview window is the coverage shell. This shell can be used to perform logic-based operations that combine or manipulate the loaded coverage sets.
