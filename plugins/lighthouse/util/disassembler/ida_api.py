@@ -229,7 +229,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
         idaapi.eclose(ida_fd)
 
         # read the dumped text
-        with open(path, "r") as fd:
+        with open(path, "r", encoding="utf-8") as fd:
             html = fd.read()
 
         # delete the temp file from disk
