@@ -1,16 +1,20 @@
 import os
-import sys
-import time
 import logging
-import binascii
 import tempfile
 import functools
 
-import idaapi
+import ida_auto
+import ida_diskio
+import ida_idp
+import ida_kernwin
+import ida_lines
+import ida_loader
+import ida_nalt
+import ida_name
 import idautils
 
-if int(idaapi.get_kernel_version()[0]) < 7:
-    idaapi.warning("Lighthouse has deprecated support for IDA 6, please upgrade.")
+if int(ida_kernwin.get_kernel_version()[0]) < 7:
+    ida_kernwin.warning("Lighthouse has deprecated support for IDA 6, please upgrade.")
     raise ImportError
 
 from .api import DisassemblerCoreAPI, DisassemblerContextAPI
@@ -47,7 +51,7 @@ def execute_sync(function, sync_type):
         if is_mainthread():
             thunk()
         else:
-            idaapi.execute_sync(thunk, sync_type)
+            ida_kernwin.execute_sync(thunk, sync_type)
 
         # return the output of the synchronized execution
         return output[0]
@@ -69,7 +73,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
     def _init_version(self):
 
         # retrieve IDA's version #
-        disassembler_version = idaapi.get_kernel_version()
+        disassembler_version = ida_kernwin.get_kernel_version()
         major, minor = map(int, disassembler_version.split("."))
 
         # save the version number components for later use
@@ -83,7 +87,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
     @property
     def headless(self):
-        return idaapi.cvar.batch
+        return ida_kernwin.cvar.batch
 
     #--------------------------------------------------------------------------
     # Synchronization Decorators
@@ -91,22 +95,22 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
     @staticmethod
     def execute_read(function):
-        return execute_sync(function, idaapi.MFF_READ)
+        return execute_sync(function, ida_kernwin.MFF_READ)
 
     @staticmethod
     def execute_write(function):
-        return execute_sync(function, idaapi.MFF_WRITE)
+        return execute_sync(function, ida_kernwin.MFF_WRITE)
 
     @staticmethod
     def execute_ui(function):
-        return execute_sync(function, idaapi.MFF_FAST)
+        return execute_sync(function, ida_kernwin.MFF_FAST)
 
     #--------------------------------------------------------------------------
     # API Shims
     #--------------------------------------------------------------------------
 
     def get_disassembler_user_directory(self):
-        return idaapi.get_user_idadir()
+        return ida_diskio.get_user_idadir()
 
     def get_disassembly_background_color(self):
         """
@@ -132,7 +136,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
         return color
 
     def is_msg_inited(self):
-        return idaapi.is_msg_inited()
+        return ida_kernwin.is_msg_inited()
 
     @execute_ui.__func__
     def warning(self, text):
@@ -153,7 +157,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
         import sip
 
         # create a dockable widget, and save a reference to it for later use
-        twidget = idaapi.create_empty_widget(dockable_name)
+        twidget = ida_kernwin.create_empty_widget(dockable_name)
         self._dockable_widgets[dockable_name] = twidget
 
         # cast the IDA 'twidget' as a Qt widget for use
@@ -181,20 +185,25 @@ class IDACoreAPI(DisassemblerCoreAPI):
             return
 
         # show the dockable widget
-        flags = idaapi.PluginForm.WOPN_TAB | idaapi.PluginForm.WOPN_RESTORE | idaapi.PluginForm.WOPN_PERSIST
-        idaapi.display_widget(twidget, flags)
+        flags = ida_kernwin.PluginForm.WOPN_TAB | ida_kernwin.PluginForm.WOPN_RESTORE | ida_kernwin.PluginForm.WOPN_PERSIST
+        ida_kernwin.display_widget(twidget, flags)
         widget.visible = True
 
         # attempt to 'dock' the widget in a reasonable location
         for target in ["IDA View-A", "Pseudocode-A"]:
-            dwidget = idaapi.find_widget(target)
+            dwidget = ida_kernwin.find_widget(target)
             if dwidget:
-                idaapi.set_dock_pos(dockable_name, 'IDA View-A', idaapi.DP_RIGHT)
+                ida_kernwin.set_dock_pos(
+                    dockable_name,
+                    'IDA View-A',
+                    ida_kernwin.DP_RIGHT
+                )
                 break
 
     def hide_dockable(self, dockable_name):
-        pass # TODO/IDA: this should never actually be called by lighthouse right now
-
+        # TODO/IDA: this should never actually be called by lighthouse right
+        # now
+        pass
     #--------------------------------------------------------------------------
     # Theme Prediction Helpers (Internal)
     #--------------------------------------------------------------------------
@@ -214,8 +223,8 @@ class IDACoreAPI(DisassemblerCoreAPI):
         # hard crashing people's IDA in the future should we change something.
         #
 
-        imagebase = idaapi.get_imagebase()
-        #if imagebase == idaapi.BADADDR:
+        imagebase = ida_nalt.get_imagebase()
+        #if imagebase == ida_idaapi.BADADDR:
         #    logger.debug(" - No imagebase...")
         #    return None
 
@@ -223,13 +232,20 @@ class IDACoreAPI(DisassemblerCoreAPI):
         handle, path = tempfile.mkstemp()
         os.close(handle)
 
-        # attempt to generate an 'html' dump of the first 0x20 bytes (instructions)
-        ida_fd = idaapi.fopenWT(path)
-        idaapi.gen_file(idaapi.OFILE_LST, ida_fd, imagebase, imagebase+0x20, idaapi.GENFLG_GENHTML)
-        idaapi.eclose(ida_fd)
+        # attempt to generate an 'html' dump of the first 0x20 bytes
+        # (instructions)
+        ida_fd = ida_diskio.fopenWT(path)
+        ida_loader.gen_file(
+            ida_loader.OFILE_LST,
+            ida_fd,
+            imagebase,
+            imagebase + 0x20,
+            ida_loader.GENFLG_GENHTML
+        )
+        ida_diskio.eclose(ida_fd)
 
         # read the dumped text
-        with open(path, "r") as fd:
+        with open(path, "r", encoding="utf-8") as fd:
             html = fd.read()
 
         # delete the temp file from disk
@@ -238,19 +254,22 @@ class IDACoreAPI(DisassemblerCoreAPI):
         except OSError:
             pass
 
-        # attempt to parse the user's disassembly background color from the html (7.0?)
+        # attempt to parse the user's disassembly background color from the
+        # html (7.0?)
         bg_color_text = get_string_between(html, '<body bgcolor="', '">')
         if bg_color_text:
             logger.debug(" - Extracted bgcolor '%s' from regex!" % bg_color_text)
             return QtGui.QColor(bg_color_text)
 
         #
-        # sometimes the above one isn't present... so try this one (7.1 - 7.4 maybe?)
+        # sometimes the above one isn't present... so try this one (7.1 - 7.4
+        # maybe?)
         #
-        # TODO: IDA 7.5 says c1 is /* line-fg-default */ ... but it's possible c1
-        # had the bg color of the line in other builds of 7.x? I'm not sure but
-        # this should be double checked at some point and can maybe just be removed
-        # in favor of c41 (line-bg-default) as that's what we really want
+        # TODO: IDA 7.5 says c1 is /* line-fg-default */ ... but it's possible
+        # c1 had the bg color of the line in other builds of 7.x? I'm not sure
+        # but this should be double checked at some point and can maybe just be
+        # removed in favor of c41 (line-bg-default) as that's what we really
+        # want
         #
 
         bg_color_text = get_string_between(html, '.c1 \{ background-color: ', ';')
@@ -258,7 +277,8 @@ class IDACoreAPI(DisassemblerCoreAPI):
             logger.debug(" - Extracted background-color '%s' from line-fg-default!" % bg_color_text)
             return QtGui.QColor(bg_color_text)
 
-        # -- IDA 7.5 says c41 is /* line-bg-default */, a.k.a the bg color for disassembly text
+        # -- IDA 7.5 says c41 is /* line-bg-default */, a.k.a the bg color for
+        # disassembly text
         bg_color_text = get_string_between(html, '.c41 \{ background-color: ', ';')
         if bg_color_text:
             logger.debug(" - Extracted background-color '%s' from line-bg-default!" % bg_color_text)
@@ -270,7 +290,8 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
     def _get_ida_bg_color_from_view(self):
         """
-        Get the background color of the IDA disassembly views via widget inspection.
+        Get the background color of the IDA disassembly views via widget
+        inspection.
         """
         logger.debug("Attempting to get IDA disassembly background color from view...")
 
@@ -280,7 +301,7 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
         # find a form (eg, IDA view) to analyze colors from
         for window_name in names:
-            twidget = idaapi.find_widget(window_name)
+            twidget = ida_kernwin.find_widget(window_name)
             if twidget:
                 break
         else:
@@ -317,18 +338,18 @@ class IDACoreAPI(DisassemblerCoreAPI):
         """
 
         # get the currently active widget/form title (the form itself seems transient...)
-        twidget = idaapi.get_current_widget()
-        title = idaapi.get_widget_title(twidget)
+        twidget = ida_kernwin.get_current_widget()
+        title = ida_kernwin.get_widget_title(twidget)
 
         # touch the target window by switching to it
-        idaapi.activate_widget(target, True)
+        ida_kernwin.activate_widget(target, True)
         flush_qt_events()
 
         # locate our previous selection
-        previous_twidget = idaapi.find_widget(title)
+        previous_twidget = ida_kernwin.find_widget(title)
 
         # return us to our previous selection
-        idaapi.activate_widget(previous_twidget, True)
+        ida_kernwin.activate_widget(previous_twidget, True)
         flush_qt_events()
 
 #------------------------------------------------------------------------------
@@ -342,7 +363,7 @@ class IDAContextAPI(DisassemblerContextAPI):
 
     @property
     def busy(self):
-        return not(idaapi.auto_is_ok())
+        return not (ida_auto.auto_is_ok())
 
     #--------------------------------------------------------------------------
     # API Shims
@@ -350,7 +371,7 @@ class IDAContextAPI(DisassemblerContextAPI):
 
     @IDACoreAPI.execute_read
     def get_current_address(self):
-        return idaapi.get_screen_ea()
+        return ida_kernwin.get_screen_ea()
 
     def get_database_directory(self):
         return idautils.GetIdbDir()
@@ -359,25 +380,25 @@ class IDAContextAPI(DisassemblerContextAPI):
         return list(idautils.Functions())
 
     def get_function_name_at(self, address):
-        return idaapi.get_short_name(address)
+        return ida_name.get_short_name(address)
 
     def get_function_raw_name_at(self, function_address):
-        return idaapi.get_name(function_address)
+        return ida_name.get_name(function_address)
 
     def get_imagebase(self):
-        return idaapi.get_imagebase()
+        return ida_nalt.get_imagebase()
 
     def get_root_filename(self):
-        return idaapi.get_root_filename()
+        return ida_nalt.get_root_filename()
 
     def navigate(self, address):
-        return idaapi.jumpto(address)
+        return ida_kernwin.jumpto(address)
 
     def navigate_to_function(self, function_address, address):
         return self.navigate(address)
 
     def set_function_name_at(self, function_address, new_name):
-        idaapi.set_name(function_address, new_name, idaapi.SN_NOWARN)
+        ida_name.set_name(function_address, new_name, ida_name.SN_NOWARN)
 
     #--------------------------------------------------------------------------
     # Hooks API
@@ -386,9 +407,9 @@ class IDAContextAPI(DisassemblerContextAPI):
     def create_rename_hooks(self):
         return RenameHooks()
 
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Function Prefix API
-    #------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
 
     PREFIX_SEPARATOR = "%"
 
@@ -396,7 +417,7 @@ class IDAContextAPI(DisassemblerContextAPI):
 # Hooking
 #------------------------------------------------------------------------------
 
-class RenameHooks(idaapi.IDB_Hooks):
+class RenameHooks(ida_idp.IDB_Hooks):
 
     def renamed(self, address, new_name, local_name):
         """
@@ -407,7 +428,7 @@ class RenameHooks(idaapi.IDB_Hooks):
         if local_name or new_name.startswith("loc_"):
             return 0
 
-        rendered_name = idaapi.get_short_name(address)
+        rendered_name = ida_name.get_short_name(address)
 
         # call the 'renamed' callback, that will get hooked by a listener
         self.name_changed(address, rendered_name)
@@ -486,7 +507,8 @@ def map_line2node(cfunc, metadata, line2citem):
     """
     line2node = {}
     treeitems = cfunc.treeitems
-    function_address = cfunc.entry_ea
+    # function_address
+    _ = cfunc.entry_ea
 
     #
     # prior to this function, a line2citem map was built to tell us which
@@ -513,7 +535,7 @@ def map_line2node(cfunc, metadata, line2citem):
                 address = item.ea
 
             # apparently this is a thing on IDA 6.95
-            except IndexError as e:
+            except IndexError:
                 continue
 
             # find the graph node (eg, basic block) that generated this citem
@@ -561,13 +583,13 @@ def lex_citem_indexes(line):
     while i < line_length:
 
         # does this character mark the start of a new COLOR_* token?
-        if line[i] == idaapi.COLOR_ON:
+        if line[i] == ida_lines.COLOR_ON:
 
             # yes, so move past the COLOR_ON byte
             i += 1
 
             # is this sequence for a COLOR_ADDR?
-            if ord(line[i]) == idaapi.COLOR_ADDR:
+            if ord(line[i]) == ida_lines.COLOR_ADDR:
 
                 # yes, so move past the COLOR_ADDR byte
                 i += 1
@@ -578,8 +600,8 @@ def lex_citem_indexes(line):
                 # in this context, it is actually the index number of a citem
                 #
 
-                citem_index = int(line[i:i+idaapi.COLOR_ADDR_SIZE], 16)
-                i += idaapi.COLOR_ADDR_SIZE
+                citem_index = int(line[i:i + ida_lines.COLOR_ADDR_SIZE], 16)
+                i += ida_lines.COLOR_ADDR_SIZE
 
                 # save the extracted citem index
                 indexes.append(citem_index)
@@ -592,4 +614,3 @@ def lex_citem_indexes(line):
 
     # return all the citem indexes extracted from this line of text
     return indexes
-
