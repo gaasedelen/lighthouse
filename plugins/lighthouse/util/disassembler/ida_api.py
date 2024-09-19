@@ -226,7 +226,12 @@ class IDACoreAPI(DisassemblerCoreAPI):
         # attempt to generate an 'html' dump of the first 0x20 bytes (instructions)
         ida_fd = idaapi.fopenWT(path)
         idaapi.gen_file(idaapi.OFILE_LST, ida_fd, imagebase, imagebase+0x20, idaapi.GENFLG_GENHTML)
-        idaapi.eclose(ida_fd)
+        # IDA 9.0 removed `eclose`, added `qfclose` in `ida_fpro`
+        if int(idaapi.get_kernel_version()[0]) >= 9:
+            import ida_fpro
+            ida_fpro.qfclose(ida_fd)
+        else:
+            idaapi.eclose(ida_fd)
 
         # read the dumped text
         with open(path, "r") as fd:
