@@ -37,7 +37,7 @@ var threadlist = %s;
 
 // Get the module map
 function make_maps() {
-    var maps = Process.enumerateModulesSync();
+    var maps = Process.enumerateModules();
     var i = 0;
     // We need to add the module id
     maps.map(function(o) { o.id = i++; });
