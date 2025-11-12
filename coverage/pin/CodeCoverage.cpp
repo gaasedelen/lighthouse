@@ -15,15 +15,6 @@
 #include "TraceFile.h"
 #include "ImageManager.h"
 
-// Pin comes with some old standard libraries.
-namespace pintool {
-template <typename V>
-using unordered_set = std::tr1::unordered_set<V>;
-
-template <typename K, typename V>
-using unordered_map = std::tr1::unordered_map<K, V>;
-}
-
 // Tool's arguments.
 static KNOB<std::string> KnobModuleWhitelist(KNOB_MODE_APPEND, "pintool", "w", "",
     "Add a module to the white list. If none is specified, everymodule is white-listed. Example: libTIFF.dylib");
@@ -47,7 +38,7 @@ static std::string base_name(const std::string& path)
 // Per thread data structure. This is mainly done to avoid locking.
 // - Per-thread map of executed basic blocks, and their size.
 struct ThreadData {
-    pintool::unordered_map<ADDRINT, uint16_t> m_blocks;
+    std::unordered_map<ADDRINT, uint16_t> m_blocks;
 };
 
 class ToolContext {
