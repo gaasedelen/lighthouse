@@ -8,7 +8,7 @@ target = os.path.abspath(os.path.join(
     "boombox.exe"
 ))
 
-print "Opening '%s' headlessly..." % target
+print(f"Opening '{target}' headlessly...") 
 x = binaryninja.BinaryViewType["PE"].open(target)
 x.update_analysis_and_wait()
-print "DONE!"
+print("DONE!")

@@ -1,26 +1,34 @@
-# -*- coding: utf-8 -*-
+import ctypes
+import collections
+import functools
+import logging
 import os
 import sys
-import logging
-import functools
 import threading
-import collections
 
-from .api import DisassemblerCoreAPI, DisassemblerContextAPI
-from ..qt import *
-from ..misc import is_mainthread, not_mainthread
-
-import binaryninja
 from binaryninja import PythonScriptingInstance, binaryview
 from binaryninja.plugin import BackgroundTaskThread
+from binaryninjaui import (Sidebar, SidebarContextSensitivity, SidebarWidget,
+                           SidebarWidgetLocation, SidebarWidgetType,
+                           UIActionHandler, UIContext)
+from PySide6 import QtCore
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPixmap
+
+from ..misc import is_mainthread, not_mainthread
+from ..qt import *
+from .api import DisassemblerContextAPI, DisassemblerCoreAPI
 
 logger = logging.getLogger("Lighthouse.API.Binja")
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Utils
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 def execute_sync(function):
+    # 
+
     """
     Synchronize with the disassembler for safe database access.
     """
@@ -47,6 +55,7 @@ def execute_sync(function):
         #
 
         output = [None]
+
         def thunk():
             output[0] = function(*args, **kwargs)
             return 1
@@ -55,9 +64,11 @@ def execute_sync(function):
             """
             A stub task to safely read from the BNDB.
             """
+
             def __init__(self, text, function):
                 super(DatabaseRead, self).__init__(text, False)
                 self._task_to_run = function
+
             def run(self):
                 self._task_to_run()
                 self.finish()
@@ -69,11 +80,14 @@ def execute_sync(function):
 
         # return the output of the synchronized execution / read
         return output[0]
+
     return wrapper
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Disassembler API
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class BinjaCoreAPI(DisassemblerCoreAPI):
     NAME = "BINJA"
@@ -81,34 +95,36 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
     def __init__(self):
         super(BinjaCoreAPI, self).__init__()
         self._init_version()
+        # Store a reference to the SidebarWidgetType instance
+        self._sidebar_widget_type = None
 
     def _init_version(self):
         version_string = binaryninja.core_version()
 
         # retrieve Binja's version #
-        if "-" in version_string: # dev
+        if "-" in version_string:  # dev
             disassembler_version = version_string.split("-", 1)[0]
-        else: # commercial, personal
+        else:  # commercial, personal
             disassembler_version = version_string.split(" ", 1)[0]
 
-        major, minor, patch, *_= disassembler_version.split(".") + ['0']
+        major, minor, patch, *_ = disassembler_version.split(".") + ["0"]
 
         # save the version number components for later use
         self._version_major = major
         self._version_minor = minor
         self._version_patch = patch
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Properties
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @property
     def headless(self):
-        return not(binaryninja.core_ui_enabled())
+        return not (binaryninja.core_ui_enabled())
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Synchronization Decorators
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @staticmethod
     def execute_read(function):
@@ -135,15 +151,17 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
 
         return wrapper
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # API Shims
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def get_disassembler_user_directory(self):
         return os.path.split(binaryninja.user_plugin_path())[0]
 
     def get_disassembly_background_color(self):
-        return binaryninjaui.getThemeColor(binaryninjaui.ThemeColor.LinearDisassemblyBlockColor)
+        return binaryninjaui.getThemeColor(
+            binaryninjaui.ThemeColor.LinearDisassemblyBlockColor
+        )
 
     def is_msg_inited(self):
         return True
@@ -155,39 +173,51 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
     def message(self, message):
         print(message)
 
-    #--------------------------------------------------------------------------
-    # UI API Shims
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # UI API Shims (Migrated to SidebarWidget)
+    # --------------------------------------------------------------------------
 
     def register_dockable(self, dockable_name, create_widget_callback):
-        dock_handler = DockHandler.getActiveDockHandler()
-        dock_handler.addDockWidget(dockable_name, create_widget_callback, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, False)
+        # We store the SidebarWidgetType instance so we don't re-register it
+        if self._sidebar_widget_type is None:
+            self._sidebar_widget_type = LighthouseWidgetType()
+            Sidebar.addSidebarWidgetType(self._sidebar_widget_type)
 
     def create_dockable_widget(self, parent, dockable_name):
-        return DockableWidget(parent, dockable_name)
+        # This method is now implicitly handled by LighthouseWidgetType.createWidget
+        pass
 
     def show_dockable(self, dockable_name):
-        dock_handler = DockHandler.getActiveDockHandler()
-        dock_handler.setVisible(dockable_name, True)
+        """
+        Show the named dockable widget.
+        """
+        current_sidebar = Sidebar.current()
+        
+        if current_sidebar:
+            # FIX: Use the registered plugin name "Lighthouse"
+            current_sidebar.focus("Lighthouse")
+        else:
+            # Fallback for when no sidebar/frame is currently active/focused
+            self.warning("Failed to show dockable '%s': No active BinaryView window with a sidebar found." % dockable_name)
 
     def hide_dockable(self, dockable_name):
-        dock_handler = DockHandler.getActiveDockHandler()
-        dock_handler.setVisible(dockable_name, False)
+        pass
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # XXX Binja Specfic Helpers
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def binja_get_bv_from_dock(self):
-        dh = DockHandler.getActiveDockHandler()
-        if not dh:
+        ac = UIContext.activeContext()
+        if not ac:
             return None
-        vf = dh.getViewFrame()
+        vf = ac.getCurrentViewFrame()
         if not vf:
             return None
         vi = vf.getCurrentViewInterface()
         bv = vi.getData()
         return bv
+
 
 class BinjaContextAPI(DisassemblerContextAPI):
 
@@ -195,36 +225,29 @@ class BinjaContextAPI(DisassemblerContextAPI):
         super(BinjaContextAPI, self).__init__(dctx)
         self.bv = dctx
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Properties
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     @property
     def busy(self):
         return self.bv.analysis_info.state != binaryninja.enums.AnalysisState.IdleState
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # API Shims
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def get_current_address(self):
-
-        # TODO/V35: this doen't work because of the loss of context bug...
-        #ctx = UIContext.activeContext()
-        #ah = ctx.contentActionHandler()
-        #ac = ah.actionContext()
-        #return ac.address
-
-        dh = DockHandler.getActiveDockHandler()
-        if not dh:
-            return 0
-        vf = dh.getViewFrame()
-        if not vf:
-            return 0
-        ac = vf.actionContext()
+        ac = UIContext.activeContext()
         if not ac:
             return 0
-        return ac.address
+        vf = ac.getCurrentViewFrame()
+        if not vf:
+            return 0
+        actx = vf.actionContext()
+        if not actx:
+            return 0
+        return actx.address
 
     @BinjaCoreAPI.execute_read
     def get_database_directory(self):
@@ -283,8 +306,8 @@ class BinjaContextAPI(DisassemblerContextAPI):
         else:
             return False
 
-        dh = DockHandler.getActiveDockHandler()
-        vf = dh.getViewFrame()
+        ac = UIContext.activeContext()
+        vf = ac.getCurrentViewFrame()
         vi = vf.getCurrentViewInterface()
 
         return vi.navigateToFunction(func, address)
@@ -302,22 +325,24 @@ class BinjaContextAPI(DisassemblerContextAPI):
         func.name = new_name
         self.bv.commit_undo_actions(state)
 
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
     # Hooks API
-    #--------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
 
     def create_rename_hooks(self):
         return RenameHooks(self.bv)
 
-    #------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------
     # Function Prefix API
-    #------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------
 
-    PREFIX_SEPARATOR = "▁" # Unicode 0x2581
+    PREFIX_SEPARATOR = " "  # Unicode 0x2581
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Hooking
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class RenameHooks(binaryview.BinaryDataNotification):
     """
@@ -359,65 +384,79 @@ class RenameHooks(binaryview.BinaryDataNotification):
         """
         pass
 
-#------------------------------------------------------------------------------
-# UI
-#------------------------------------------------------------------------------
 
-if QT_AVAILABLE:
+# ------------------------------------------------------------------------------
+# UI (SidebarWidget implementation)
+# ------------------------------------------------------------------------------
 
-    import binaryninjaui
-    from binaryninjaui import DockHandler, DockContextHandler, UIContext, UIActionHandler
+# Store a temporary reference to the global integration object so the widget can access it.
+# This is a common pattern for plugins injecting complex logic into the BN UI.
+_INTEGRATION_HACK = None
 
-    class DockableWidget(QtWidgets.QWidget, DockContextHandler):
-        """
-        A dockable Qt widget for Binary Ninja.
-        """
+class LighthouseWidget(SidebarWidget):
+    """
+    The main Sidebar Widget container for the Lighthouse UI.
+    """
+    def __init__(self, name, frame, data):
+        SidebarWidget.__init__(self, name)
+        
+        # This 'data' object is the BinaryView (dctx in Lighthouse terms)
+        dctx = data 
 
-        def __init__(self, parent, name):
-            QtWidgets.QWidget.__init__(self, parent)
-            DockContextHandler.__init__(self, self, name)
+        # We must acquire the context to get the core integration object 
+        # (which manages the LighthouseCore state)
+        global _INTEGRATION_HACK
+        core = _INTEGRATION_HACK 
 
-            self.actionHandler = UIActionHandler()
-            self.actionHandler.setupActionHandler(self)
+        # This call creates/fetches the LighthouseContext for the current BinaryView
+        # and starts the subsystems (metadata, painter, director) if needed.
+        lctx = core.get_context(dctx)
+        
+        # The core logic requires the underlying Qt widget to be populated by the
+        # create_coverage_overview function defined in lighthouse/integration/core.py
+        from lighthouse.ui import CoverageOverview
+        CoverageOverview(lctx, self)
+        
+        # The parent constructor already handles UIActionHandler setup, so we skip it here.
+        
+    @property
+    def visible(self):
+        # FIX: Implement the .visible property expected by CoverageOverview.py's EventProxy
+        return self.isVisible()
 
-            self._active_view = None
-            self._visible_for_view = collections.defaultdict(lambda: False)
 
-        @property
-        def visible(self):
-            return self._visible_for_view[self._active_view]
+class LighthouseWidgetType(SidebarWidgetType):
+    def __init__(self):
+        # NOTE: Using placeholder 'L' icon for now, real icon is needed for release.
+        icon = QImage(56, 56, QImage.Format_RGB32)
+        icon.fill(0)
 
-        @visible.setter
-        def visible(self, is_visible):
-            self._visible_for_view[self._active_view] = is_visible
+        p = QPainter()
+        p.begin(icon)
+        p.setFont(QFont("Open Sans", 56))
+        p.setPen(QColor(255, 255, 255, 255))
+        p.drawText(QRectF(0, 0, 56, 56), Qt.AlignCenter, "L")
+        p.end()
 
-        def shouldBeVisible(self, view_frame):
-            if not view_frame:
-                return False
+        # The internal name "Lighthouse" is used to focus the widget in show_dockable
+        SidebarWidgetType.__init__(self, icon, "Lighthouse")
 
-            if USING_PYSIDE6:
-                import shiboken6 as shiboken
-            else:
-                import shiboken2 as shiboken
+    def createWidget(self, frame, data):
+        # This callback is called by Binary Ninja to create the actual widget.
+        return LighthouseWidget("Lighthouse", frame, data)
 
-            vf_ptr = shiboken.getCppPointer(view_frame)[0]
-            return self._visible_for_view[vf_ptr]
+    def defaultLocation(self):
+        return SidebarWidgetLocation.RightContent
 
-        def notifyVisibilityChanged(self, is_visible):
-            self.visible = is_visible
+    def contextSensitivity(self):
+        # We want one instance per BinaryView (per database)
+        return SidebarContextSensitivity.PerViewTypeSidebarContext
 
-        def notifyViewChanged(self, view_frame):
-            if not view_frame:
-                self._active_view = None
-                return
 
-            if USING_PYSIDE6:
-                import shiboken6 as shiboken
-            else:
-                import shiboken2 as shiboken
+# Set the hack reference to the integration object
+def set_integration_hack(integration_object):
+    global _INTEGRATION_HACK
+    _INTEGRATION_HACK = integration_object
 
-            self._active_view = shiboken.getCppPointer(view_frame)[0]
-
-            if self.visible:
-                dock_handler = DockHandler.getActiveDockHandler()
-                dock_handler.setVisible(self.m_name, True)
+# NOTE: The SidebarWidgetType registration now occurs through the integration hook below:
+# Sidebar.addSidebarWidgetType(LighthouseWidgetType())
