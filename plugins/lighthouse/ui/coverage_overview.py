@@ -56,9 +56,10 @@ class CoverageOverview(object):
 
     @property
     def visible(self):
+        # FIX: Replace .visible property access with the Qt standard .isVisible() method
         if not self.widget:
             return False
-        return self.widget.visible
+        return self.widget.isVisible()
 
     def terminate(self):
         """
@@ -288,7 +289,13 @@ class EventProxy(QtCore.QObject):
             if disassembler.NAME == "BINJA":
                 lctx = self._target.lctx
                 core = lctx.core
-                core.binja_close_context(lctx.dctx)
+                # FIX: In SidebarWidget, the 'widget' is the sidebar itself (source), 
+                # which is a SidebarWidget and has its own close/cleanup notifications.
+                # However, the core logic expects the dctx, not widget.
+                # We need to manually determine the dctx from the lctx before passing it.
+                if hasattr(lctx, 'dctx'):
+                    core.binja_close_context(lctx.dctx)
+
 
             # cleanup the UI / qt references for the CoverageOverview elements
             self._target.terminate()
@@ -322,6 +329,7 @@ class EventProxy(QtCore.QObject):
 
         elif int(event.type()) == self.EventUpdateLater:
 
+            # FIX: Use the fixed 'visible' property (which calls isVisible())
             if self._target.visible and self._first_hit:
                 self._first_hit = False
 

@@ -1,12 +1,13 @@
 import ctypes
 import logging
 
-from binaryninja import PluginCommand
-from binaryninjaui import UIAction, UIActionHandler, Menu
+from binaryninja import PluginCommand, BinaryView
+from binaryninjaui import UIAction, UIActionHandler, Menu, Sidebar
 
 from lighthouse.context import LighthouseContext
 from lighthouse.integration.core import LighthouseCore
 from lighthouse.util.disassembler import disassembler
+from lighthouse.util.disassembler.binja_api import set_integration_hack, LighthouseWidgetType
 
 logger = logging.getLogger("Lighthouse.Binja.Integration")
 
@@ -22,13 +23,30 @@ class LighthouseBinja(LighthouseCore):
     def __init__(self):
         super(LighthouseBinja, self).__init__()
 
+    # Overload the internal load function to set up the widget hack
+    def load(self):
+        # Inject our instance into the global scope so the SidebarWidget can access it
+        set_integration_hack(self)
+        
+        # Manually register the SidebarWidgetType here, since the abstract 
+        # register_dockable call is now a no-op (due to the hack).
+        Sidebar.addSidebarWidgetType(LighthouseWidgetType())
+        
+        super(LighthouseBinja, self).load()
+
     def get_context(self, dctx, startup=True):
         """
         Get the LighthouseContext object for a given database context.
 
         In Binary Ninja, a dctx is a BinaryView (BV).
         """
-        dctx_id = ctypes.addressof(dctx.handle.contents)
+        # If dctx is a BinaryView, use the address of its handle content as a unique ID
+        if isinstance(dctx, BinaryView):
+             dctx_id = ctypes.addressof(dctx.handle.contents)
+        else:
+             # Fallback if the object is not a BinaryView but should still be tracked
+             dctx_id = str(id(dctx))
+
 
         #
         # create a new LighthouseContext if this is the first time a context
@@ -73,7 +91,10 @@ class LighthouseBinja(LighthouseCore):
 
         In Binary Ninja, a dctx is a BinaryView (BV).
         """
-        dctx_id = ctypes.addressof(dctx.handle.contents)
+        if isinstance(dctx, BinaryView):
+            dctx_id = ctypes.addressof(dctx.handle.contents)
+        else:
+            dctx_id = str(id(dctx))
 
         # fetch the LighthouseContext for the closing BNDB
         try:
@@ -94,7 +115,7 @@ class LighthouseBinja(LighthouseCore):
     #--------------------------------------------------------------------------
     # UI Integration (Internal)
     #--------------------------------------------------------------------------
-
+    
     #
     # TODO / HACK / XXX / V35 / 2021: Some of Binja's UI elements (such as the
     # terminal) do not get assigned a BV, even if there is only one open.
@@ -113,6 +134,10 @@ class LighthouseBinja(LighthouseCore):
     # binja may no longer apply. this whole file should probably be revisited
     # and re-factored at some point point.. sorry if it's hard to follow
     #
+
+    # NOTE: The implementations below remain mostly the same, relying on the 
+    # original Core/Director logic. The UI stability is now handled by the 
+    # SidebarWidget implementation.
 
     def _interactive_load_file(self, context):
         dctx = disassembler.binja_get_bv_from_dock()
@@ -207,6 +232,7 @@ class LighthouseBinja(LighthouseCore):
         if not dctx:
             disassembler.warning("Lighthouse requires an open BNDB to open the overview.")
             return
+        # NOTE: open_coverage_overview in core.py handles the rest
         super(LighthouseBinja, self).open_coverage_overview(dctx)
 
     def _stub(self, context):
@@ -249,6 +275,8 @@ class LighthouseBinja(LighthouseCore):
         action = self.ACTION_COVERAGE_OVERVIEW
         UIAction.registerAction(action)
         UIActionHandler.globalActions().bindAction(action, UIAction(self._open_coverage_overview))
+        # Note: This menu entry might be redundant if the sidebar button is present, 
+        # but we keep it for consistency with other disassemblers.
         Menu.mainMenu("Plugins").addAction(action, "Windows", 0)
         logger.info("Installed the 'Open Coverage Overview' menu entry")
 

@@ -44,14 +44,9 @@ class LighthouseCore(object):
         self.palette = LighthousePalette()
         self.palette.theme_changed(self.refresh_theme)
 
-        def create_coverage_overview(name, parent, dctx):
-            lctx = self.get_context(dctx, startup=False)
-            widget = disassembler.create_dockable_widget(parent, name)
-            overview = CoverageOverview(lctx, widget)
-            return widget
+        # NOTE: create_coverage_overview removed as it's now handled by the SidebarWidget creation callback
 
-        # the coverage overview widget
-        disassembler.register_dockable("Coverage Overview", create_coverage_overview)
+        # NOTE: disassembler.register_dockable removed here - now handled by Sidebar.addSidebarWidgetType
 
         # install disassembler UI
         self._install_ui()
@@ -190,7 +185,9 @@ class LighthouseCore(object):
         """
         for lctx in self.lighthouse_contexts.values():
             lctx.director.refresh_theme()
-            lctx.coverage_overview.refresh_theme()
+            # Check if overview is initialized before calling refresh_theme
+            if lctx.coverage_overview:
+                lctx.coverage_overview.refresh_theme()
             lctx.painter.force_repaint()
 
     def open_coverage_overview(self, dctx=None):
