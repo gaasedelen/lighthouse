@@ -549,7 +549,11 @@ class LighthousePalette(object):
         #   lmao, don't ask me why they forgot about this attribute from 5.0 - 5.6
         #
 
-        if disassembler.NAME == "BINJA":
+        # IDA 9.2 SDK fix: migrate from PyQt5 to PySide6
+        # https://docs.hex-rays.com/user-guide/plugins/migrating-pyqt5-code-to-pyside6
+        if disassembler.NAME == "BINJA" or (disassembler.NAME == "IDA"
+                                        and disassembler._version_major == 9
+                                        and disassembler._version_minor >= 2):
             test_widget.setAttribute(QtCore.Qt.WA_DontShowOnScreen)
         else:
             test_widget.setAttribute(103) # taken from http://doc.qt.io/qt-5/qt.html

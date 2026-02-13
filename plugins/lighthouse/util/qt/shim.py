@@ -29,11 +29,16 @@ USING_PYSIDE6 = False
 #    specific dependencies in here...
 #
 
+# IDA 9.2 SDK fix: migrate from PyQt5 to PySide6
+# https://docs.hex-rays.com/user-guide/plugins/migrating-pyqt5-code-to-pyside6
 try:
-    import ida_idaapi
-    USING_IDA = True
+    import idaapi
+    ver_major, ver_minor = map(int, idaapi.get_kernel_version().split("."))
+    USING_NEW_IDA = ver_major == 9 and ver_minor >= 2
+    USING_OLD_IDA = not(USING_NEW_IDA)
 except ImportError:
-    USING_IDA = False
+    USING_NEW_IDA = False
+    USING_OLD_IDA = False
 
 try:
     import binaryninjaui
@@ -47,8 +52,8 @@ except ImportError:
 # PyQt5 Compatibility
 #------------------------------------------------------------------------------
 
-# attempt to load PyQt5 (IDA 7.0+)
-if USING_IDA:
+# attempt to load PyQt5 (IDA from 7.0 to 9.1)
+if USING_OLD_IDA:
 
     try:
         import PyQt5.QtGui as QtGui
@@ -91,8 +96,8 @@ if not QT_AVAILABLE and USING_OLD_BINJA:
 # PySide6 Compatibility
 #------------------------------------------------------------------------------
 
-# If all else fails, try to load PySide6 (New Binary Ninja)
-if not QT_AVAILABLE and USING_NEW_BINJA:
+# If all else fails, try to load PySide6 (New Binary Ninja and IDA)
+if not QT_AVAILABLE and (USING_NEW_BINJA or USING_NEW_IDA):
 
     try:
         import PySide6.QtGui as QtGui
