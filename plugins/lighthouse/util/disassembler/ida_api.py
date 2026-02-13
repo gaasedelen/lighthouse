@@ -152,9 +152,9 @@ class IDACoreAPI(DisassemblerCoreAPI):
     def create_dockable_widget(self, parent, dockable_name):
         # IDA 9.2 SDK fix: migrate from PyQt5 to PySide6
         # https://docs.hex-rays.com/user-guide/plugins/migrating-pyqt5-code-to-pyside6
-        try:
+        if USING_PYSIDE6:
             from shiboken6 import wrapInstance
-        except ImportError:
+        else:
             import sip
             def wrapInstance(ptr, base=None):
                 return sip.wrapinstance(int(ptr), base)
@@ -304,9 +304,9 @@ class IDACoreAPI(DisassemblerCoreAPI):
 
         # IDA 9.2 SDK fix: migrate from PyQt5 to PySide6
         # https://docs.hex-rays.com/user-guide/plugins/migrating-pyqt5-code-to-pyside6
-        try:
+        if USING_PYSIDE6:
             from shiboken6 import wrapInstance
-        except ImportError:
+        else:
             import sip
             def wrapInstance(ptr, base=None):
                 return sip.wrapinstance(int(ptr), base)
@@ -611,4 +611,3 @@ def lex_citem_indexes(line):
 
     # return all the citem indexes extracted from this line of text
     return indexes
-
