@@ -29,6 +29,7 @@ class CoverageOverview(object):
 
         self.lctx.coverage_overview = self
         self.initialized = False
+        self._refreshed_callback = None
 
         # see the EventProxy class below for more details
         self._events = EventProxy(self)
@@ -42,7 +43,7 @@ class CoverageOverview(object):
         self.refresh()
 
         # register for cues from the director
-        self.director.refreshed(self.refresh)
+        self._refreshed_callback = self.director.refreshed(self.refresh)
 
     #--------------------------------------------------------------------------
     # Pseudo Widget Functions
@@ -64,11 +65,27 @@ class CoverageOverview(object):
         """
         The CoverageOverview is being hidden / deleted.
         """
+        if self.widget is None:
+            return
+
+        if self._refreshed_callback:
+            self.director.unregister_refreshed(self._refreshed_callback)
+            self._refreshed_callback = None
+
+        if self.lctx.coverage_overview is self:
+            self.lctx.coverage_overview = None
+
+        self.initialized = False
         self._combobox = None
         self._shell = None
+        self._toolbar = None
         self._table_view = None
         self._table_controller = None
         self._table_model = None
+        self._settings_button = None
+        self._settings_menu = None
+        self._shell_elements = None
+        self._events = None
         self.widget = None
 
     #--------------------------------------------------------------------------
@@ -229,6 +246,9 @@ class CoverageOverview(object):
         """
         Refresh the Coverage Overview.
         """
+        if not (self._table_model and self._shell and self._combobox):
+            return
+
         self._table_model.refresh()
         self._shell.refresh()
         self._combobox.refresh()
@@ -238,6 +258,9 @@ class CoverageOverview(object):
         """
         Update visual elements based on theme change.
         """
+        if not (self._table_view and self._table_model and self._shell and self._combobox):
+            return
+
         self._table_view.refresh_theme()
         self._table_model.refresh_theme()
         self._shell.refresh_theme()

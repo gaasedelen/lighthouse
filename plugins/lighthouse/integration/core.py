@@ -190,7 +190,8 @@ class LighthouseCore(object):
         """
         for lctx in self.lighthouse_contexts.values():
             lctx.director.refresh_theme()
-            lctx.coverage_overview.refresh_theme()
+            if lctx.coverage_overview:
+                lctx.coverage_overview.refresh_theme()
             lctx.painter.force_repaint()
 
     def open_coverage_overview(self, dctx=None):

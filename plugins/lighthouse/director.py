@@ -337,13 +337,20 @@ class CoverageDirector(object):
         """
         Subscribe a callback for director refresh events.
         """
-        register_callback(self._refreshed_callbacks, callback)
+        return register_callback(self._refreshed_callbacks, callback)
 
     def _notify_refreshed(self):
         """
         Notify listeners of a director refresh event.
         """
         notify_callback(self._refreshed_callbacks)
+
+    def unregister_refreshed(self, callback_ref):
+        """
+        Unsubscribe a callback reference from director refresh events.
+        """
+
+        unregister_callback(self._refreshed_callbacks, callback_ref)
 
     #----------------------------------------------------------------------
     # Batch Loading

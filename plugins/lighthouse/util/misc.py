@@ -146,6 +146,7 @@ def register_callback(callback_list, callback):
 
     # 'register' the callback
     callback_list.append(callback_ref)
+    return callback_ref
 
 def notify_callback(callback_list, *args):
     """
@@ -207,4 +208,13 @@ def notify_callback(callback_list, *args):
     # remove the deleted callbacks
     for callback_ref in cleanup:
         callback_list.remove(callback_ref)
-        
+
+def unregister_callback(callback_list, callback_ref):
+    """
+    Remove a previously-registered callback reference.
+    """
+
+    try:
+        callback_list.remove(callback_ref)
+    except (ValueError, AttributeError):
+        pass
