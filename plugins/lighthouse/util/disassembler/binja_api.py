@@ -13,6 +13,10 @@ from ..misc import is_mainthread, not_mainthread
 import binaryninja
 from binaryninja import PythonScriptingInstance, binaryview
 from binaryninja.plugin import BackgroundTaskThread
+from binaryninjaui import Sidebar, SidebarWidget, SidebarWidgetType, SidebarWidgetLocation, UIActionHandler, UIContext
+from PySide6 import QtCore
+from PySide6.QtCore import Qt, QRectF
+from PySide6.QtGui import QImage, QPixmap, QPainter, QFont, QColor
 
 logger = logging.getLogger("Lighthouse.API.Binja")
 
@@ -160,29 +164,29 @@ class BinjaCoreAPI(DisassemblerCoreAPI):
     #--------------------------------------------------------------------------
 
     def register_dockable(self, dockable_name, create_widget_callback):
-        dock_handler = DockHandler.getActiveDockHandler()
-        dock_handler.addDockWidget(dockable_name, create_widget_callback, QtCore.Qt.RightDockWidgetArea, QtCore.Qt.Horizontal, False)
+        Sidebar.addSidebarWidgetType(LighthouseWidgetType())
 
     def create_dockable_widget(self, parent, dockable_name):
-        return DockableWidget(parent, dockable_name)
+        # return DockableWidget(parent, dockable_name)
+        pass
 
     def show_dockable(self, dockable_name):
-        dock_handler = DockHandler.getActiveDockHandler()
-        dock_handler.setVisible(dockable_name, True)
+        Sidebar.current().focus(LighthouseWidgetType())
 
     def hide_dockable(self, dockable_name):
-        dock_handler = DockHandler.getActiveDockHandler()
-        dock_handler.setVisible(dockable_name, False)
+        # dock_handler = DockHandler.getActiveDockHandler()
+        # dock_handler.setVisible(dockable_name, False)
+        pass
 
     #--------------------------------------------------------------------------
     # XXX Binja Specfic Helpers
     #--------------------------------------------------------------------------
 
     def binja_get_bv_from_dock(self):
-        dh = DockHandler.getActiveDockHandler()
-        if not dh:
+        ac = UIContext.activeContext()
+        if not ac:
             return None
-        vf = dh.getViewFrame()
+        vf = ac.getCurrentViewFrame()
         if not vf:
             return None
         vi = vf.getCurrentViewInterface()
@@ -208,23 +212,16 @@ class BinjaContextAPI(DisassemblerContextAPI):
     #--------------------------------------------------------------------------
 
     def get_current_address(self):
-
-        # TODO/V35: this doen't work because of the loss of context bug...
-        #ctx = UIContext.activeContext()
-        #ah = ctx.contentActionHandler()
-        #ac = ah.actionContext()
-        #return ac.address
-
-        dh = DockHandler.getActiveDockHandler()
-        if not dh:
-            return 0
-        vf = dh.getViewFrame()
-        if not vf:
-            return 0
-        ac = vf.actionContext()
+        ac = UIContext.activeContext()
         if not ac:
             return 0
-        return ac.address
+        vf = ac.getCurrentViewFrame()
+        if not vf:
+            return 0
+        actx = vf.actionContext()
+        if not actx:
+            return 0
+        return actx.address
 
     @BinjaCoreAPI.execute_read
     def get_database_directory(self):
@@ -283,8 +280,8 @@ class BinjaContextAPI(DisassemblerContextAPI):
         else:
             return False
 
-        dh = DockHandler.getActiveDockHandler()
-        vf = dh.getViewFrame()
+        ac = UIContext.activeContext()
+        vf = ac.getCurrentViewFrame()
         vi = vf.getCurrentViewInterface()
 
         return vi.navigateToFunction(func, address)
@@ -363,61 +360,31 @@ class RenameHooks(binaryview.BinaryDataNotification):
 # UI
 #------------------------------------------------------------------------------
 
-if QT_AVAILABLE:
+class LighthouseWidget(SidebarWidget):
+    def __init__(self, name, frame, data):
+        SidebarWidget.__init__(self, name)
+        self.actionHandler = UIActionHandler()
+        self.actionHandler.setupActionHandler(self)
 
-    import binaryninjaui
-    from binaryninjaui import DockHandler, DockContextHandler, UIContext, UIActionHandler
+class LighthouseWidgetType(SidebarWidgetType):
+    def __init__(self):
+        icon = QImage(56, 56, QImage.Format_RGB32)
+        icon.fill(0)
 
-    class DockableWidget(QtWidgets.QWidget, DockContextHandler):
-        """
-        A dockable Qt widget for Binary Ninja.
-        """
+        p = QPainter()
+        p.begin(icon)
+        p.setFont(QFont("Open Sans", 56))
+        p.setPen(QColor(255, 255, 255, 255))
+        p.drawText(QRectF(0, 0, 56, 56), Qt.AlignCenter, "L")
+        p.end()
 
-        def __init__(self, parent, name):
-            QtWidgets.QWidget.__init__(self, parent)
-            DockContextHandler.__init__(self, self, name)
+        SidebarWidgetType.__init__(self, icon, "Lighthouse")
 
-            self.actionHandler = UIActionHandler()
-            self.actionHandler.setupActionHandler(self)
+    def createWidget(self, frame, data):
+        return Widget("Lighthouse", frame, data)
 
-            self._active_view = None
-            self._visible_for_view = collections.defaultdict(lambda: False)
+    def defaultLocation(self):
+        return SidebarWidgetLocation.RightContent
 
-        @property
-        def visible(self):
-            return self._visible_for_view[self._active_view]
-
-        @visible.setter
-        def visible(self, is_visible):
-            self._visible_for_view[self._active_view] = is_visible
-
-        def shouldBeVisible(self, view_frame):
-            if not view_frame:
-                return False
-
-            if USING_PYSIDE6:
-                import shiboken6 as shiboken
-            else:
-                import shiboken2 as shiboken
-
-            vf_ptr = shiboken.getCppPointer(view_frame)[0]
-            return self._visible_for_view[vf_ptr]
-
-        def notifyVisibilityChanged(self, is_visible):
-            self.visible = is_visible
-
-        def notifyViewChanged(self, view_frame):
-            if not view_frame:
-                self._active_view = None
-                return
-
-            if USING_PYSIDE6:
-                import shiboken6 as shiboken
-            else:
-                import shiboken2 as shiboken
-
-            self._active_view = shiboken.getCppPointer(view_frame)[0]
-
-            if self.visible:
-                dock_handler = DockHandler.getActiveDockHandler()
-                dock_handler.setVisible(self.m_name, True)
+    def contextSensitivity(self):
+        return SidebarContextSensitivity.SelfManagedSidebarContext
