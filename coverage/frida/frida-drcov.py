@@ -34,6 +34,8 @@ js = """
 
 var whitelist = %s;
 var threadlist = %s;
+var nativetrigger = %s;
+var objctrigger = %s;
 
 // Get the module map
 function make_maps() {
@@ -131,39 +133,115 @@ function drcov_bbs(bbs, fmaps, path_ids) {
 //  barf on it anyways
 Stalker.trustThreshold = 0;
 
-console.log('Starting to stalk threads...');
-
+function attach_threads(){
 // Note, we will miss any bbs hit by threads that are created after we've
 //  attached
-Process.enumerateThreads({
-    onMatch: function (thread) {
-        if (threadlist.indexOf(thread.id) < 0 &&
-            threadlist.indexOf('all') < 0) {
-            // This is not the thread you're look for
-            return;
-        }
+    Process.enumerateThreads({
+        onMatch: function (thread) {
 
-        console.log('Stalking thread ' + thread.id + '.');
+            if (threadlist.indexOf(thread.id) < 0 &&
+                threadlist.indexOf('all') < 0) {
+                // This is not the thread you're look for
+                return;
+            }
 
-        Stalker.follow(thread.id, {
-            events: {
-                compile: true
+            console.log('Stalking thread ' + thread.id + '.');
+
+            Stalker.follow(thread.id, {
+                events: {
+                    compile: true
+                },
+                onReceive: function (event) {
+                    var bb_events = Stalker.parse(event,
+                        {stringify: false, annotate: false});
+                    var bbs = drcov_bbs(bb_events, filtered_maps, module_ids);
+
+                    // We're going to send a dummy message, the actual bb is in the
+                    //  data field. We're sending a dict to keep it consistent with
+                    //  the map. We're also creating the drcov event in javascript,
+                    // so on the py recv side we can just blindly add it to a set.
+                    send({bbs: 1}, bbs);
+                }
+            });
+        },
+        onComplete: function () { console.log('Done stalking threads.'); }
+    });
+}
+
+function detach_threads(){
+    Process.enumerateThreads({
+        onMatch: function (thread) {
+
+            if (threadlist.indexOf(thread.id) < 0 &&
+                threadlist.indexOf('all') < 0) {
+                // This is not the thread you're look for
+                return;
+            }
+
+            console.log('Stalker detach from thread ' + thread.id + '.');
+
+            Stalker.unfollow(thread.id);
+        },
+        onComplete: function () { console.log('Done stalking threads.'); }
+    });
+}
+
+if(nativetrigger.length > 0){
+    try{
+        var trigger = Module.getExportByName(nativetrigger[0], nativetrigger[1]);
+        Interceptor.attach(trigger, {
+            onEnter(args) {
+                console.log('[*] Native trigger hit. Attaching to threads now.');
+                attach_threads();
             },
-            onReceive: function (event) {
-                var bb_events = Stalker.parse(event,
-                    {stringify: false, annotate: false});
-                var bbs = drcov_bbs(bb_events, filtered_maps, module_ids);
-
-                // We're going to send a dummy message, the actual bb is in the
-                //  data field. We're sending a dict to keep it consistent with
-                //  the map. We're also creating the drcov event in javascript,
-                // so on the py recv side we can just blindly add it to a set.
-                send({bbs: 1}, bbs);
+            onLeave(retval) {
+                console.log('[*] Native trigger left. Detaching from threads now.');
+                Interceptor.detachAll();
+                detach_threads();
             }
         });
-    },
-    onComplete: function () { console.log('Done stalking threads.'); }
-});
+    }catch(error){
+        console.log('[-] Error: Native module/method pair not found in process!');
+    }
+}else if(objctrigger.length > 0){
+    try{
+        var objcclass = ObjC.classes[objctrigger[0]];
+
+        if(!objcclass){
+            throw new Error();
+        }
+
+        var objcmethod = null;
+        for(var j = 0; j < objcclass.$methods.length; j++){
+            if(objcclass.$methods[j] == objctrigger[1]){
+                objcmethod = objcclass.$methods[j];
+                break;
+            }
+        }
+
+        if(!objcmethod){
+            throw new Error();
+        }
+
+        var trigger = objcclass[objcmethod].implementation;
+        Interceptor.attach(trigger, {
+            onEnter(args) {
+                console.log('[*] ObjC trigger hit. Attaching to threads now.');
+                attach_threads();
+            },
+            onLeave(retval) {
+                console.log('[*] ObjC trigger left. Detaching from threads now.');
+                Interceptor.detachAll();
+                detach_threads();
+            }
+        });
+
+    }catch(error){
+        console.log('[-] Error: ObjC module/method pair not found in process!');
+    }
+}else{
+    attach_threads();
+}
 """
 
 # These are global so we can easily access them from the frida callbacks or
@@ -276,15 +354,35 @@ def main():
     parser.add_argument('-t', '--thread-id',
             help='threads to trace, may be specified multiple times [all]',
             action='append', type=int, default=[])
+    parser.add_argument('-N', '--native-module',
+            help='select a native module to trigger the trace',
+            action='append', default=[])
+    parser.add_argument('-n', '--native-method',
+            help='select a native method to trigger the trace',
+            action='append', default=[])
+    parser.add_argument('-M', '--objc-class',
+            help='select an objective-c class to trigger the trace',
+            action='append', default=[])
+    parser.add_argument('-m', '--objc-method',
+            help='select an objective-c method to trigger the trace',
+            action='append', default=[])
     parser.add_argument('-D', '--device',
             help='select a device by id [local]',
             default='local')
+    parser.add_argument('-R', '--remote-device',
+            help='select a device by ip:port',
+            default=None)
 
     args = parser.parse_args()
 
     outfile = args.outfile
 
-    device = frida.get_device(args.device)
+    device = 'local'
+    if args.remote_device:
+        print(args.remote_device)
+        device = frida.get_device_manager().add_remote_device(args.remote_device)
+    else:
+        device = frida.get_device(args.device)
 
     target = -1
     for p in device.enumerate_processes():
@@ -310,8 +408,43 @@ def main():
     if len(args.thread_id):
         threadlist = args.thread_id
 
+    # Incorporate triggering thread attachment on native method
+    native_module_trigger = []
+    if args.native_module:
+        native_module_trigger = args.native_module
+
+    native_method_trigger = []
+    if args.native_method:
+        native_method_trigger = args.native_method
+
+    native_trigger = native_module_trigger + native_method_trigger
+
+    # Incorporate triggering thread attachment on objective-c method
+    objc_method_trigger = []
+    if args.objc_method:
+        objc_method_trigger = args.objc_method
+
+    objc_class_trigger = []
+    if args.objc_class:
+        objc_class_trigger = args.objc_class
+
+    objc_trigger = objc_class_trigger + objc_method_trigger
+
+    # Check sanity of triggers - only one trigger and includes two items
+    if len(objc_trigger) == 2 and len(native_trigger) == 0:
+        print('[*] Triggering on Objective-C method: %s %s' % tuple(objc_trigger))
+
+    if len(native_trigger) == 2 and len(objc_trigger) == 0:
+        print('[*] Triggering on native method: %s %s' % tuple(native_trigger))
+
+    if len(native_trigger) > 0 and len(objc_trigger) > 0:
+        print('[-] Error: Cannot trigger on both native and Objective-C methods')
+        sys.exit(1)
+
     json_whitelist_modules = json.dumps(whitelist_modules)
     json_threadlist = json.dumps(threadlist)
+    json_native_trigger = json.dumps(native_trigger)
+    json_objc_trigger = json.dumps(objc_trigger)
 
     print('[*] Attaching to pid \'%d\' on device \'%s\'...' %
             (target, device.id))
@@ -319,7 +452,7 @@ def main():
     session = device.attach(target)
     print('[+] Attached. Loading script...')
 
-    script = session.create_script(js % (json_whitelist_modules, json_threadlist))
+    script = session.create_script(js % (json_whitelist_modules, json_threadlist, json_native_trigger, json_objc_trigger))
     script.on('message', on_message)
     script.load()
 
