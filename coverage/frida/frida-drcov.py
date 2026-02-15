@@ -36,19 +36,7 @@ var whitelist = %s;
 var threadlist = %s;
 
 // Get the module map
-function make_maps() {
-    var maps = Process.enumerateModulesSync();
-    var i = 0;
-    // We need to add the module id
-    maps.map(function(o) { o.id = i++; });
-    // .. and the module end point
-    maps.map(function(o) { o.end = o.base.add(o.size); });
-
-    return maps;
-}
-
-var maps = make_maps()
-
+var maps = Process.enumerateModules();
 send({'map': maps});
 
 // We want to use frida's ModuleMap to create DRcov events, however frida's
@@ -178,12 +166,11 @@ outfile = 'frida-cov.log'
 def populate_modules(image_list):
     global modules
 
-    for image in image_list:
-        idx  = image['id']
+    for idx, image in enumerate(image_list):
         path = image['path']
         base = int(image['base'], 0)
-        end  = int(image['end'], 0)
         size = image['size']
+        end  = base + int(size)
 
         m = {
                 'id': idx,
