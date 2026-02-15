@@ -302,6 +302,10 @@ class BinjaContextAPI(DisassemblerContextAPI):
         func.name = new_name
         self.bv.commit_undo_actions(state)
 
+    def is_code_segment(self, address):
+        # Binja is not supported yet, return True
+        return True
+
     #--------------------------------------------------------------------------
     # Hooks API
     #--------------------------------------------------------------------------
